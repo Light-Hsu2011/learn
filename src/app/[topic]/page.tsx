@@ -2,6 +2,8 @@ import { notFound } from "next/navigation";
 import { getTopicBySlug, topics } from "@/lib/topics";
 import { getLessons } from "@/lib/content";
 import Link from "next/link";
+import { ProgressBar } from "@/components/progress-bar";
+import { LessonStatus } from "@/components/lesson-status";
 
 interface Props {
   params: Promise<{ topic: string }>;
@@ -33,7 +35,12 @@ export default async function TopicPage({ params }: Props) {
       <h1 className="text-4xl font-bold mb-4">
         {topicInfo.icon} {topicInfo.title}
       </h1>
-      <p className="text-lg text-gray-600 mb-8">{topicInfo.description}</p>
+      <p className="text-lg text-gray-600 mb-4">{topicInfo.description}</p>
+      {lessons.length > 0 && (
+        <div className="mb-8">
+          <ProgressBar topicSlug={topic} totalLessons={lessons.length} />
+        </div>
+      )}
 
       {lessons.length === 0 ? (
         <p className="text-gray-400 italic">尚未有課程內容，敬請期待！</p>
@@ -49,12 +56,13 @@ export default async function TopicPage({ params }: Props) {
                 <span className="text-sm font-mono text-gray-400 w-8">
                   {String(i + 1).padStart(2, "0")}
                 </span>
-                <div>
+                <div className="flex-1">
                   <h3 className="font-semibold">{lesson.title}</h3>
                   {lesson.description && (
                     <p className="text-sm text-gray-500">{lesson.description}</p>
                   )}
                 </div>
+                <LessonStatus lessonId={`${topic}/${lesson.slug}`} />
               </div>
             </Link>
           ))}

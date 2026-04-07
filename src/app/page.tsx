@@ -1,6 +1,7 @@
 import { topics } from "@/lib/topics";
 import { getLessons } from "@/lib/content";
 import Link from "next/link";
+import { ProgressBar } from "@/components/progress-bar";
 
 export default function HomePage() {
   return (
@@ -29,10 +30,15 @@ export default function HomePage() {
                     </p>
                   </div>
                 </div>
-                <div className="text-right">
+                <div className="text-right w-32">
                   <span className="text-sm text-gray-400">
                     {lessons.length} 課
                   </span>
+                  {lessons.length > 0 && (
+                    <div className="mt-1">
+                      <ProgressBar topicSlug={topic.slug} totalLessons={lessons.length} />
+                    </div>
+                  )}
                 </div>
               </div>
             </Link>
