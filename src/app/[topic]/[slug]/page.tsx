@@ -3,7 +3,9 @@ import { getLessonContent, getAllLessonSlugs } from "@/lib/content";
 import { getTopicBySlug } from "@/lib/topics";
 import { parseFrontmatter } from "@/lib/mdx";
 import { MDXRemote } from "next-mdx-remote/rsc";
+import rehypePrettyCode from "rehype-pretty-code";
 import Link from "next/link";
+import { mdxComponents } from "@/components/mdx";
 
 interface Props {
   params: Promise<{ topic: string; slug: string }>;
@@ -38,7 +40,17 @@ export default async function LessonPage({ params }: Props) {
       </nav>
 
       <article className="prose prose-lg max-w-none dark:prose-invert">
-        <MDXRemote source={content} />
+        <MDXRemote
+          source={content}
+          components={mdxComponents}
+          options={{
+            mdxOptions: {
+              rehypePlugins: [
+                [rehypePrettyCode, { theme: "catppuccin-mocha", keepBackground: false }],
+              ],
+            },
+          }}
+        />
       </article>
     </div>
   );
