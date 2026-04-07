@@ -1,0 +1,87 @@
+---
+title: "Strategy Pattern"
+order: 1
+description: "讓演算法可以在執行時切換，不用改原本的程式碼"
+---
+
+# Strategy Pattern（策略模式）
+
+## 小學生版解釋
+
+想像你有一個遊戲角色，他可以隨時**換武器**：
+
+- 劍 → 近距離攻擊
+- 弓 → 遠距離攻擊
+- 法杖 → 魔法攻擊
+
+角色本身不用改變，只要換武器就好。每把武器就是一個「策略（Strategy）」。
+
+## 是什麼？
+
+Strategy Pattern 把一組**可以互換的演算法**封裝起來，讓使用它的程式碼可以在執行時切換不同的演算法，而不需要修改自己的程式碼。
+
+## 什麼時候用？
+
+- 你有好幾種做同一件事的方法（例如不同的排序、不同的付款方式）
+- 你想在執行時動態切換行為
+- 你想避免 if-else 或 switch 越來越長
+
+## 什麼時候不該用？
+
+- 只有一兩種行為，if-else 就夠清楚了
+- 行為不會變動，沒必要增加抽象
+
+## C# 範例
+
+```csharp
+// 1. 定義策略介面
+public interface IAttackStrategy
+{
+    string Attack();
+}
+
+// 2. 具體策略
+public class SwordAttack : IAttackStrategy
+{
+    public string Attack() => "揮劍砍下去！造成 10 點傷害";
+}
+
+public class BowAttack : IAttackStrategy
+{
+    public string Attack() => "射出一箭！造成 8 點傷害";
+}
+
+public class MagicAttack : IAttackStrategy
+{
+    public string Attack() => "發射火球！造成 15 點傷害";
+}
+
+// 3. 使用策略的角色（Context）
+public class GameCharacter
+{
+    private IAttackStrategy _strategy;
+
+    public GameCharacter(IAttackStrategy strategy)
+    {
+        _strategy = strategy;
+    }
+
+    public void SetStrategy(IAttackStrategy strategy)
+    {
+        _strategy = strategy;
+    }
+
+    public string PerformAttack() => _strategy.Attack();
+}
+
+// 4. 使用
+var hero = new GameCharacter(new SwordAttack());
+Console.WriteLine(hero.PerformAttack()); // 揮劍砍下去！
+
+hero.SetStrategy(new MagicAttack());
+Console.WriteLine(hero.PerformAttack()); // 發射火球！
+```
+
+## 重點一句話
+
+**Strategy Pattern = 把「怎麼做」這件事抽成介面，讓你可以隨時換不同的做法。**
