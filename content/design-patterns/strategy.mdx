@@ -6,8 +6,7 @@ description: "讓演算法可以在執行時切換，不用改原本的程式碼
 
 # Strategy Pattern（策略模式）
 
-## 小學生版解釋
-
+<ELI5>
 想像你有一個遊戲角色，他可以隨時**換武器**：
 
 - 劍 → 近距離攻擊
@@ -16,9 +15,16 @@ description: "讓演算法可以在執行時切換，不用改原本的程式碼
 
 角色本身不用改變，只要換武器就好。每把武器就是一個「策略（Strategy）」。
 
+就像你去餐廳吃飯，可以選不同的**付款方式**（現金、信用卡、手機支付），餐廳不需要為每種付款方式重新裝修，只要換一台刷卡機就好！
+</ELI5>
+
 ## 是什麼？
 
 Strategy Pattern 把一組**可以互換的演算法**封裝起來，讓使用它的程式碼可以在執行時切換不同的演算法，而不需要修改自己的程式碼。
+
+<Callout type="info" title="GoF 分類">
+Strategy 屬於**行為型模式（Behavioral Pattern）**，重點在於物件之間如何分配職責和溝通。
+</Callout>
 
 ## 什麼時候用？
 
@@ -28,10 +34,17 @@ Strategy Pattern 把一組**可以互換的演算法**封裝起來，讓使用�
 
 ## 什麼時候不該用？
 
-- 只有一兩種行為，if-else 就夠清楚了
-- 行為不會變動，沒必要增加抽象
+<Callout type="warning" title="過度設計警告">
+如果只有一兩種行為，用 if-else 就夠清楚了。Strategy Pattern 會多出介面和類別，只有在行為**真的會擴增**時才值得用。
+</Callout>
 
-## C# 範例
+## 執行流程
+
+<StepDiagram data='[{"title":"定義策略介面","description":"宣告所有策略共用的方法簽名","icon":"1"},{"title":"實作具體策略","description":"每種演算法各自實作介面","icon":"2"},{"title":"建立 Context","description":"持有策略的參考，委派工作給策略","icon":"3"},{"title":"注入策略","description":"在執行時傳入或切換具體策略","icon":"4"},{"title":"執行","description":"Context 呼叫策略方法，不需要知道具體實作","icon":"5"}]' />
+
+## 程式碼範例
+
+### C# 版本
 
 ```csharp
 // 1. 定義策略介面
@@ -56,7 +69,7 @@ public class MagicAttack : IAttackStrategy
     public string Attack() => "發射火球！造成 15 點傷害";
 }
 
-// 3. 使用策略的角色（Context）
+// 3. Context：使用策略的角色
 public class GameCharacter
 {
     private IAttackStrategy _strategy;
@@ -82,6 +95,165 @@ hero.SetStrategy(new MagicAttack());
 Console.WriteLine(hero.PerformAttack()); // 發射火球！
 ```
 
-## 重點一句話
+### TypeScript 版本
 
+```typescript
+// 1. 定義策略介面
+interface AttackStrategy {
+  attack(): string;
+}
+
+// 2. 具體策略
+class SwordAttack implements AttackStrategy {
+  attack(): string {
+    return "揮劍砍下去！造成 10 點傷害";
+  }
+}
+
+class BowAttack implements AttackStrategy {
+  attack(): string {
+    return "射出一箭！造成 8 點傷害";
+  }
+}
+
+class MagicAttack implements AttackStrategy {
+  attack(): string {
+    return "發射火球！造成 15 點傷害";
+  }
+}
+
+// 3. Context
+class GameCharacter {
+  constructor(private strategy: AttackStrategy) {}
+
+  setStrategy(strategy: AttackStrategy) {
+    this.strategy = strategy;
+  }
+
+  performAttack(): string {
+    return this.strategy.attack();
+  }
+}
+
+// 4. 使用
+const hero = new GameCharacter(new SwordAttack());
+console.log(hero.performAttack()); // 揮劍砍下去！
+
+hero.setStrategy(new MagicAttack());
+console.log(hero.performAttack()); // 發射火球！
+```
+
+### Python 版本
+
+```python
+from abc import ABC, abstractmethod
+
+# 1. 定義策略介面
+class AttackStrategy(ABC):
+    @abstractmethod
+    def attack(self) -> str:
+        pass
+
+# 2. 具體策略
+class SwordAttack(AttackStrategy):
+    def attack(self) -> str:
+        return "揮劍砍下去！造成 10 點傷害"
+
+class BowAttack(AttackStrategy):
+    def attack(self) -> str:
+        return "射出一箭！造成 8 點傷害"
+
+class MagicAttack(AttackStrategy):
+    def attack(self) -> str:
+        return "發射火球！造成 15 點傷害"
+
+# 3. Context
+class GameCharacter:
+    def __init__(self, strategy: AttackStrategy):
+        self._strategy = strategy
+
+    def set_strategy(self, strategy: AttackStrategy):
+        self._strategy = strategy
+
+    def perform_attack(self) -> str:
+        return self._strategy.attack()
+
+# 4. 使用
+hero = GameCharacter(SwordAttack())
+print(hero.perform_attack())  # 揮劍砍下去！
+
+hero.set_strategy(MagicAttack())
+print(hero.perform_attack())  # 發射火球！
+```
+
+### Java 版本
+
+```java
+// 1. 定義策略介面
+public interface AttackStrategy {
+    String attack();
+}
+
+// 2. 具體策略
+public class SwordAttack implements AttackStrategy {
+    public String attack() { return "揮劍砍下去！造成 10 點傷害"; }
+}
+
+public class BowAttack implements AttackStrategy {
+    public String attack() { return "射出一箭！造成 8 點傷害"; }
+}
+
+public class MagicAttack implements AttackStrategy {
+    public String attack() { return "發射火球！造成 15 點傷害"; }
+}
+
+// 3. Context
+public class GameCharacter {
+    private AttackStrategy strategy;
+
+    public GameCharacter(AttackStrategy strategy) {
+        this.strategy = strategy;
+    }
+
+    public void setStrategy(AttackStrategy strategy) {
+        this.strategy = strategy;
+    }
+
+    public String performAttack() {
+        return strategy.attack();
+    }
+}
+
+// 4. 使用
+GameCharacter hero = new GameCharacter(new SwordAttack());
+System.out.println(hero.performAttack()); // 揮劍砍下去！
+
+hero.setStrategy(new MagicAttack());
+System.out.println(hero.performAttack()); // 發射火球！
+```
+
+## 結構圖
+
+<Diagram data='{"nodes":[{"id":"client","label":"Client","type":"muted"},{"id":"context","label":"Context (GameCharacter)","type":"highlight"},{"id":"strategy","label":"Strategy Interface","type":"default"},{"id":"concrete","label":"ConcreteStrategy (Sword/Bow/Magic)","type":"default"}],"edges":[{"from":"client","to":"context","label":"uses"},{"from":"context","to":"strategy","label":"delegates to"},{"from":"strategy","to":"concrete","label":"implements"}]}' />
+
+## 理解測驗
+
+<Quiz data='{"question":"Strategy Pattern 的核心目的是什麼？","options":["讓程式跑得更快","讓演算法可以在執行時互換，而不需要修改使用它的程式碼","減少程式碼行數","讓所有類別都繼承同一個父類別"],"answer":1,"explanation":"Strategy Pattern 的重點是把可互換的演算法封裝起來，讓 Context 可以在執行時切換策略。"}' />
+
+<Quiz data='{"question":"在 Strategy Pattern 中，誰負責決定用哪個策略？","options":["策略介面自己決定","具體策略自己決定","Context 或 Client 決定","編譯器決定"],"answer":2,"explanation":"策略的選擇權在 Client 或 Context 手上，具體策略只負責實作演算法。"}' />
+
+<Quiz data='{"question":"以下哪個場景最適合用 Strategy Pattern？","options":["一個永遠不會變的計算公式","電商系統支援多種付款方式（信用卡、Line Pay、銀行轉帳），且未來會持續新增","印出 Hello World","讀取一個固定格式的設定檔"],"answer":1,"explanation":"多種付款方式且會持續擴增，正是 Strategy Pattern 的經典應用場景。"}' />
+
+## 重點整理
+
+<Callout type="tip" title="一句話記住">
 **Strategy Pattern = 把「怎麼做」這件事抽成介面，讓你可以隨時換不同的做法。**
+</Callout>
+
+| 概念 | 說明 |
+|------|------|
+| **Strategy（策略介面）** | 定義所有策略的共同方法 |
+| **ConcreteStrategy（具體策略）** | 各自實作不同的演算法 |
+| **Context（上下文）** | 持有策略參考，委派工作 |
+| **核心好處** | 開放封閉原則 — 新增策略不用改 Context |
+| **代價** | 多了介面和類別，簡單場景可能過度設計 |
