@@ -1,0 +1,106 @@
+---
+title: "714. Best Time to Buy and Sell Stock with Transaction Fee"
+order: 65
+description: "狀態機 DP 追蹤持有和未持有股票兩種狀態的最大利潤"
+---
+
+# Best Time to Buy and Sell Stock with Transaction Fee
+
+<ELI5>
+你在炒股票，每天可以選擇買入、賣出或什麼都不做。但每次賣出要付一筆手續費。你想賺最多的錢。
+
+你每天其實只有兩種「狀態」：手上有股票、手上沒股票。
+
+- 手上有股票 → 可以賣掉（變成沒股票，賺差價扣手續費），或繼續持有
+- 手上沒股票 → 可以買入（變成有股票，花錢買），或繼續觀望
+
+每天在這兩個狀態間做最佳決策，像一台狀態機在「持有」和「空手」之間切換。
+</ELI5>
+
+## 題目描述
+
+給定每日股價陣列 `prices` 和交易手續費 `fee`。可以進行無限次交易（一次買入+賣出=一次交易），但每次交易要付 `fee`。不能同時持有多股。回傳最大利潤。
+
+```
+輸入：prices = [1,3,2,8,4,9], fee = 2
+輸出：8
+解釋：第0天買入(1)，第3天賣出(8)，利潤=8-1-2=5；第4天買入(4)，第5天賣出(9)，利潤=9-4-2=3；總利潤=8
+```
+
+## 解題思路
+
+<StepDiagram data='[{"title":"定義兩個狀態","description":"hold = 持有股票的最大利潤，cash = 不持有的最大利潤","icon":"1"},{"title":"初始化","description":"hold = -prices[0]（第一天買入），cash = 0","icon":"2"},{"title":"每天轉移","description":"cash = max(cash, hold + price - fee)，hold = max(hold, cash - price)","icon":"3"},{"title":"最終答案","description":"最後一天的 cash（賣完一定比持有好）","icon":"4"}]' />
+
+## 程式碼
+
+### C#
+```csharp
+public class Solution {
+    public int MaxProfit(int[] prices, int fee) {
+        int cash = 0;              // 不持有股票的最大利潤
+        int hold = -prices[0];     // 持有股票的最大利潤
+        
+        for (int i = 1; i < prices.Length; i++) {
+            int newCash = Math.Max(cash, hold + prices[i] - fee);
+            int newHold = Math.Max(hold, cash - prices[i]);
+            cash = newCash;
+            hold = newHold;
+        }
+        return cash;
+    }
+}
+```
+
+### TypeScript
+```typescript
+function maxProfit(prices: number[], fee: number): number {
+    let cash = 0;
+    let hold = -prices[0];
+    
+    for (let i = 1; i < prices.length; i++) {
+        const newCash = Math.max(cash, hold + prices[i] - fee);
+        const newHold = Math.max(hold, cash - prices[i]);
+        cash = newCash;
+        hold = newHold;
+    }
+    return cash;
+}
+```
+
+### Python
+```python
+def maxProfit(prices: list[int], fee: int) -> int:
+    cash = 0          # 不持有股票
+    hold = -prices[0]  # 持有股票
+    
+    for price in prices[1:]:
+        new_cash = max(cash, hold + price - fee)  # 賣出或觀望
+        new_hold = max(hold, cash - price)         # 買入或繼續持有
+        cash, hold = new_cash, new_hold
+    
+    return cash
+```
+
+## 複雜度分析
+
+| | Time | Space |
+|--|------|-------|
+| 本解法 | O(n) | O(1) |
+
+## 圖解
+
+<Diagram data='{"nodes":[{"id":"cash","label":"Cash（空手）","type":"highlight"},{"id":"hold","label":"Hold（持有）","type":"highlight"}],"edges":[{"from":"cash","to":"hold","label":"買入: cash - price"},{"from":"hold","to":"cash","label":"賣出: hold + price - fee"},{"from":"cash","to":"cash","label":"觀望"},{"from":"hold","to":"hold","label":"繼續持有"}]}' />
+
+## 進階觀點
+
+<Callout type="tip" title="面試追問">
+- 股票系列題的統一框架：狀態機 DP，用 (天數, 交易次數, 持有狀態) 三個維度定義狀態。
+- **121. Best Time to Buy and Sell Stock**（只能交易一次）、**122** (無限次無手續費)、**123** (最多兩次)、**188** (最多 K 次)、**309** (有冷凍期) 都用同樣的框架。
+- 為什麼不需要 newCash / newHold？因為 cash 和 hold 的更新公式中，一個用的是舊 hold，一個用的是舊 cash，所以需要暫存避免覆蓋。部分語言可以用解構賦值一行完成。
+</Callout>
+
+## 理解測驗
+
+<Quiz data='{"question":"為什麼 hold 的初始值是 -prices[0] 而不是 0？","options":["為了讓 hold 是負數","因為第一天買入股票需要花 prices[0] 元，利潤變成負的","因為 DP 需要負數初始化","這是一個技巧讓答案更大"],"answer":1,"explanation":"hold 代表持有股票時的最大利潤。第一天買入後，利潤是 -prices[0]（花了錢還沒賣）。"}' />
+
+<Quiz data='{"question":"手續費 fee 為什麼只在賣出時扣除？","options":["因為買入不需要手續費","只要在買入或賣出其中一個時扣就好，效果相同，這裡選擇在賣出時扣","因為這樣計算更簡單","題目規定只在賣出時收費"],"answer":1,"explanation":"手續費是每次交易(買+賣)收一次，在買入時扣或賣出時扣效果相同。在賣出時扣比較直觀：賣出獲利 = 賣價 - 手續費。"}' />

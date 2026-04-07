@@ -1,0 +1,214 @@
+---
+title: "BDD（行為驅動開發）"
+order: 8
+description: "Given-When-Then，從使用者行為出發定義測試場景"
+---
+
+# BDD（行為驅動開發）
+
+<ELI5>
+想像你和朋友在玩桌遊，規則書是這樣寫的：
+
+- **假設**你擲到 6（Given）
+- **當**你移動棋子到某格（When）
+- **那麼**你可以抽一張寶物卡（Then）
+
+BDD 就是用這種「故事格式」來定義軟體應該怎麼運作。不用程式碼語言，用**人人都看得懂的日常語言**描述行為。
+
+這樣做的好處是：PM、設計師、QA 和工程師都能一起討論「這個功能到底應該怎麼運作」，不會各說各話。
+</ELI5>
+
+## 是什麼？
+
+BDD（Behavior-Driven Development）是 Dan North 提出的開發方法論，從使用者行為的角度定義軟體的預期行為，使用 Given-When-Then 格式撰寫可執行的規格。
+
+<Callout type="info" title="BDD vs TDD">
+TDD 從**技術角度**出發（測試函式），BDD 從**使用者行為**出發（測試場景）。BDD 是 TDD 的延伸和補充，不是取代。
+</Callout>
+
+## 核心觀念
+
+- **Given-When-Then**：描述場景的三段式結構——前提、動作、預期結果
+- **Gherkin 語法**：一種結構化的自然語言格式，用來撰寫 BDD 場景
+- **Feature File**：用 Gherkin 寫成的場景檔案，是活的文件（Living Documentation）
+- **Step Definition**：把 Gherkin 語句對應到實際的測試程式碼
+- **Ubiquitous Language**：團隊共同使用的業務語言，消除溝通落差
+
+## 常見誤區
+
+<Callout type="warning" title="BDD 的陷阱">
+- **BDD 不只是 Gherkin**：BDD 的核心是團隊協作和行為思維，Gherkin 只是工具。沒有協作的 Gherkin 就是多餘的語法
+- **場景寫太技術化**：`Given database has record with id=1` 不是 BDD。用業務語言：`Given a registered customer`
+- **場景太多太細**：不是每個功能都需要 BDD 場景。只用在有溝通價值的核心業務流程
+- **Step Definition 變成 God Class**：每個 Step 應該簡短，複雜邏輯放到 Page Object 或 Helper
+</Callout>
+
+## BDD 流程
+
+<StepDiagram data='[{"title":"Discovery（探索）","description":"PM、QA、Dev 一起討論功能需求，用具體例子釐清行為","icon":"1"},{"title":"Formulation（定義）","description":"把討論結果寫成 Given-When-Then 格式的場景","icon":"2"},{"title":"Automation（自動化）","description":"用 SpecFlow/Cucumber 把場景變成可執行的測試","icon":"3"},{"title":"Implementation（實作）","description":"用 TDD 實作功能，讓 BDD 場景通過","icon":"4"},{"title":"Living Documentation","description":"場景檔案成為持續更新的活文件，所有人都看得懂","icon":"5"}]' />
+
+## 程式碼範例
+
+### Gherkin 場景（Feature File）
+
+```gherkin
+Feature: 購物車結帳
+  作為一個線上購物的顧客
+  我想要在購物車結帳
+  以便完成購買流程
+
+  Scenario: 一般顧客購買單一商品
+    Given 顧客 "Alice" 已登入
+    And 購物車中有 1 件 "TypeScript 入門書" 單價 500 元
+    When 顧客點擊結帳
+    Then 訂單總額應為 500 元
+    And 訂單狀態應為 "已建立"
+
+  Scenario: VIP 顧客享有折扣
+    Given VIP 顧客 "Bob" 已登入
+    And 購物車中有 1 件 "TypeScript 入門書" 單價 500 元
+    When 顧客點擊結帳
+    Then 訂單總額應為 400 元
+    And 應顯示 "VIP 折扣 20%"
+```
+
+### C#（xUnit + SpecFlow）
+
+```csharp
+// Step Definitions — 把 Gherkin 對應到程式碼
+[Binding]
+public class CheckoutSteps
+{
+    private Customer _customer;
+    private ShoppingCart _cart;
+    private Order _order;
+
+    [Given(@"顧客 ""(.*)"" 已登入")]
+    public void GivenCustomerLoggedIn(string name)
+    {
+        _customer = new Customer(name, CustomerType.Regular);
+        _cart = new ShoppingCart(_customer);
+    }
+
+    [Given(@"VIP 顧客 ""(.*)"" 已登入")]
+    public void GivenVipCustomerLoggedIn(string name)
+    {
+        _customer = new Customer(name, CustomerType.Vip);
+        _cart = new ShoppingCart(_customer);
+    }
+
+    [Given(@"購物車中有 (\d+) 件 ""(.*)"" 單價 (\d+) 元")]
+    public void GivenCartHasItem(int qty, string name, decimal price)
+    {
+        _cart.AddItem(new Product(name, price), qty);
+    }
+
+    [When(@"顧客點擊結帳")]
+    public void WhenCustomerCheckout()
+    {
+        _order = _cart.Checkout();
+    }
+
+    [Then(@"訂單總額應為 (\d+) 元")]
+    public void ThenOrderTotalShouldBe(decimal expected)
+    {
+        Assert.Equal(expected, _order.Total);
+    }
+
+    [Then(@"訂單狀態應為 ""(.*)""")]
+    public void ThenOrderStatusShouldBe(string status)
+    {
+        Assert.Equal(status, _order.Status);
+    }
+}
+```
+
+### TypeScript（Jest + Cucumber）
+
+```typescript
+import { Given, When, Then } from "@cucumber/cucumber";
+
+let customer: Customer;
+let cart: ShoppingCart;
+let order: Order;
+
+Given("顧客 {string} 已登入", (name: string) => {
+  customer = new Customer(name, "regular");
+  cart = new ShoppingCart(customer);
+});
+
+Given("購物車中有 {int} 件 {string} 單價 {int} 元", (qty, name, price) => {
+  cart.addItem(new Product(name, price), qty);
+});
+
+When("顧客點擊結帳", () => {
+  order = cart.checkout();
+});
+
+Then("訂單總額應為 {int} 元", (expected: number) => {
+  expect(order.total).toBe(expected);
+});
+```
+
+### Python（pytest + pytest-bdd）
+
+```python
+from pytest_bdd import given, when, then, scenario
+
+@scenario("checkout.feature", "一般顧客購買單一商品")
+def test_regular_customer_checkout():
+    pass
+
+@given("顧客 \"Alice\" 已登入", target_fixture="cart")
+def customer_logged_in():
+    customer = Customer("Alice", CustomerType.REGULAR)
+    return ShoppingCart(customer)
+
+@given("購物車中有 1 件 \"TypeScript 入門書\" 單價 500 元")
+def cart_has_item(cart):
+    cart.add_item(Product("TypeScript 入門書", 500), 1)
+
+@when("顧客點擊結帳", target_fixture="order")
+def customer_checkout(cart):
+    return cart.checkout()
+
+@then("訂單總額應為 500 元")
+def order_total_should_be(order):
+    assert order.total == 500
+```
+
+## 關係圖
+
+<Diagram data='{"nodes":[{"id":"bdd","label":"BDD（行為驅動開發）","type":"highlight"},{"id":"gwt","label":"Given-When-Then","type":"default"},{"id":"gherkin","label":"Gherkin 語法","type":"default"},{"id":"feature","label":"Feature File","type":"default"},{"id":"step","label":"Step Definition","type":"default"},{"id":"tdd","label":"TDD","type":"muted"},{"id":"tools","label":"SpecFlow / Cucumber","type":"muted"}],"edges":[{"from":"bdd","to":"gwt","label":"核心格式"},{"from":"gwt","to":"gherkin","label":"結構化語法"},{"from":"gherkin","to":"feature","label":"寫成場景檔"},{"from":"feature","to":"step","label":"對應到程式碼"},{"from":"step","to":"tdd","label":"用 TDD 實作"},{"from":"tools","to":"feature","label":"執行場景"}]}' />
+
+## 實戰補充
+
+<Callout type="tip" title="資深開發者的經驗">
+- **Three Amigos 會議**：每個功能開始前，PM + QA + Dev 三方一起討論具體例子。這個「Discovery」階段才是 BDD 的最大價值。
+- **不是所有測試都要用 BDD**：BDD 場景適合核心業務流程。底層的技術邏輯用普通的 Unit Test 就好。
+- **Gherkin 的維護成本**：Feature File + Step Definition 是雙倍的維護量。只在「溝通價值 > 維護成本」時使用。
+- **常用工具**：C# 用 SpecFlow（已被 Reqnroll 接替），JS/TS 用 Cucumber.js，Python 用 pytest-bdd 或 Behave。
+</Callout>
+
+## 理解測驗
+
+<Quiz data='{"question":"BDD 的 Given-When-Then 分別代表什麼？","options":["輸入-處理-輸出","前提條件-觸發動作-預期結果","過去-現在-未來","變數-函式-回傳值"],"answer":1,"explanation":"Given 定義前提條件（系統狀態），When 描述觸發的動作，Then 描述預期結果。這三段組成一個完整的行為場景。"}' />
+
+<Quiz data='{"question":"BDD 和 TDD 的主要差異是什麼？","options":["BDD 不需要寫測試","BDD 從使用者行為出發，TDD 從技術角度出發","BDD 只能用 Java 寫","BDD 取代了 TDD"],"answer":1,"explanation":"TDD 從函式和類別的技術角度寫測試，BDD 從使用者行為的角度描述場景。BDD 是 TDD 的延伸和補充。"}' />
+
+<Quiz data='{"question":"什麼情境最適合使用 BDD？","options":["底層的數學計算邏輯","核心業務流程，需要 PM、QA、Dev 共同理解","內部工具的 utility function","效能優化的基準測試"],"answer":1,"explanation":"BDD 的最大價值在於促進團隊溝通。核心業務流程需要所有角色有共同理解時，BDD 的投資最有價值。"}' />
+
+## 重點整理
+
+<Callout type="tip" title="一句話記住">
+**BDD = 用 Given-When-Then 說人話定義行為，讓 PM、QA、Dev 對功能有共同理解。**
+</Callout>
+
+| 概念 | 說明 |
+|------|------|
+| **Given-When-Then** | 前提-動作-預期結果，BDD 的核心格式 |
+| **Gherkin** | 結構化的自然語言語法 |
+| **Feature File** | 用 Gherkin 寫成的可執行規格 |
+| **Step Definition** | 把 Gherkin 對應到測試程式碼 |
+| **核心好處** | 促進團隊溝通、活的文件 |
+| **代價** | Feature + Step 雙倍維護成本，不適合底層技術測試 |

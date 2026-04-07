@@ -1,0 +1,164 @@
+---
+title: "1926. Nearest Exit from Entrance in Maze"
+order: 47
+description: "BFS 從入口出發尋找最近的邊界出口"
+---
+
+# Nearest Exit from Entrance in Maze
+
+<ELI5>
+想像你被困在一個迷宮裡，站在某個位置（入口）。迷宮的邊緣有一些出口（邊界上的空格），你想找到最近的出口。
+
+BFS 就像你同時派出無數個分身，每個分身每一步都往四個方向走一格。第一個到達邊界出口的分身，走的步數就是最短距離。
+
+注意：入口本身不算出口，即使它在邊界上。
+</ELI5>
+
+## 題目描述
+
+給定一個 m×n 的迷宮（`.` 是空格，`+` 是牆），和入口座標 `entrance`。找到離入口最近的出口（邊界上的空格，且不是入口本身）。回傳最少步數，如果沒有出口回傳 -1。
+
+```
+輸入: maze = [["+","+",".","+"],[".",".",".","+"],["+","+","+","."]]
+      entrance = [1,2]
+輸出: 1
+解釋: (1,2) 往上走一步到 (0,2) 就是邊界出口
+
+輸入: maze = [["+","+","+"],[".",".","."],["+","+","+"]]
+      entrance = [1,0]
+輸出: 2
+```
+
+## 解題思路
+
+<StepDiagram data='[{"title":"BFS 初始化","description":"入口放入 Queue，標記為已訪問","icon":"1"},{"title":"四方向擴展","description":"每步嘗試上下左右四個方向","icon":"2"},{"title":"檢查出口","description":"如果到達邊界空格且不是入口，回傳步數","icon":"3"},{"title":"繼續搜尋","description":"不是出口就加入 Queue，繼續下一步","icon":"4"},{"title":"無解","description":"Queue 為空仍未找到，回傳 -1","icon":"5"}]' />
+
+## 程式碼
+
+### C#
+
+```csharp
+public class Solution {
+    public int NearestExit(char[][] maze, int[] entrance) {
+        int m = maze.Length, n = maze[0].Length;
+        var queue = new Queue<(int r, int c)>();
+        queue.Enqueue((entrance[0], entrance[1]));
+        maze[entrance[0]][entrance[1]] = '+'; // 標記已訪問
+
+        int[][] dirs = { new[]{0,1}, new[]{0,-1}, new[]{1,0}, new[]{-1,0} };
+        int steps = 0;
+
+        while (queue.Count > 0) {
+            steps++;
+            int size = queue.Count;
+            for (int i = 0; i < size; i++) {
+                var (r, c) = queue.Dequeue();
+                foreach (var d in dirs) {
+                    int nr = r + d[0], nc = c + d[1];
+                    if (nr < 0 || nr >= m || nc < 0 || nc >= n) continue;
+                    if (maze[nr][nc] == '+') continue;
+
+                    // 是否為邊界出口
+                    if (nr == 0 || nr == m - 1 || nc == 0 || nc == n - 1) {
+                        return steps;
+                    }
+                    maze[nr][nc] = '+'; // 標記已訪問
+                    queue.Enqueue((nr, nc));
+                }
+            }
+        }
+        return -1;
+    }
+}
+```
+
+### TypeScript
+
+```typescript
+function nearestExit(maze: string[][], entrance: number[]): number {
+    const m = maze.length, n = maze[0].length;
+    const queue: [number, number][] = [[entrance[0], entrance[1]]];
+    maze[entrance[0]][entrance[1]] = "+"; // 標記已訪問
+
+    const dirs = [[0, 1], [0, -1], [1, 0], [-1, 0]];
+    let steps = 0;
+
+    while (queue.length > 0) {
+        steps++;
+        const size = queue.length;
+        for (let i = 0; i < size; i++) {
+            const [r, c] = queue.shift()!;
+            for (const [dr, dc] of dirs) {
+                const nr = r + dr, nc = c + dc;
+                if (nr < 0 || nr >= m || nc < 0 || nc >= n) continue;
+                if (maze[nr][nc] === "+") continue;
+
+                if (nr === 0 || nr === m - 1 || nc === 0 || nc === n - 1) {
+                    return steps;
+                }
+                maze[nr][nc] = "+";
+                queue.push([nr, nc]);
+            }
+        }
+    }
+    return -1;
+}
+```
+
+### Python
+
+```python
+from collections import deque
+
+def nearestExit(maze: list[list[str]], entrance: list[int]) -> int:
+    m, n = len(maze), len(maze[0])
+    queue = deque([(entrance[0], entrance[1])])
+    maze[entrance[0]][entrance[1]] = '+'  # 標記已訪問
+
+    steps = 0
+    dirs = [(0, 1), (0, -1), (1, 0), (-1, 0)]
+
+    while queue:
+        steps += 1
+        for _ in range(len(queue)):
+            r, c = queue.popleft()
+            for dr, dc in dirs:
+                nr, nc = r + dr, c + dc
+                if nr < 0 or nr >= m or nc < 0 or nc >= n:
+                    continue
+                if maze[nr][nc] == '+':
+                    continue
+
+                if nr == 0 or nr == m - 1 or nc == 0 or nc == n - 1:
+                    return steps
+                maze[nr][nc] = '+'
+                queue.append((nr, nc))
+
+    return -1
+```
+
+## 複雜度分析
+
+| | Time | Space |
+|--|------|-------|
+| 本解法 | O(m × n) | O(m × n) |
+
+## 圖解
+
+<Diagram data='{"nodes":[{"id":"start","label":"入口 (1,2)","type":"muted"},{"id":"step1","label":"步驟 1: (0,2)","type":"highlight"},{"id":"exit","label":"邊界出口！","type":"highlight"}],"edges":[{"from":"start","to":"step1","label":"往上"},{"from":"step1","to":"exit","label":"在邊界上"}]}' />
+
+## 進階觀點
+
+<Callout type="tip" title="面試追問">
+**為什麼 BFS 保證最短？** BFS 按步數逐層擴展，第一次到達的出口一定是步數最少的。DFS 不保證最短。
+
+**修改原陣列 vs 額外 visited**：這題直接把走過的格子改成 `+` 來標記已訪問，省了額外空間。但面試中要說明這會修改輸入。
+
+**變體題**：LC 994 Rotting Oranges（多源 BFS）、LC 1091 Shortest Path in Binary Matrix。
+</Callout>
+
+## 理解測驗
+
+<Quiz data='{"question":"為什麼入口不能當作出口？","options":["因為入口是牆","因為題目規定出口必須是「不同於入口」的邊界空格","因為入口不在邊界上","因為入口已經被標記"],"answer":1,"explanation":"題目明確要求出口不能是入口本身。所以即使入口在邊界上，也不算出口。"}' />
+
+<Quiz data='{"question":"如果用 DFS 代替 BFS，結果會怎樣？","options":["結果一樣","可能找到出口但不保證是最近的","找不到出口","會更快"],"answer":1,"explanation":"DFS 會找到一條路徑到出口，但不保證是最短路徑。BFS 逐層擴展，保證第一個找到的出口距離最短。"}' />

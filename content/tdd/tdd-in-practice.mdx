@@ -1,0 +1,358 @@
+---
+title: "TDD 實戰"
+order: 10
+description: "用 TDD 從零打造一個完整功能，體驗真實開發流程"
+---
+
+# TDD 實戰（TDD in Practice）
+
+<ELI5>
+你已經學會腳踏車的理論了——輪子怎麼轉、煞車怎麼按、平衡怎麼抓。
+
+但真正會騎車，要**上路騎一遍**才算數。你會歪歪扭扭、會摔幾次，但每踩一圈踏板，你就更穩一點。
+
+這堂課就是你的第一趟上路——我們用 **String Calculator Kata** 一步一步做完整的 TDD 循環，從第一個失敗的測試開始，一路迭代到完整功能。
+</ELI5>
+
+## 是什麼？
+
+String Calculator Kata 是 Roy Osherove 提出的經典 TDD 練習題。規則簡單但迭代豐富，完美展示 Red → Green → Refactor 的節奏。
+
+<Callout type="info" title="Kata 是什麼？">
+Kata 來自武術的「型」，指反覆練習同一套動作直到內化。TDD Kata 的重點不是最終程式碼，而是**練習 TDD 的節奏和紀律**。
+</Callout>
+
+## 需求規格
+
+String Calculator 的 `Add` 方法接收一個字串參數，回傳數字的總和：
+1. 空字串回傳 0
+2. 一個數字回傳該數字
+3. 兩個數字用逗號分隔，回傳總和
+4. 支援任意數量的數字
+5. 支援換行符 `\n` 作為分隔符
+6. 負數拋出例外，訊息包含所有負數
+
+## TDD 迭代演練
+
+<StepDiagram data='[{"title":"迭代 1：空字串","description":"最簡單的案例，建立骨架","icon":"1"},{"title":"迭代 2：單一數字","description":"處理一個數字的輸入","icon":"2"},{"title":"迭代 3：兩個數字","description":"加入逗號分隔邏輯","icon":"3"},{"title":"迭代 4：任意數量","description":"泛化處理 N 個數字","icon":"4"},{"title":"迭代 5：換行分隔","description":"支援多種分隔符","icon":"5"},{"title":"迭代 6：負數例外","description":"加入驗證邏輯","icon":"6"}]' />
+
+### C# (xUnit) 完整演練
+
+```csharp
+// ============ 迭代 1：空字串 → 回傳 0 ============
+
+// RED: 寫一個失敗的測試
+[Fact]
+public void Add_EmptyString_ReturnsZero()
+{
+    Assert.Equal(0, StringCalculator.Add(""));
+}
+
+// GREEN: 用最簡單的方式通過
+public static class StringCalculator
+{
+    public static int Add(string numbers)
+    {
+        return 0;
+    }
+}
+
+// REFACTOR: 目前夠簡單，不需要重構
+
+// ============ 迭代 2：單一數字 ============
+
+// RED
+[Fact]
+public void Add_SingleNumber_ReturnsThatNumber()
+{
+    Assert.Equal(1, StringCalculator.Add("1"));
+}
+
+// GREEN
+public static int Add(string numbers)
+{
+    if (string.IsNullOrEmpty(numbers)) return 0;
+    return int.Parse(numbers);
+}
+
+// ============ 迭代 3：兩個數字 ============
+
+// RED
+[Fact]
+public void Add_TwoNumbers_ReturnsSum()
+{
+    Assert.Equal(3, StringCalculator.Add("1,2"));
+}
+
+// GREEN
+public static int Add(string numbers)
+{
+    if (string.IsNullOrEmpty(numbers)) return 0;
+    var parts = numbers.Split(',');
+    return parts.Sum(p => int.Parse(p));
+}
+
+// REFACTOR: Split + Sum 已經自然處理了單一數字的情況！
+
+// ============ 迭代 4：任意數量 ============
+
+// RED
+[Fact]
+public void Add_MultipleNumbers_ReturnsSum()
+{
+    Assert.Equal(10, StringCalculator.Add("1,2,3,4"));
+}
+
+// GREEN: 已經通過了！因為迭代 3 的 Split + Sum 天生支援 N 個數字
+// 這就是 TDD 的美妙之處——好的設計自然長出來
+
+// ============ 迭代 5：換行符分隔 ============
+
+// RED
+[Fact]
+public void Add_NewlineDelimiter_ReturnsSum()
+{
+    Assert.Equal(6, StringCalculator.Add("1\n2,3"));
+}
+
+// GREEN
+public static int Add(string numbers)
+{
+    if (string.IsNullOrEmpty(numbers)) return 0;
+    var parts = numbers.Split(new[] { ',', '\n' });
+    return parts.Sum(p => int.Parse(p));
+}
+
+// ============ 迭代 6：負數拋出例外 ============
+
+// RED
+[Fact]
+public void Add_NegativeNumbers_ThrowsException()
+{
+    var ex = Assert.Throws<ArgumentException>(() =>
+        StringCalculator.Add("1,-2,-3"));
+    Assert.Contains("-2", ex.Message);
+    Assert.Contains("-3", ex.Message);
+}
+
+// GREEN: 最終版本
+public static class StringCalculator
+{
+    public static int Add(string numbers)
+    {
+        if (string.IsNullOrEmpty(numbers)) return 0;
+
+        var parts = numbers.Split(new[] { ',', '\n' });
+        var values = parts.Select(p => int.Parse(p)).ToList();
+
+        var negatives = values.Where(v => v < 0).ToList();
+        if (negatives.Any())
+            throw new ArgumentException(
+                $"Negatives not allowed: {string.Join(", ", negatives)}");
+
+        return values.Sum();
+    }
+}
+```
+
+### TypeScript (Jest) 完整演練
+
+```typescript
+// ============ 迭代 1：空字串 ============
+
+// RED
+test('empty string returns 0', () => {
+  expect(add('')).toBe(0);
+});
+
+// GREEN
+function add(numbers: string): number {
+  return 0;
+}
+
+// ============ 迭代 2：單一數字 ============
+
+// RED
+test('single number returns that number', () => {
+  expect(add('5')).toBe(5);
+});
+
+// GREEN
+function add(numbers: string): number {
+  if (!numbers) return 0;
+  return Number(numbers);
+}
+
+// ============ 迭代 3：兩個數字 ============
+
+// RED
+test('two numbers returns sum', () => {
+  expect(add('1,2')).toBe(3);
+});
+
+// GREEN
+function add(numbers: string): number {
+  if (!numbers) return 0;
+  return numbers.split(',').reduce((sum, n) => sum + Number(n), 0);
+}
+
+// ============ 迭代 4：已自動支援 ============
+
+test('multiple numbers returns sum', () => {
+  expect(add('1,2,3,4')).toBe(10); // 直接通過
+});
+
+// ============ 迭代 5：換行分隔 ============
+
+// RED
+test('newline delimiter returns sum', () => {
+  expect(add('1\n2,3')).toBe(6);
+});
+
+// GREEN
+function add(numbers: string): number {
+  if (!numbers) return 0;
+  return numbers.split(/[,\n]/).reduce((sum, n) => sum + Number(n), 0);
+}
+
+// ============ 迭代 6：負數例外 ============
+
+// RED
+test('negative numbers throw error', () => {
+  expect(() => add('1,-2,-3')).toThrow('Negatives not allowed: -2, -3');
+});
+
+// GREEN: 最終版本
+function add(numbers: string): number {
+  if (!numbers) return 0;
+
+  const values = numbers.split(/[,\n]/).map(Number);
+  const negatives = values.filter(v => v < 0);
+
+  if (negatives.length > 0) {
+    throw new Error(`Negatives not allowed: ${negatives.join(', ')}`);
+  }
+
+  return values.reduce((sum, n) => sum + n, 0);
+}
+```
+
+### Python (pytest) 完整演練
+
+```python
+# ============ 迭代 1：空字串 ============
+
+# RED
+def test_empty_string_returns_zero():
+    assert add("") == 0
+
+# GREEN
+def add(numbers: str) -> int:
+    return 0
+
+# ============ 迭代 2：單一數字 ============
+
+# RED
+def test_single_number():
+    assert add("5") == 5
+
+# GREEN
+def add(numbers: str) -> int:
+    if not numbers:
+        return 0
+    return int(numbers)
+
+# ============ 迭代 3：兩個數字 ============
+
+# RED
+def test_two_numbers():
+    assert add("1,2") == 3
+
+# GREEN
+def add(numbers: str) -> int:
+    if not numbers:
+        return 0
+    return sum(int(n) for n in numbers.split(","))
+
+# ============ 迭代 4：已自動支援 ============
+
+def test_multiple_numbers():
+    assert add("1,2,3,4") == 10  # 直接通過
+
+# ============ 迭代 5：換行分隔 ============
+
+# RED
+def test_newline_delimiter():
+    assert add("1\n2,3") == 6
+
+# GREEN
+import re
+
+def add(numbers: str) -> int:
+    if not numbers:
+        return 0
+    parts = re.split(r"[,\n]", numbers)
+    return sum(int(n) for n in parts)
+
+# ============ 迭代 6：負數例外 ============
+
+# RED
+def test_negative_numbers():
+    with pytest.raises(ValueError, match="-2, -3"):
+        add("1,-2,-3")
+
+# GREEN: 最終版本
+import re
+
+def add(numbers: str) -> int:
+    if not numbers:
+        return 0
+
+    parts = re.split(r"[,\n]", numbers)
+    values = [int(n) for n in parts]
+
+    negatives = [v for v in values if v < 0]
+    if negatives:
+        raise ValueError(
+            f"Negatives not allowed: {', '.join(str(n) for n in negatives)}"
+        )
+
+    return sum(values)
+```
+
+## 實戰補充
+
+<Callout type="info" title="資深開發者心得">
+注意迭代 4 的測試**直接就通過了**。這不是巧合，而是 TDD 的核心價值：好的設計在 Red-Green-Refactor 循環中**自然浮現**。你不需要預先設計完美架構，只要跟著測試走，程式碼會告訴你下一步該怎麼做。
+</Callout>
+
+<Callout type="warning" title="常見錯誤">
+新手最常犯的錯是在 Green 階段「多做」——明明只需要讓當前測試通過，卻忍不住把後面的功能一起寫了。這會破壞 TDD 的回饋循環，讓你失去「每一步都有測試保護」的安全感。
+</Callout>
+
+<Callout type="tip" title="Kata 練習建議">
+同一個 Kata 練 3 次以上，每次用不同語言或不同設計決策。重點不是寫出程式碼，而是讓 Red-Green-Refactor 的節奏變成肌肉記憶。
+</Callout>
+
+## 理解測驗
+
+<Quiz data='{"question":"在迭代 4（支援任意數量數字）時，為什麼測試直接通過了？","options":["因為測試寫錯了","因為迭代 3 用的 Split + Sum 天生支援 N 個元素","因為程式有 bug 但剛好通過","因為跳過了 Red 階段"],"answer":1,"explanation":"迭代 3 引入的 Split + Sum/Reduce 邏輯天生就能處理任意數量的元素，這展示了 TDD 中好的設計如何自然浮現。"}' />
+
+<Quiz data='{"question":"TDD 的 Green 階段，正確的做法是？","options":["盡量寫出最完善的程式碼","用最簡單的方式讓當前測試通過","先寫好架構再讓測試通過","把後面幾個迭代的功能一起做完"],"answer":1,"explanation":"Green 階段的原則是「用最簡單的方式通過當前測試」。過度設計會破壞 TDD 的增量回饋循環。"}' />
+
+<Quiz data='{"question":"Kata 練習的核心目的是什麼？","options":["產出可以上線的程式碼","練習讓 Red-Green-Refactor 節奏變成肌肉記憶","學習新的程式語言語法","證明自己的 coding 能力"],"answer":1,"explanation":"Kata 就像武術的「型」，重點在於反覆練習同一套動作直到內化。TDD Kata 的價值在於讓 TDD 的節奏變成自然反應。"}' />
+
+## 重點整理
+
+<Callout type="tip" title="一句話記住">
+**TDD 不是理論，是肌肉記憶——只有反覆做 Red-Green-Refactor 循環，才能真正學會。**
+</Callout>
+
+| 迭代 | 輸入 | 預期輸出 | 學到的事 |
+|------|------|----------|----------|
+| **1** | `""` | `0` | 從最簡單的案例開始 |
+| **2** | `"5"` | `5` | 最小修改讓測試通過 |
+| **3** | `"1,2"` | `3` | Split + Sum 引入泛化 |
+| **4** | `"1,2,3,4"` | `10` | 好設計自然支援擴展 |
+| **5** | `"1\n2,3"` | `6` | 增量加入新功能 |
+| **6** | `"1,-2,-3"` | Exception | 驗證邏輯最後加 |

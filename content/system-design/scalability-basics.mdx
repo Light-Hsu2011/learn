@@ -1,0 +1,130 @@
+---
+title: "可擴展性基礎"
+order: 1
+description: "垂直擴展 vs 水平擴展，打造可成長的系統架構"
+---
+
+# 可擴展性基礎（Scalability Basics）
+
+<ELI5>
+想像你開了一家小餐廳，生意越來越好：
+
+- **垂直擴展（Scale Up）**：把廚房換成超大的，買最頂級的爐具 — 一個廚師變成超級廚師
+- **水平擴展（Scale Out）**：開分店！每家分店都能接客，客人被分散到不同分店
+
+垂直擴展就像把一個人練成超人，但超人也有極限。水平擴展就像組一支軍隊，人數可以一直加。現代大型系統幾乎都選擇水平擴展，因為沒有一台機器能無限升級。
+</ELI5>
+
+## 是什麼？
+
+Scalability（可擴展性）是系統在負載增加時，透過增加資源來維持效能的能力。一個可擴展的系統不會因為用戶從 1,000 變成 1,000,000 就掛掉。
+
+<Callout type="info" title="核心區分">
+**Scale Up（垂直擴展）**：升級單一機器的 CPU、RAM、SSD。簡單但有上限。
+**Scale Out（水平擴展）**：增加更多機器，透過分散負載來處理更多請求。複雜但幾乎無上限。
+</Callout>
+
+## 核心觀念
+
+- **Stateless Design**：伺服器不保存用戶狀態，任何請求可以被任何伺服器處理，這是水平擴展的前提
+- **CAP 定理**：分散式系統只能同時滿足 Consistency、Availability、Partition Tolerance 中的兩個
+- **Throughput vs Latency**：擴展目標是提高 throughput（吞吐量）同時維持 latency（延遲）
+- **Elasticity**：系統根據負載自動增減資源的能力（Auto Scaling）
+- **Single Point of Failure（SPOF）**：任何只有一個的元件都是風險，水平擴展天然避免 SPOF
+
+## 常見誤區
+
+<Callout type="warning" title="不要一開始就過度設計">
+Premature optimization is the root of all evil。先確認瓶頸在哪，再決定擴展策略。很多系統在 Scale Up 就能解決問題的階段，不需要急著做 Scale Out 帶來的複雜度。
+</Callout>
+
+## 設計流程
+
+<StepDiagram data='[{"title":"識別瓶頸","description":"用 Profiling 和 Monitoring 找出系統瓶頸在 CPU、Memory、IO 還是 Network","icon":"1"},{"title":"選擇擴展方向","description":"瓶頸在單機極限內用 Scale Up，超出則用 Scale Out","icon":"2"},{"title":"Stateless 改造","description":"把 Session 移到外部儲存（Redis），讓伺服器無狀態","icon":"3"},{"title":"加入 Load Balancer","description":"在多台伺服器前面放 LB，分散請求流量","icon":"4"},{"title":"監控與自動擴展","description":"設定 Auto Scaling 規則，根據 CPU/Memory 指標自動增減機器","icon":"5"}]' />
+
+## 架構設計
+
+### Stateless 改造範例（C#）
+
+```csharp
+// 不好的做法：狀態存在伺服器記憶體
+public class CartController : Controller
+{
+    private static Dictionary<string, List<Item>> _carts = new(); // 會死在 Scale Out
+
+    [HttpPost("add")]
+    public IActionResult Add(string userId, Item item)
+    {
+        if (!_carts.ContainsKey(userId)) _carts[userId] = new();
+        _carts[userId].Add(item);
+        return Ok();
+    }
+}
+
+// 正確做法：狀態放到外部儲存
+public class CartController : Controller
+{
+    private readonly IDistributedCache _cache;
+
+    public CartController(IDistributedCache cache) => _cache = cache;
+
+    [HttpPost("add")]
+    public async Task<IActionResult> Add(string userId, Item item)
+    {
+        var cart = await _cache.GetAsync<List<Item>>(userId) ?? new();
+        cart.Add(item);
+        await _cache.SetAsync(userId, cart, TimeSpan.FromHours(1));
+        return Ok();
+    }
+}
+```
+
+### CAP 定理選擇（TypeScript 註解）
+
+```typescript
+// CP 系統：選擇一致性 + 分區容錯，犧牲可用性
+// 例如：ZooKeeper、etcd — 金融交易場景
+// 當網路分區發生時，寧可拒絕請求也不回傳舊資料
+
+// AP 系統：選擇可用性 + 分區容錯，犧牲一致性
+// 例如：Cassandra、DynamoDB — 社群媒體場景
+// 當網路分區發生時，回傳可能過時的資料，但不中斷服務
+
+// 實際上大多數系統是在 CP 和 AP 之間的光譜上選擇平衡點
+```
+
+## 架構圖
+
+<Diagram data='{"nodes":[{"id":"client","label":"Client","type":"muted"},{"id":"lb","label":"Load Balancer","type":"highlight"},{"id":"s1","label":"Server 1 (Stateless)","type":"default"},{"id":"s2","label":"Server 2 (Stateless)","type":"default"},{"id":"s3","label":"Server 3 (Stateless)","type":"default"},{"id":"cache","label":"Redis (Session/Cache)","type":"highlight"},{"id":"db","label":"Database","type":"default"}],"edges":[{"from":"client","to":"lb","label":"requests"},{"from":"lb","to":"s1","label":"round robin"},{"from":"lb","to":"s2","label":"round robin"},{"from":"lb","to":"s3","label":"round robin"},{"from":"s1","to":"cache","label":"read/write state"},{"from":"s2","to":"cache","label":"read/write state"},{"from":"s3","to":"cache","label":"read/write state"},{"from":"s1","to":"db","label":"persistent data"},{"from":"s2","to":"db","label":"persistent data"},{"from":"s3","to":"db","label":"persistent data"}]}' />
+
+## 實戰補充
+
+<Callout type="tip" title="面試技巧">
+System Design 面試中，面試官問「這系統怎麼擴展？」時，先回答三件事：
+1. **哪裡是瓶頸**（讀多還是寫多？CPU bound 還是 IO bound？）
+2. **Stateless 嗎**（如果不是，怎麼改造？）
+3. **CAP 取捨**（你的場景更在意一致性還是可用性？）
+這三個問題回答完，後續的具體技術方案自然就出來了。
+</Callout>
+
+## 理解測驗
+
+<Quiz data='{"question":"一個電商網站把購物車存在伺服器記憶體中，現在要從 1 台擴展到 3 台伺服器。最優先要做的改動是什麼？","options":["升級伺服器的 CPU","把購物車狀態移到外部儲存（如 Redis）","增加更多資料庫","把三台伺服器放在不同機房"],"answer":1,"explanation":"水平擴展的前提是 Stateless Design。購物車存在伺服器記憶體中，請求被分配到不同伺服器就會找不到資料。必須先把狀態移到外部共享儲存。"}' />
+
+<Quiz data='{"question":"根據 CAP 定理，一個銀行轉帳系統最可能選擇哪種組合？","options":["AP — 優先保證可用性","CP — 優先保證一致性","CA — 同時保證一致性和可用性","三者都要"],"answer":1,"explanation":"金融場景不能容忍資料不一致（帳戶餘額錯誤），所以選擇 CP：寧可暫時不可用，也不能回傳錯誤餘額。網路分區時選擇拒絕請求。"}' />
+
+<Quiz data='{"question":"以下哪個不是水平擴展（Scale Out）的優勢？","options":["理論上可以無限擴展","天然避免 Single Point of Failure","實作最簡單，不需要改程式碼","成本更靈活，可以用便宜的機器"],"answer":2,"explanation":"水平擴展需要改造程式碼（Stateless 設計、處理分散式一致性等），實作比垂直擴展複雜得多。但它的優勢在於擴展上限高、容錯好、成本彈性大。"}' />
+
+## 重點整理
+
+<Callout type="tip" title="一句話記住">
+**Scalability = Stateless + Load Balancer + CAP 取捨，先找瓶頸再決定 Scale Up 還是 Scale Out。**
+</Callout>
+
+| 概念 | 說明 |
+|------|------|
+| **Scale Up** | 升級單機硬體，簡單但有天花板 |
+| **Scale Out** | 增加機器數量，複雜但幾乎無上限 |
+| **Stateless Design** | 伺服器不存狀態，水平擴展的必要前提 |
+| **CAP 定理** | 分散式系統只能三選二：一致性、可用性、分區容錯 |
+| **Auto Scaling** | 根據監控指標自動增減機器數量 |

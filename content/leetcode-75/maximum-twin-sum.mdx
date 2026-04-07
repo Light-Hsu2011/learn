@@ -1,0 +1,156 @@
+---
+title: "2130. Maximum Twin Sum of a Linked List"
+order: 32
+description: "用快慢指針找中點、反轉後半段，配對求最大 twin sum"
+---
+
+# Maximum Twin Sum of a Linked List
+
+<ELI5>
+想像一排書架上有偶數本書。「Twin（雙胞胎）」的意思是：第一本和最後一本配對、第二本和倒數第二本配對⋯⋯以此類推。
+
+你要找出哪一對配對的頁數加起來最多。問題是這是 Linked List，你不能直接跳到最後一本。
+
+聰明的做法：先找到中間，把後半段反轉，然後從兩端同時往中間走，逐一比較配對的和。
+</ELI5>
+
+## 題目描述
+
+給定一個偶數長度的 Linked List，節點 i 和節點 n-1-i 互為 twin。回傳最大的 twin sum（twin 兩節點值之和）。
+
+```
+輸入: [5,4,2,1]
+輸出: 6
+解釋: twin pairs: (5,1), (4,2)，最大和 = 5+1 = 6
+
+輸入: [4,2,2,3]
+輸出: 7
+解釋: twin pairs: (4,3), (2,2)，最大和 = 4+3 = 7
+```
+
+## 解題思路
+
+<StepDiagram data='[{"title":"找中點","description":"快慢指針找到後半段起點","icon":"1"},{"title":"反轉後半段","description":"把後半段 Linked List 反轉","icon":"2"},{"title":"配對比較","description":"head 從前走、反轉後的從後走，計算每對 twin sum","icon":"3"},{"title":"取最大值","description":"紀錄過程中的最大 twin sum","icon":"4"}]' />
+
+## 程式碼
+
+### C#
+
+```csharp
+public class Solution {
+    public int PairSum(ListNode head) {
+        // 1. 快慢指針找中點
+        var slow = head;
+        var fast = head;
+        while (fast != null && fast.next != null) {
+            slow = slow.next;
+            fast = fast.next.next;
+        }
+
+        // 2. 反轉後半段
+        ListNode prev = null;
+        while (slow != null) {
+            var next = slow.next;
+            slow.next = prev;
+            prev = slow;
+            slow = next;
+        }
+
+        // 3. 配對比較，求最大 twin sum
+        int maxSum = 0;
+        var left = head;
+        var right = prev;
+        while (right != null) {
+            maxSum = Math.Max(maxSum, left.val + right.val);
+            left = left.next;
+            right = right.next;
+        }
+        return maxSum;
+    }
+}
+```
+
+### TypeScript
+
+```typescript
+function pairSum(head: ListNode | null): number {
+    // 1. 快慢指針找中點
+    let slow = head;
+    let fast = head;
+    while (fast && fast.next) {
+        slow = slow!.next;
+        fast = fast.next.next;
+    }
+
+    // 2. 反轉後半段
+    let prev: ListNode | null = null;
+    while (slow) {
+        const next = slow.next;
+        slow.next = prev;
+        prev = slow;
+        slow = next;
+    }
+
+    // 3. 配對比較，求最大 twin sum
+    let maxSum = 0;
+    let left = head;
+    let right = prev;
+    while (right) {
+        maxSum = Math.max(maxSum, left!.val + right.val);
+        left = left!.next;
+        right = right.next;
+    }
+    return maxSum;
+}
+```
+
+### Python
+
+```python
+def pairSum(head: Optional[ListNode]) -> int:
+    # 1. 快慢指針找中點
+    slow, fast = head, head
+    while fast and fast.next:
+        slow = slow.next
+        fast = fast.next.next
+
+    # 2. 反轉後半段
+    prev = None
+    while slow:
+        slow.next, prev, slow = prev, slow, slow.next
+
+    # 3. 配對比較，求最大 twin sum
+    max_sum = 0
+    left, right = head, prev
+    while right:
+        max_sum = max(max_sum, left.val + right.val)
+        left = left.next
+        right = right.next
+    return max_sum
+```
+
+## 複雜度分析
+
+| | Time | Space |
+|--|------|-------|
+| 本解法 | O(n) | O(1) |
+
+## 圖解
+
+<Diagram data='{"nodes":[{"id":"orig","label":"5→4→2→1","type":"muted"},{"id":"mid","label":"中點: 2","type":"default"},{"id":"rev","label":"後半反轉: 1→2","type":"default"},{"id":"pair1","label":"5+1=6","type":"highlight"},{"id":"pair2","label":"4+2=6","type":"default"},{"id":"result","label":"最大 twin sum = 6","type":"highlight"}],"edges":[{"from":"orig","to":"mid","label":"快慢指針"},{"from":"mid","to":"rev","label":"反轉"},{"from":"rev","to":"pair1","label":"配對"},{"from":"rev","to":"pair2","label":"配對"}]}' />
+
+## 進階觀點
+
+<Callout type="tip" title="面試追問">
+**替代方案**：也可以用 Stack 存前半段，再逐一和後半段配對。但空間複雜度 O(n)。面試中提到兩種方法再選最優解會加分。
+
+**這題結合了三個基礎技巧**：快慢指針、反轉 Linked List、雙指針遍歷。面試官常考這種「組合技」。
+
+**變體題**：LC 234 Palindrome Linked List（同樣技巧，檢查是否回文）。
+</Callout>
+
+## 理解測驗
+
+<Quiz data='{"question":"為什麼要反轉後半段而不是直接配對？","options":["為了節省記憶體","因為 Linked List 只能單向走，反轉後才能從尾端配對","為了讓程式碼更簡潔","因為題目要求"],"answer":1,"explanation":"Linked List 沒有 index 也不能反向走，反轉後半段讓我們可以從兩端同時向中間走來配對。"}' />
+
+<Quiz data='{"question":"如果用 Stack 解這題，空間複雜度會是多少？","options":["O(1)","O(log n)","O(n/2) = O(n)","O(n²)"],"answer":2,"explanation":"Stack 需要存放前半段的所有節點，約 n/2 個，空間複雜度 O(n)。"}' />

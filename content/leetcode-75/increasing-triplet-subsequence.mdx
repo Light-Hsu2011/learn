@@ -1,0 +1,108 @@
+---
+title: "334. Increasing Triplet Subsequence"
+order: 8
+description: "維護兩個最小值 first 和 second 來判斷是否存在遞增三元組"
+---
+
+# Increasing Triplet Subsequence
+
+<ELI5>
+想像你在逛夜市，看到攤位的價格一路走。你想知道有沒有三個攤位（不一定連續）讓你看到「便宜→中等→貴」的遞增趨勢。
+
+你心裡記兩個數：「目前最便宜的」和「比最便宜的貴但盡量便宜的第二個」。一旦看到比第二個還貴的，就找到了！
+</ELI5>
+
+## 題目描述
+
+給定整數陣列 `nums`，判斷是否存在索引 `i < j < k` 使得 `nums[i] < nums[j] < nums[k]`。
+
+```
+輸入：nums = [1,2,3,4,5]
+輸出：true
+
+輸入：nums = [5,4,3,2,1]
+輸出：false
+
+輸入：nums = [2,1,5,0,4,6]
+輸出：true（三元組 [0,4,6]）
+```
+
+## 解題思路
+
+<StepDiagram data='[{"title":"初始化","description":"first = ∞, second = ∞","icon":"1"},{"title":"遍歷陣列","description":"對每個數字 num 依序判斷","icon":"2"},{"title":"更新 first","description":"若 num <= first，更新 first = num","icon":"3"},{"title":"更新 second","description":"若 num <= second，更新 second = num","icon":"4"},{"title":"找到答案","description":"若 num > second，代表存在遞增三元組","icon":"5"}]' />
+
+## 程式碼
+
+### C#
+
+```csharp
+public class Solution {
+    public bool IncreasingTriplet(int[] nums) {
+        int first = int.MaxValue, second = int.MaxValue;
+        foreach (int num in nums) {
+            if (num <= first)
+                first = num;       // 更新最小值
+            else if (num <= second)
+                second = num;      // 更新第二小
+            else
+                return true;       // 找到第三個
+        }
+        return false;
+    }
+}
+```
+
+### TypeScript
+
+```typescript
+function increasingTriplet(nums: number[]): boolean {
+    let first = Infinity, second = Infinity;
+    for (const num of nums) {
+        if (num <= first) first = num;
+        else if (num <= second) second = num;
+        else return true;
+    }
+    return false;
+}
+```
+
+### Python
+
+```python
+def increasingTriplet(nums: list[int]) -> bool:
+    first = second = float('inf')
+    for num in nums:
+        if num <= first:
+            first = num
+        elif num <= second:
+            second = num
+        else:
+            return True
+    return False
+```
+
+## 複雜度分析
+
+| | Time | Space |
+|--|------|-------|
+| 本解法 | O(n) | O(1) |
+
+一次遍歷，只用兩個變數。
+
+## 圖解
+
+<Diagram data='{"nodes":[{"id":"input","label":"nums: [2,1,5,0,4,6]","type":"default"},{"id":"step1","label":"first=2, second=∞","type":"default"},{"id":"step2","label":"first=1, second=∞","type":"default"},{"id":"step3","label":"first=1, second=5","type":"highlight"},{"id":"step4","label":"first=0, second=5","type":"default"},{"id":"step5","label":"first=0, second=4","type":"highlight"},{"id":"step6","label":"6 > 4 → true!","type":"muted"}],"edges":[{"from":"input","to":"step1","label":"num=2"},{"from":"step1","to":"step2","label":"num=1"},{"from":"step2","to":"step3","label":"num=5"},{"from":"step3","to":"step4","label":"num=0"},{"from":"step4","to":"step5","label":"num=4"},{"from":"step5","to":"step6","label":"num=6"}]}' />
+
+## 進階觀點
+
+<Callout type="tip" title="面試追問">
+- **first 更新後 second 還有效嗎？** 有效！second 的存在代表「曾經有一個比 second 小的數出現在它前面」，即使 first 已經更新到更小的值。
+- **如果要找長度 k 的遞增子序列？** 維護 k-1 個變數，或用 LIS（Longest Increasing Subsequence）的 O(n log n) 方法。
+- **跟 LIS 的關係？** 這題是 LIS 長度是否 ≥ 3 的特例。
+</Callout>
+
+## 理解測驗
+
+<Quiz data='{"question":"為什麼 first 更新後 second 仍然有效？","options":["因為 second 也會被更新","因為 second 代表「存在某個比它小的數在它前面」，這個事實不會因為 first 更新而改變","因為用了貪心法","因為陣列是排序的"],"answer":1,"explanation":"second 被設定時，代表它前面曾有比它小的數。first 後來變更小不影響這個歷史事實。"}' />
+
+<Quiz data='{"question":"nums = [1,1,1,1] 的結果是什麼？","options":["true","false"],"answer":1,"explanation":"需要嚴格遞增（<），全部相等不滿足條件。first 一直是 1，永遠不會進入 second 的分支。"}' />

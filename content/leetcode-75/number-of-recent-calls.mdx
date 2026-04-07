@@ -1,0 +1,121 @@
+---
+title: "933. Number of Recent Calls"
+order: 27
+description: "用 Queue 維護 3000ms 時間窗口內的請求數量"
+---
+
+# Number of Recent Calls
+
+<ELI5>
+想像你在一家咖啡店當店長，老闆問你：「最近 3 秒內有幾個客人進來？」
+
+每次有客人進門，你就在紙上記下時間。但你只關心最近 3 秒的紀錄，太舊的就劃掉。每次老闆問的時候，你就數紙上還沒被劃掉的有幾筆。
+
+Queue（佇列）就像這張紙 — 新的從後面加入，太舊的從前面移除。
+</ELI5>
+
+## 題目描述
+
+實作 `RecentCounter` 類別，有一個 `ping(t)` 方法，`t` 代表某次請求的時間（毫秒）。回傳在 `[t - 3000, t]` 時間範圍內的請求數量（包含當前請求）。
+
+```
+輸入: ["RecentCounter", "ping", "ping", "ping", "ping"]
+      [[], [1], [100], [3001], [3002]]
+輸出: [null, 1, 2, 3, 3]
+
+解釋: ping(3002) 時，時間範圍 [2, 3002]，
+      時間 1 已超出範圍，所以只有 100, 3001, 3002 共 3 個。
+```
+
+## 解題思路
+
+<StepDiagram data='[{"title":"接收 ping(t)","description":"將時間 t 加入 Queue 尾端","icon":"1"},{"title":"移除過期請求","description":"當 Queue 前端的時間 < t - 3000，彈出","icon":"2"},{"title":"回傳數量","description":"Queue 中剩餘的元素數量就是答案","icon":"3"}]' />
+
+## 程式碼
+
+### C#
+
+```csharp
+public class RecentCounter {
+    private Queue<int> queue;
+
+    public RecentCounter() {
+        queue = new Queue<int>();
+    }
+
+    public int Ping(int t) {
+        queue.Enqueue(t); // 加入新請求
+        // 移除超出時間窗口的舊請求
+        while (queue.Peek() < t - 3000) {
+            queue.Dequeue();
+        }
+        return queue.Count;
+    }
+}
+```
+
+### TypeScript
+
+```typescript
+class RecentCounter {
+    private queue: number[];
+
+    constructor() {
+        this.queue = [];
+    }
+
+    ping(t: number): number {
+        this.queue.push(t); // 加入新請求
+        // 移除超出時間窗口的舊請求
+        while (this.queue[0] < t - 3000) {
+            this.queue.shift();
+        }
+        return this.queue.length;
+    }
+}
+```
+
+### Python
+
+```python
+from collections import deque
+
+class RecentCounter:
+    def __init__(self):
+        self.queue = deque()
+
+    def ping(self, t: int) -> int:
+        self.queue.append(t)  # 加入新請求
+        # 移除超出時間窗口的舊請求
+        while self.queue[0] < t - 3000:
+            self.queue.popleft()
+        return len(self.queue)
+```
+
+## 複雜度分析
+
+| | Time | Space |
+|--|------|-------|
+| 本解法 | O(1) 攤銷 | O(W) |
+
+W 是時間窗口大小（最多 3000ms 內的請求數）。每個元素最多入隊出隊各一次。
+
+## 圖解
+
+<Diagram data='{"nodes":[{"id":"q1","label":"Queue: [1]","type":"default"},{"id":"q2","label":"Queue: [1, 100]","type":"default"},{"id":"q3","label":"Queue: [1, 100, 3001]","type":"default"},{"id":"q4","label":"Queue: [100, 3001, 3002]","type":"highlight"}],"edges":[{"from":"q1","to":"q2","label":"ping(100)"},{"from":"q2","to":"q3","label":"ping(3001)"},{"from":"q3","to":"q4","label":"ping(3002), 移除 1"}]}' />
+
+## 進階觀點
+
+<Callout type="tip" title="面試追問">
+**為什麼用 Queue 而不是 Array？** Queue 的 FIFO 特性天然適合時間窗口問題，舊的永遠在前面。
+
+**TypeScript 的 shift() 效能問題**：`Array.shift()` 是 O(n)，生產環境應考慮用 linked list 或 circular buffer。Python 的 `deque.popleft()` 是 O(1)。
+
+**變體**：滑動窗口中位數、滑動窗口最大值（LC 239）。
+</Callout>
+
+## 理解測驗
+
+<Quiz data='{"question":"為什麼 Queue 適合解這題？","options":["因為 Queue 速度最快","因為請求按時間順序到達，舊的在前面先移除，符合 FIFO","因為 Queue 可以隨機存取","因為題目規定要用 Queue"],"answer":1,"explanation":"請求時間遞增，過期的一定在 Queue 前端，FIFO 的特性讓我們只需要從前端移除。"}' />
+
+<Quiz data='{"question":"ping(3002) 時，為什麼要移除時間為 1 的請求？","options":["因為 Queue 滿了","因為 1 < 3002 - 3000 = 2，超出時間窗口","因為 1 是最小的數字","因為只能保留 3 個元素"],"answer":1,"explanation":"時間窗口是 [t-3000, t] = [2, 3002]，時間 1 不在這個範圍內，所以要移除。"}' />

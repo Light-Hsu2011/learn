@@ -1,0 +1,102 @@
+---
+title: "104. Maximum Depth of Binary Tree"
+order: 33
+description: "用遞迴 DFS 計算二元樹的最大深度"
+---
+
+# Maximum Depth of Binary Tree
+
+<ELI5>
+想像一棵家族樹。你想知道「這個家族最多傳了幾代？」
+
+你可以問每個人：「你的子孫最多傳了幾代？」每個人問自己的左邊小孩和右邊小孩，取比較多的那個再加 1（加上自己這一代）。如果沒有小孩，答案就是 0。
+
+這就是遞迴的精髓 — 把大問題拆成小問題，從葉子往上匯總。
+</ELI5>
+
+## 題目描述
+
+給定一棵二元樹的根節點 root，回傳其最大深度。最大深度是從根到最遠葉節點的最長路徑上的節點數。
+
+```
+輸入:     3
+         / \
+        9  20
+           / \
+          15   7
+輸出: 3
+
+輸入:   1
+         \
+          2
+輸出: 2
+```
+
+## 解題思路
+
+<StepDiagram data='[{"title":"Base Case","description":"節點為 null 時回傳 0","icon":"1"},{"title":"遞迴左子樹","description":"取得左子樹的最大深度","icon":"2"},{"title":"遞迴右子樹","description":"取得右子樹的最大深度","icon":"3"},{"title":"合併結果","description":"回傳 max(左, 右) + 1","icon":"4"}]' />
+
+## 程式碼
+
+### C#
+
+```csharp
+public class Solution {
+    public int MaxDepth(TreeNode root) {
+        if (root == null) return 0;
+        int left = MaxDepth(root.left);
+        int right = MaxDepth(root.right);
+        return Math.Max(left, right) + 1;
+    }
+}
+```
+
+### TypeScript
+
+```typescript
+function maxDepth(root: TreeNode | null): number {
+    if (!root) return 0;
+    const left = maxDepth(root.left);
+    const right = maxDepth(root.right);
+    return Math.max(left, right) + 1;
+}
+```
+
+### Python
+
+```python
+def maxDepth(root: Optional[TreeNode]) -> int:
+    if not root:
+        return 0
+    left = maxDepth(root.left)
+    right = maxDepth(root.right)
+    return max(left, right) + 1
+```
+
+## 複雜度分析
+
+| | Time | Space |
+|--|------|-------|
+| 本解法 | O(n) | O(h) |
+
+n 是節點數，h 是樹高（遞迴 call stack）。最壞情況（skewed tree）h = n。
+
+## 圖解
+
+<Diagram data='{"nodes":[{"id":"n3","label":"3 → max(1,2)+1=3","type":"highlight"},{"id":"n9","label":"9 → max(0,0)+1=1","type":"default"},{"id":"n20","label":"20 → max(1,1)+1=2","type":"default"},{"id":"n15","label":"15 → 1","type":"muted"},{"id":"n7","label":"7 → 1","type":"muted"}],"edges":[{"from":"n3","to":"n9","label":"左"},{"from":"n3","to":"n20","label":"右"},{"from":"n20","to":"n15","label":"左"},{"from":"n20","to":"n7","label":"右"}]}' />
+
+## 進階觀點
+
+<Callout type="tip" title="面試追問">
+**BFS 解法**：也可以用 BFS 逐層遍歷，層數就是深度。面試可能要求寫 iterative 版本。
+
+**DFS vs BFS 選擇**：求深度用 DFS 更自然（遞迴一行搞定），求層級相關資訊（如每層最大值）用 BFS 更直覺。
+
+**變體題**：LC 111 Minimum Depth（最小深度，注意邊界）、LC 110 Balanced Binary Tree（深度差不超過 1）。
+</Callout>
+
+## 理解測驗
+
+<Quiz data='{"question":"為什麼 base case 是 root == null 回傳 0，而不是回傳 -1？","options":["因為 -1 不合法","因為我們用「節點數」定義深度，null 表示沒有節點所以是 0","因為程式語言限制","因為 0 比較好算"],"answer":1,"explanation":"深度定義為路徑上的節點數。null 沒有節點，所以深度為 0。加 1 代表加上當前節點。"}' />
+
+<Quiz data='{"question":"一棵只有根節點的樹，最大深度是多少？","options":["0","1","2","取決於節點的值"],"answer":1,"explanation":"只有根節點時，左右子樹都是 null（深度 0），max(0,0)+1=1。"}' />

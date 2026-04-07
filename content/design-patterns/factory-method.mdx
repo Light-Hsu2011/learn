@@ -1,0 +1,277 @@
+---
+title: "Factory Method Pattern"
+order: 3
+description: "定義建立物件的介面，讓子類別決定要建立哪種物件"
+---
+
+# Factory Method Pattern（工廠方法模式）
+
+<ELI5>
+想像你走進一家**飲料工廠**的自動販賣機前面。你按下「可樂」按鈕，機器就吐出可樂；按「綠茶」，就出綠茶。你不需要知道飲料是怎麼製造的，只要按按鈕就好。
+
+更精確地說，每個按鈕背後對應一條不同的**生產線**。可樂生產線只會做可樂，綠茶生產線只會做綠茶。工廠老闆想加新飲料？只要加一條新生產線，原本的生產線完全不用動。
+
+Factory Method 就是這個概念：**定義一個「製造」的介面，但讓各個子類別自己決定要造出什麼產品。**
+</ELI5>
+
+## 是什麼？
+
+Factory Method Pattern 定義一個建立物件的**介面（或抽象方法）**，但把實際建立哪種物件的決定權交給子類別。呼叫端只透過介面操作產品，不需要知道具體的類別是什麼。
+
+<Callout type="info" title="GoF 分類">
+Factory Method 屬於**建立型模式（Creational Pattern）**，重點在於將物件的建立邏輯延遲到子類別，達到解耦的效果。
+</Callout>
+
+## 什麼時候用？
+
+- 你不知道或不想在編譯時決定要建立哪種具體物件
+- 框架需要讓使用者自訂要建立的元件（例如 ASP.NET 的 ControllerFactory）
+- 你想把建立邏輯集中管理，而非散佈在程式碼各處
+
+## 什麼時候不該用？
+
+<Callout type="warning" title="過度設計警告">
+如果產品類型固定且不會擴展，直接 new 就好。Factory Method 會增加繼承層級，只有在「產品種類會增長」或「需要讓框架使用者自訂建立邏輯」時才值得用。
+</Callout>
+
+## 執行流程
+
+<StepDiagram data='[{"title":"定義產品介面","description":"宣告所有產品共用的方法簽名","icon":"1"},{"title":"定義工廠介面","description":"宣告 Factory Method（回傳產品介面型別）","icon":"2"},{"title":"實作具體產品","description":"每種產品各自實作產品介面","icon":"3"},{"title":"實作具體工廠","description":"每個工廠子類別覆寫 Factory Method，建立對應的產品","icon":"4"},{"title":"客戶端透過工廠建立","description":"呼叫工廠方法取得產品，不需知道具體類別","icon":"5"}]' />
+
+## 程式碼範例
+
+### C# 版本
+
+```csharp
+// 1. 產品介面
+public interface INotification
+{
+    string Send(string message);
+}
+
+// 2. 具體產品
+public class EmailNotification : INotification
+{
+    public string Send(string message) => $"[Email] {message}";
+}
+
+public class SmsNotification : INotification
+{
+    public string Send(string message) => $"[SMS] {message}";
+}
+
+public class PushNotification : INotification
+{
+    public string Send(string message) => $"[Push] {message}";
+}
+
+// 3. 工廠介面
+public abstract class NotificationFactory
+{
+    public abstract INotification CreateNotification();
+
+    public string Notify(string message)
+    {
+        var notification = CreateNotification();
+        return notification.Send(message);
+    }
+}
+
+// 4. 具體工廠
+public class EmailFactory : NotificationFactory
+{
+    public override INotification CreateNotification() => new EmailNotification();
+}
+
+public class SmsFactory : NotificationFactory
+{
+    public override INotification CreateNotification() => new SmsNotification();
+}
+
+// 5. 使用
+NotificationFactory factory = new EmailFactory();
+Console.WriteLine(factory.Notify("你的訂單已成立")); // [Email] 你的訂單已成立
+
+factory = new SmsFactory();
+Console.WriteLine(factory.Notify("驗證碼：1234")); // [SMS] 驗證碼：1234
+```
+
+### TypeScript 版本
+
+```typescript
+// 1. 產品介面
+interface Notification {
+  send(message: string): string;
+}
+
+// 2. 具體產品
+class EmailNotification implements Notification {
+  send(message: string): string {
+    return `[Email] ${message}`;
+  }
+}
+
+class SmsNotification implements Notification {
+  send(message: string): string {
+    return `[SMS] ${message}`;
+  }
+}
+
+// 3. 工廠介面
+abstract class NotificationFactory {
+  abstract createNotification(): Notification;
+
+  notify(message: string): string {
+    const notification = this.createNotification();
+    return notification.send(message);
+  }
+}
+
+// 4. 具體工廠
+class EmailFactory extends NotificationFactory {
+  createNotification(): Notification {
+    return new EmailNotification();
+  }
+}
+
+class SmsFactory extends NotificationFactory {
+  createNotification(): Notification {
+    return new SmsNotification();
+  }
+}
+
+// 5. 使用
+let factory: NotificationFactory = new EmailFactory();
+console.log(factory.notify("你的訂單已成立")); // [Email] 你的訂單已成立
+
+factory = new SmsFactory();
+console.log(factory.notify("驗證碼：1234")); // [SMS] 驗證碼：1234
+```
+
+### Python 版本
+
+```python
+from abc import ABC, abstractmethod
+
+# 1. 產品介面
+class Notification(ABC):
+    @abstractmethod
+    def send(self, message: str) -> str:
+        pass
+
+# 2. 具體產品
+class EmailNotification(Notification):
+    def send(self, message: str) -> str:
+        return f"[Email] {message}"
+
+class SmsNotification(Notification):
+    def send(self, message: str) -> str:
+        return f"[SMS] {message}"
+
+# 3. 工廠介面
+class NotificationFactory(ABC):
+    @abstractmethod
+    def create_notification(self) -> Notification:
+        pass
+
+    def notify(self, message: str) -> str:
+        notification = self.create_notification()
+        return notification.send(message)
+
+# 4. 具體工廠
+class EmailFactory(NotificationFactory):
+    def create_notification(self) -> Notification:
+        return EmailNotification()
+
+class SmsFactory(NotificationFactory):
+    def create_notification(self) -> Notification:
+        return SmsNotification()
+
+# 5. 使用
+factory: NotificationFactory = EmailFactory()
+print(factory.notify("你的訂單已成立"))  # [Email] 你的訂單已成立
+
+factory = SmsFactory()
+print(factory.notify("驗證碼：1234"))  # [SMS] 驗證碼：1234
+```
+
+### Java 版本
+
+```java
+// 1. 產品介面
+public interface Notification {
+    String send(String message);
+}
+
+// 2. 具體產品
+public class EmailNotification implements Notification {
+    public String send(String message) { return "[Email] " + message; }
+}
+
+public class SmsNotification implements Notification {
+    public String send(String message) { return "[SMS] " + message; }
+}
+
+// 3. 工廠介面
+public abstract class NotificationFactory {
+    public abstract Notification createNotification();
+
+    public String notify(String message) {
+        Notification notification = createNotification();
+        return notification.send(message);
+    }
+}
+
+// 4. 具體工廠
+public class EmailFactory extends NotificationFactory {
+    public Notification createNotification() { return new EmailNotification(); }
+}
+
+public class SmsFactory extends NotificationFactory {
+    public Notification createNotification() { return new SmsNotification(); }
+}
+
+// 5. 使用
+NotificationFactory factory = new EmailFactory();
+System.out.println(factory.notify("你的訂單已成立")); // [Email] 你的訂單已成立
+
+factory = new SmsFactory();
+System.out.println(factory.notify("驗證碼：1234")); // [SMS] 驗證碼：1234
+```
+
+## 結構圖
+
+<Diagram data='{"nodes":[{"id":"client","label":"Client","type":"muted"},{"id":"factory","label":"NotificationFactory (abstract)","type":"highlight"},{"id":"product","label":"Notification (interface)","type":"default"},{"id":"concrete-factory","label":"EmailFactory / SmsFactory","type":"default"},{"id":"concrete-product","label":"EmailNotification / SmsNotification","type":"default"}],"edges":[{"from":"client","to":"factory","label":"uses"},{"from":"factory","to":"product","label":"creates (abstract)"},{"from":"concrete-factory","to":"factory","label":"extends"},{"from":"concrete-product","to":"product","label":"implements"},{"from":"concrete-factory","to":"concrete-product","label":"creates"}]}' />
+
+## 實戰補充
+
+<Callout type="tip" title="資深開發者經驗">
+**框架中的 Factory Method**：ASP.NET Core 的 `IControllerFactory`、Java 的 `BeanFactory`、Angular 的 `ComponentFactoryResolver` 都是 Factory Method 的應用。框架定義介面，使用者透過實作來自訂行為。
+
+**搭配 DI**：在 .NET 中，你可以註冊一個 `Func<INotification>` 或 `INotificationFactory`，讓 DI 容器負責管理工廠的生命週期，避免手動 new Factory。
+
+**Simple Factory vs Factory Method**：Simple Factory 用一個 switch/if 決定建什麼（不是 GoF 模式），Factory Method 用繼承讓子類別決定。當產品種類穩定用 Simple Factory 即可，會擴增就用 Factory Method。
+</Callout>
+
+## 理解測驗
+
+<Quiz data='{"question":"Factory Method 和直接在程式碼中 new 物件相比，最大的好處是什麼？","options":["程式跑得更快","呼叫端不需要知道具體類別，新增產品不用改原本的程式碼","可以省掉 interface","不需要寫 class"],"answer":1,"explanation":"Factory Method 讓呼叫端只依賴抽象介面，新增產品只要加新的工廠子類別，符合開放封閉原則。"}' />
+
+<Quiz data='{"question":"在 Factory Method Pattern 中，誰決定要建立哪種具體產品？","options":["Client 直接指定具體類別名稱","抽象工廠的 Factory Method 決定","具體工廠子類別覆寫 Factory Method 來決定","產品自己決定"],"answer":2,"explanation":"Factory Method 的核心就是讓子類別覆寫工廠方法，由子類別決定要 new 哪種具體產品。"}' />
+
+<Quiz data='{"question":"以下哪個場景最適合用 Factory Method？","options":["程式只需要建立一種固定類型的物件","框架需要讓使用者自訂要建立的元件類型","把所有物件存在同一個陣列裡","將物件序列化成 JSON"],"answer":1,"explanation":"框架定義建立介面、使用者透過繼承自訂建立邏輯，這正是 Factory Method 的經典場景。"}' />
+
+## 重點整理
+
+<Callout type="tip" title="一句話記住">
+**Factory Method = 定義「怎麼造」的介面，讓子類別決定要造什麼。**
+</Callout>
+
+| 概念 | 說明 |
+|------|------|
+| **Product（產品介面）** | 定義產品的共用方法 |
+| **ConcreteProduct（具體產品）** | 各自實作產品介面 |
+| **Creator（工廠抽象類別）** | 宣告 Factory Method，可包含業務邏輯 |
+| **ConcreteCreator（具體工廠）** | 覆寫 Factory Method，建立特定產品 |
+| **核心好處** | 開放封閉原則 — 新增產品不用改既有程式碼 |
+| **代價** | 每新增一種產品就要多一個工廠子類別 |

@@ -1,0 +1,318 @@
+---
+title: "Flyweight Pattern"
+order: 12
+description: "運用共享技術有效地支援大量細粒度的物件"
+---
+
+# Flyweight Pattern（享元模式）
+
+<ELI5>
+想像一間**圖書館**。如果每個想看《哈利波特》的人都必須自己買一本，全城可能需要一萬本。但圖書館只需要買幾本，大家**輪流借閱、共享**同一本書。
+
+書的「內容」對每個人都一樣（intrinsic state），但「誰在看、什麼時候還」是每個人不同的（extrinsic state）。
+
+Flyweight Pattern 就是這個概念 — 把**大量物件中重複的部分**抽出來共享，只保留**每個物件獨有的部分**由外部管理，大幅節省記憶體。
+</ELI5>
+
+## 是什麼？
+
+Flyweight Pattern 運用**共享技術**來有效支援大量細粒度的物件。它將物件的狀態分為可共享的**內在狀態（Intrinsic State）**和不可共享的**外在狀態（Extrinsic State）**，透過共享內在狀態來減少記憶體使用量。
+
+<Callout type="info" title="GoF 分類">
+Flyweight 屬於**結構型模式（Structural Pattern）**，重點在於如何組合類別和物件以形成更大的結構。
+</Callout>
+
+## 什麼時候用？
+
+- 系統需要建立**大量相似物件**（數千甚至數百萬個）
+- 物件的大部分狀態可以被**外部化**
+- 移除外在狀態後，許多物件可以被**少數共享物件**取代
+- 應用程式不依賴物件的身份識別（共享物件不能用 `==` 判斷）
+
+## 什麼時候不該用？
+
+<Callout type="warning" title="過度設計警告">
+如果物件數量不多（幾十個），或者每個物件的狀態差異很大（幾乎沒有可共享的部分），Flyweight 只會增加複雜度而看不到記憶體節省。先用 Profiler 確認記憶體真的是瓶頸再考慮使用。
+</Callout>
+
+## 執行流程
+
+<StepDiagram data='[{"title":"分析物件狀態","description":"區分哪些是內在狀態（可共享），哪些是外在狀態（每個不同）","icon":"1"},{"title":"定義 Flyweight","description":"只包含內在狀態的共享物件","icon":"2"},{"title":"建立 Flyweight Factory","description":"用 Pool/Cache 管理共享物件，已存在就返回，不存在才建立","icon":"3"},{"title":"外在狀態由 Client 傳入","description":"使用 Flyweight 時，Client 把外在狀態作為參數傳給方法","icon":"4"},{"title":"大量使用","description":"數千個邏輯物件實際上只引用少數幾個 Flyweight 實例","icon":"5"}]' />
+
+## 程式碼範例
+
+### C# 版本
+
+```csharp
+// Flyweight：共享的粒子類型（內在狀態）
+public class ParticleType
+{
+    public string Name { get; }
+    public string Color { get; }
+    public string Sprite { get; }
+
+    public ParticleType(string name, string color, string sprite)
+    {
+        Name = name; Color = color; Sprite = sprite;
+    }
+
+    public string Render(int x, int y, int speed)
+        => $"[{Name}] color={Color} at ({x},{y}) speed={speed}";
+}
+
+// Flyweight Factory
+public class ParticleTypeFactory
+{
+    private readonly Dictionary<string, ParticleType> _cache = new();
+
+    public ParticleType GetType(string name, string color, string sprite)
+    {
+        var key = $"{name}_{color}";
+        if (!_cache.ContainsKey(key))
+            _cache[key] = new ParticleType(name, color, sprite);
+        return _cache[key];
+    }
+
+    public int TypeCount => _cache.Count;
+}
+
+// 粒子（外在狀態 + Flyweight 引用）
+public class Particle
+{
+    public ParticleType Type { get; }
+    public int X { get; set; }
+    public int Y { get; set; }
+    public int Speed { get; set; }
+
+    public Particle(ParticleType type, int x, int y, int speed)
+    {
+        Type = type; X = x; Y = y; Speed = speed;
+    }
+
+    public string Render() => Type.Render(X, Y, Speed);
+}
+
+// 使用
+var factory = new ParticleTypeFactory();
+var particles = new List<Particle>();
+var random = new Random();
+
+for (int i = 0; i < 10000; i++)
+{
+    var type = factory.GetType("spark", "orange", "spark.png");
+    particles.Add(new Particle(type, random.Next(1920), random.Next(1080), random.Next(10)));
+}
+
+Console.WriteLine($"Particles: {particles.Count}, Shared types: {factory.TypeCount}");
+// Particles: 10000, Shared types: 1
+```
+
+### TypeScript 版本
+
+```typescript
+// Flyweight：共享的粒子類型
+class ParticleType {
+  constructor(
+    public readonly name: string,
+    public readonly color: string,
+    public readonly sprite: string
+  ) {}
+
+  render(x: number, y: number, speed: number): string {
+    return `[${this.name}] color=${this.color} at (${x},${y}) speed=${speed}`;
+  }
+}
+
+// Flyweight Factory
+class ParticleTypeFactory {
+  private cache = new Map<string, ParticleType>();
+
+  getType(name: string, color: string, sprite: string): ParticleType {
+    const key = `${name}_${color}`;
+    if (!this.cache.has(key)) {
+      this.cache.set(key, new ParticleType(name, color, sprite));
+    }
+    return this.cache.get(key)!;
+  }
+
+  get typeCount(): number {
+    return this.cache.size;
+  }
+}
+
+// 粒子（外在狀態）
+class Particle {
+  constructor(
+    public type: ParticleType,
+    public x: number,
+    public y: number,
+    public speed: number
+  ) {}
+
+  render(): string {
+    return this.type.render(this.x, this.y, this.speed);
+  }
+}
+
+// 使用
+const factory = new ParticleTypeFactory();
+const particles: Particle[] = [];
+
+for (let i = 0; i < 10000; i++) {
+  const type = factory.getType("spark", "orange", "spark.png");
+  particles.push(new Particle(type,
+    Math.floor(Math.random() * 1920),
+    Math.floor(Math.random() * 1080),
+    Math.floor(Math.random() * 10)
+  ));
+}
+
+console.log(`Particles: ${particles.length}, Shared types: ${factory.typeCount}`);
+```
+
+### Python 版本
+
+```python
+import random
+
+# Flyweight：共享的粒子類型
+class ParticleType:
+    def __init__(self, name: str, color: str, sprite: str):
+        self.name = name
+        self.color = color
+        self.sprite = sprite
+
+    def render(self, x: int, y: int, speed: int) -> str:
+        return f"[{self.name}] color={self.color} at ({x},{y}) speed={speed}"
+
+# Flyweight Factory
+class ParticleTypeFactory:
+    def __init__(self):
+        self._cache: dict[str, ParticleType] = {}
+
+    def get_type(self, name: str, color: str, sprite: str) -> ParticleType:
+        key = f"{name}_{color}"
+        if key not in self._cache:
+            self._cache[key] = ParticleType(name, color, sprite)
+        return self._cache[key]
+
+    @property
+    def type_count(self) -> int:
+        return len(self._cache)
+
+# 粒子（外在狀態）
+class Particle:
+    def __init__(self, particle_type: ParticleType, x: int, y: int, speed: int):
+        self.type = particle_type
+        self.x = x
+        self.y = y
+        self.speed = speed
+
+    def render(self) -> str:
+        return self.type.render(self.x, self.y, self.speed)
+
+# 使用
+factory = ParticleTypeFactory()
+particles = []
+
+for _ in range(10000):
+    ptype = factory.get_type("spark", "orange", "spark.png")
+    particles.append(Particle(ptype,
+        random.randint(0, 1920), random.randint(0, 1080), random.randint(0, 10)))
+
+print(f"Particles: {len(particles)}, Shared types: {factory.type_count}")
+```
+
+### Java 版本
+
+```java
+import java.util.*;
+
+// Flyweight：共享的粒子類型
+public class ParticleType {
+    private final String name;
+    private final String color;
+    private final String sprite;
+
+    public ParticleType(String name, String color, String sprite) {
+        this.name = name; this.color = color; this.sprite = sprite;
+    }
+
+    public String render(int x, int y, int speed) {
+        return String.format("[%s] color=%s at (%d,%d) speed=%d",
+            name, color, x, y, speed);
+    }
+}
+
+// Flyweight Factory
+public class ParticleTypeFactory {
+    private Map<String, ParticleType> cache = new HashMap<>();
+
+    public ParticleType getType(String name, String color, String sprite) {
+        String key = name + "_" + color;
+        return cache.computeIfAbsent(key,
+            k -> new ParticleType(name, color, sprite));
+    }
+
+    public int getTypeCount() { return cache.size(); }
+}
+
+// 粒子（外在狀態）
+public class Particle {
+    private ParticleType type;
+    private int x, y, speed;
+
+    public Particle(ParticleType type, int x, int y, int speed) {
+        this.type = type; this.x = x; this.y = y; this.speed = speed;
+    }
+
+    public String render() { return type.render(x, y, speed); }
+}
+
+// 使用
+ParticleTypeFactory factory = new ParticleTypeFactory();
+List<Particle> particles = new ArrayList<>();
+Random random = new Random();
+
+for (int i = 0; i < 10000; i++) {
+    ParticleType type = factory.getType("spark", "orange", "spark.png");
+    particles.add(new Particle(type,
+        random.nextInt(1920), random.nextInt(1080), random.nextInt(10)));
+}
+
+System.out.printf("Particles: %d, Shared types: %d%n",
+    particles.size(), factory.getTypeCount());
+```
+
+## 結構圖
+
+<Diagram data='{"nodes":[{"id":"client","label":"Client","type":"muted"},{"id":"factory","label":"FlyweightFactory","type":"highlight"},{"id":"flyweight","label":"Flyweight (ParticleType)","type":"default"},{"id":"context","label":"Context (Particle)","type":"default"}],"edges":[{"from":"client","to":"factory","label":"requests flyweight"},{"from":"factory","to":"flyweight","label":"creates / returns cached"},{"from":"context","to":"flyweight","label":"references (shared)"},{"from":"client","to":"context","label":"manages extrinsic state"}]}' />
+
+## 實戰補充
+
+<Callout type="tip" title="資深開發者經驗">
+Flyweight 在你身邊無處不在，只是通常被包裝得看不出來。.NET 的 **String Interning**（`string.Intern()`）就是 Flyweight — 相同的字串字面值只在記憶體中存一份。遊戲開發中的**粒子系統、地圖磚塊（Tilemap）**是經典場景：一萬個粒子共享同一組材質。在 Web 開發中，**CSS class** 也是一種 Flyweight 思維 — 定義一次，多處引用。使用 Flyweight 時要注意**執行緒安全**：共享物件如果被修改，會影響所有引用者，通常 Flyweight 物件設計成 Immutable。
+</Callout>
+
+## 理解測驗
+
+<Quiz data='{"question":"Flyweight Pattern 把物件狀態分為哪兩種？","options":["Public State 和 Private State","Intrinsic State（內在）和 Extrinsic State（外在）","Static State 和 Dynamic State","Input State 和 Output State"],"answer":1,"explanation":"Flyweight 將狀態分為可共享的 Intrinsic State（存在 Flyweight 物件中）和不可共享的 Extrinsic State（由 Client 傳入），這是節省記憶體的關鍵。"}' />
+
+<Quiz data='{"question":"在粒子系統範例中，10000 個粒子實際上共享了幾個 ParticleType 物件？","options":["10000 個","100 個","1 個","0 個"],"answer":2,"explanation":"所有粒子都是同一種類型（spark/orange），所以 Factory 只建立了 1 個 ParticleType 實例，被 10000 個 Particle 共享引用。"}' />
+
+<Quiz data='{"question":"以下哪個不是 Flyweight Pattern 的使用前提？","options":["系統需要大量相似物件","物件的大部分狀態可以外部化","記憶體使用量是瓶頸","物件必須是可變的（Mutable）"],"answer":3,"explanation":"Flyweight 物件通常設計成 Immutable 以確保共享安全。「物件必須是可變的」不是前提，反而是需要避免的。"}' />
+
+## 重點整理
+
+<Callout type="tip" title="一句話記住">
+**Flyweight Pattern = 把重複的部分共享，獨有的部分外傳，用少量物件支撐大量需求。**
+</Callout>
+
+| 概念 | 說明 |
+|------|------|
+| **Flyweight（享元）** | 只包含內在狀態的共享物件 |
+| **Intrinsic State** | 可共享的、不隨使用者改變的狀態 |
+| **Extrinsic State** | 每個使用者不同的狀態，由外部傳入 |
+| **Flyweight Factory** | 管理共享物件池，確保同一種只建立一次 |
+| **核心好處** | 大幅減少記憶體使用量 |
+| **代價** | 增加程式碼複雜度，需要區分兩種狀態 |

@@ -1,0 +1,120 @@
+---
+title: "1657. Determine if Two Strings Are Close"
+order: 22
+description: "比較兩字串的字元集合相同且頻率排序後相同來判斷是否 close"
+---
+
+# Determine if Two Strings Are Close
+
+<ELI5>
+兩個字串「close」的意思是：你可以透過兩種操作把一個變成另一個：
+1. 交換任意兩個字元的位置
+2. 把所有的 a 變成 b，同時把所有的 b 變成 a（批量替換）
+
+操作 1 代表「字元頻率的分配可以任意重排」。操作 2 代表「頻率可以在不同字元之間互換」。所以只需要確認：兩個字串用到的字元集合相同，且頻率排序後一樣。
+</ELI5>
+
+## 題目描述
+
+給定兩個字串 `word1` 和 `word2`，判斷它們是否「close」。兩個操作可執行任意次：交換任意兩字元、將一種字元全替換為另一種（同時反向替換）。
+
+```
+輸入：word1 = "abc", word2 = "bca"
+輸出：true（交換位置即可）
+
+輸入：word1 = "a", word2 = "aa"
+輸出：false（長度不同）
+
+輸入：word1 = "cabbba", word2 = "abbccc"
+輸出：true（c:1,a:2,b:3 → a:1,b:2,c:3，頻率排序都是 [1,2,3]）
+```
+
+## 解題思路
+
+<StepDiagram data='[{"title":"統計頻率","description":"分別統計兩字串的字元頻率","icon":"1"},{"title":"比較字元集","description":"兩個字串出現的字元種類必須相同","icon":"2"},{"title":"比較頻率排序","description":"將頻率值排序後必須相同","icon":"3"},{"title":"回傳結果","description":"兩個條件都滿足才回傳 true","icon":"4"}]' />
+
+## 程式碼
+
+### C#
+
+```csharp
+public class Solution {
+    public bool CloseStrings(string word1, string word2) {
+        if (word1.Length != word2.Length) return false;
+        var freq1 = new int[26];
+        var freq2 = new int[26];
+        foreach (char c in word1) freq1[c - 'a']++;
+        foreach (char c in word2) freq2[c - 'a']++;
+
+        // 字元集合必須相同
+        for (int i = 0; i < 26; i++)
+            if ((freq1[i] == 0) != (freq2[i] == 0)) return false;
+
+        // 頻率排序後必須相同
+        Array.Sort(freq1);
+        Array.Sort(freq2);
+        return freq1.SequenceEqual(freq2);
+    }
+}
+```
+
+### TypeScript
+
+```typescript
+function closeStrings(word1: string, word2: string): boolean {
+    if (word1.length !== word2.length) return false;
+    const freq1 = new Array(26).fill(0);
+    const freq2 = new Array(26).fill(0);
+    for (const c of word1) freq1[c.charCodeAt(0) - 97]++;
+    for (const c of word2) freq2[c.charCodeAt(0) - 97]++;
+
+    // 字元集合必須相同
+    for (let i = 0; i < 26; i++)
+        if ((freq1[i] === 0) !== (freq2[i] === 0)) return false;
+
+    // 頻率排序後必須相同
+    freq1.sort((a, b) => a - b);
+    freq2.sort((a, b) => a - b);
+    return freq1.every((v, i) => v === freq2[i]);
+}
+```
+
+### Python
+
+```python
+from collections import Counter
+
+def closeStrings(word1: str, word2: str) -> bool:
+    if len(word1) != len(word2):
+        return False
+    freq1, freq2 = Counter(word1), Counter(word2)
+    # 字元集合相同 + 頻率排序相同
+    return (freq1.keys() == freq2.keys() and
+            sorted(freq1.values()) == sorted(freq2.values()))
+```
+
+## 複雜度分析
+
+| | Time | Space |
+|--|------|-------|
+| 本解法 | O(n) | O(1) |
+
+字元集合大小固定為 26，排序 O(26 log 26) = O(1)。遍歷字串 O(n)。
+
+## 圖解
+
+<Diagram data='{"nodes":[{"id":"w1","label":"cabbba → {a:2,b:3,c:1}","type":"default"},{"id":"w2","label":"abbccc → {a:1,b:2,c:3}","type":"default"},{"id":"keys","label":"字元集 {a,b,c} == {a,b,c} ✓","type":"highlight"},{"id":"vals","label":"頻率排序 [1,2,3] == [1,2,3] ✓","type":"highlight"},{"id":"result","label":"true","type":"muted"}],"edges":[{"from":"w1","to":"keys","label":""},{"from":"w2","to":"keys","label":""},{"from":"w1","to":"vals","label":""},{"from":"w2","to":"vals","label":""},{"from":"keys","to":"result","label":""},{"from":"vals","to":"result","label":""}]}' />
+
+## 進階觀點
+
+<Callout type="tip" title="面試追問">
+- **為什麼字元集合必須相同？** 操作 2 只能在「已存在的字元」之間交換頻率，不能憑空產生新字元。
+- **為什麼頻率排序相同就夠了？** 操作 2 允許任意兩種字元交換頻率，所以頻率值可以任意分配給不同字元。
+- **word1 = "aab", word2 = "aac" 為什麼是 false？** 字元集合 {a,b} 不等於 {a,c}。
+</Callout>
+
+## 理解測驗
+
+<Quiz data='{"question":"word1 = \"aa\", word2 = \"bb\"，為什麼是 false？","options":["因為長度不同","因為字元集合不同 — {a} ≠ {b}，操作 2 無法把 a 變成 b（因為 word1 沒有 b）","因為頻率不同","因為需要三次操作"],"answer":1,"explanation":"操作 2 需要兩種字元同時存在才能互換。word1 只有 a，無法引入 b。"}' />
+
+<Quiz data='{"question":"判斷 close 的兩個充要條件是什麼？","options":["長度相同 + 字元相同","字元集合相同 + 頻率值排序後相同","完全相同","可以排序成相同"],"answer":1,"explanation":"字元集合相同確保操作 2 可行，頻率排序相同確保操作 1 和 2 能達到目標。"}' />

@@ -1,0 +1,107 @@
+---
+title: "1768. Merge Strings Alternately"
+order: 1
+description: "用雙指針交替從兩字串取字元合併成新字串"
+---
+
+# Merge Strings Alternately
+
+<ELI5>
+想像你跟朋友在打牌，你們各有一疊牌。你先出一張，朋友出一張，你再出一張⋯⋯交替出牌直到某人手上沒牌了，剩下的人就把手上的牌全部放上去。
+
+這題就是這樣 — 兩個字串就像兩疊牌，我們交替從中取出字元，拼成一個新字串。誰先用完，剩下的那個就把尾巴全部接上去。
+</ELI5>
+
+## 題目描述
+
+給定兩個字串 `word1` 和 `word2`，交替合併它們的字元。如果某個字串比較長，把剩餘的字元接在合併結果的後面。
+
+```
+輸入：word1 = "abc", word2 = "pqr"
+輸出："apbqcr"
+
+輸入：word1 = "ab", word2 = "pqrs"
+輸出："apbqrs"
+```
+
+## 解題思路
+
+<StepDiagram data='[{"title":"初始化","description":"建立結果字串，設定索引 i = 0","icon":"1"},{"title":"交替取字元","description":"當 i 未超過任一字串長度時，先取 word1[i] 再取 word2[i]","icon":"2"},{"title":"處理剩餘","description":"較長字串的剩餘部分直接接上","icon":"3"},{"title":"回傳結果","description":"合併後的字串即為答案","icon":"4"}]' />
+
+## 程式碼
+
+### C#
+
+```csharp
+public class Solution {
+    public string MergeAlternately(string word1, string word2) {
+        var sb = new System.Text.StringBuilder();
+        int i = 0;
+        // 交替取字元
+        while (i < word1.Length || i < word2.Length) {
+            if (i < word1.Length) sb.Append(word1[i]);
+            if (i < word2.Length) sb.Append(word2[i]);
+            i++;
+        }
+        return sb.ToString();
+    }
+}
+```
+
+### TypeScript
+
+```typescript
+function mergeAlternately(word1: string, word2: string): string {
+    let result = "";
+    let i = 0;
+    // 交替取字元，超出長度的自動跳過
+    while (i < word1.length || i < word2.length) {
+        if (i < word1.length) result += word1[i];
+        if (i < word2.length) result += word2[i];
+        i++;
+    }
+    return result;
+}
+```
+
+### Python
+
+```python
+def mergeAlternately(word1: str, word2: str) -> str:
+    result = []
+    i = 0
+    # 交替取字元
+    while i < len(word1) or i < len(word2):
+        if i < len(word1):
+            result.append(word1[i])
+        if i < len(word2):
+            result.append(word2[i])
+        i += 1
+    return "".join(result)
+```
+
+## 複雜度分析
+
+| | Time | Space |
+|--|------|-------|
+| 本解法 | O(n + m) | O(n + m) |
+
+其中 n、m 分別為兩字串長度。
+
+## 圖解
+
+<Diagram data='{"nodes":[{"id":"w1","label":"word1: abc","type":"default"},{"id":"w2","label":"word2: pqr","type":"default"},{"id":"merge","label":"交替合併","type":"highlight"},{"id":"result","label":"apbqcr","type":"muted"}],"edges":[{"from":"w1","to":"merge","label":"a, b, c"},{"from":"w2","to":"merge","label":"p, q, r"},{"from":"merge","to":"result","label":"交替拼接"}]}' />
+
+## 進階觀點
+
+<Callout type="tip" title="面試追問">
+- **如果有三個以上字串要交替合併？** 改用 index 搭配 for 迴圈遍歷所有字串。
+- **能否 in-place？** 字串在大多數語言是 immutable，所以需要額外空間。
+- **跟 zip_longest 的關係？** Python 可直接用 `itertools.zip_longest` 一行解決。
+</Callout>
+
+## 理解測驗
+
+<Quiz data='{"question":"當 word1 = \"ab\", word2 = \"pqrs\" 時，合併結果是什麼？","options":["abpqrs","apbqrs","paqbrs","apbqsr"],"answer":1,"explanation":"交替取：a→p→b→q，word1 用完後剩餘 rs 直接接上，得到 apbqrs。"}' />
+
+<Quiz data='{"question":"這題的時間複雜度為何是 O(n+m)？","options":["因為用了兩層迴圈","因為每個字元恰好被訪問一次","因為用了排序","因為用了 HashMap"],"answer":1,"explanation":"每個字元只被讀取一次並加入結果，總操作次數為 n+m。"}' />

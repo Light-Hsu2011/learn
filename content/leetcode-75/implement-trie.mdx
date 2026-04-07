@@ -1,0 +1,190 @@
+---
+title: "208. Implement Trie (Prefix Tree)"
+order: 70
+description: "實作 Trie 資料結構，支援插入、搜尋和前綴查詢"
+---
+
+# Implement Trie (Prefix Tree)
+
+<ELI5>
+想像一本電話簿，名字按字母順序排列。如果你要找所有姓「陳」的人，不需要翻完整本，只要翻到「陳」的區域就好。
+
+Trie（字典樹）就是這個概念的數位版。它像一棵樹，每個節點代表一個字母。從根節點往下走，每走一步就確定一個字母。所有共享相同前綴的單字會共享樹的同一段路徑。
+
+例如 "apple" 和 "app" 會共享 a→p→p 這條路，然後 "apple" 多走 l→e。每個單字的結尾節點會做一個標記，代表「這裡有一個完整的字」。
+</ELI5>
+
+## 題目描述
+
+實作 Trie 類別，支援三個操作：
+- `insert(word)`：插入字串
+- `search(word)`：搜尋完整字串是否存在
+- `startsWith(prefix)`：是否有任何字串以此前綴開頭
+
+```
+Trie trie = new Trie();
+trie.insert("apple");
+trie.search("apple");   // true
+trie.search("app");     // false
+trie.startsWith("app"); // true
+```
+
+## 解題思路
+
+<StepDiagram data='[{"title":"節點結構","description":"每個節點有 26 個子節點（a-z）和一個 isEnd 標記","icon":"1"},{"title":"Insert","description":"逐字元走樹，不存在就建新節點，最後標記 isEnd","icon":"2"},{"title":"Search","description":"逐字元走樹，全部走完且最後節點 isEnd=true 才回傳 true","icon":"3"},{"title":"StartsWith","description":"逐字元走樹，全部走完就回傳 true（不用檢查 isEnd）","icon":"4"}]' />
+
+## 程式碼
+
+### C#
+```csharp
+public class Trie {
+    private class TrieNode {
+        public TrieNode[] Children = new TrieNode[26];
+        public bool IsEnd = false;
+    }
+    
+    private TrieNode root;
+    
+    public Trie() {
+        root = new TrieNode();
+    }
+    
+    public void Insert(string word) {
+        var node = root;
+        foreach (char c in word) {
+            int idx = c - 'a';
+            node.Children[idx] ??= new TrieNode();
+            node = node.Children[idx];
+        }
+        node.IsEnd = true;
+    }
+    
+    public bool Search(string word) {
+        var node = FindNode(word);
+        return node != null && node.IsEnd;
+    }
+    
+    public bool StartsWith(string prefix) {
+        return FindNode(prefix) != null;
+    }
+    
+    private TrieNode? FindNode(string s) {
+        var node = root;
+        foreach (char c in s) {
+            int idx = c - 'a';
+            if (node.Children[idx] == null) return null;
+            node = node.Children[idx];
+        }
+        return node;
+    }
+}
+```
+
+### TypeScript
+```typescript
+class TrieNode {
+    children: Map<string, TrieNode> = new Map();
+    isEnd: boolean = false;
+}
+
+class Trie {
+    private root: TrieNode;
+    
+    constructor() {
+        this.root = new TrieNode();
+    }
+    
+    insert(word: string): void {
+        let node = this.root;
+        for (const c of word) {
+            if (!node.children.has(c)) {
+                node.children.set(c, new TrieNode());
+            }
+            node = node.children.get(c)!;
+        }
+        node.isEnd = true;
+    }
+    
+    search(word: string): boolean {
+        const node = this.findNode(word);
+        return node !== null && node.isEnd;
+    }
+    
+    startsWith(prefix: string): boolean {
+        return this.findNode(prefix) !== null;
+    }
+    
+    private findNode(s: string): TrieNode | null {
+        let node = this.root;
+        for (const c of s) {
+            if (!node.children.has(c)) return null;
+            node = node.children.get(c)!;
+        }
+        return node;
+    }
+}
+```
+
+### Python
+```python
+class TrieNode:
+    def __init__(self):
+        self.children = {}
+        self.is_end = False
+
+class Trie:
+    def __init__(self):
+        self.root = TrieNode()
+    
+    def insert(self, word: str) -> None:
+        node = self.root
+        for c in word:
+            if c not in node.children:
+                node.children[c] = TrieNode()
+            node = node.children[c]
+        node.is_end = True
+    
+    def search(self, word: str) -> bool:
+        node = self._find(word)
+        return node is not None and node.is_end
+    
+    def startsWith(self, prefix: str) -> bool:
+        return self._find(prefix) is not None
+    
+    def _find(self, s: str) -> TrieNode | None:
+        node = self.root
+        for c in s:
+            if c not in node.children:
+                return None
+            node = node.children[c]
+        return node
+```
+
+## 複雜度分析
+
+| | Time | Space |
+|--|------|-------|
+| Insert | O(L) | O(L) |
+| Search | O(L) | O(1) |
+| StartsWith | O(L) | O(1) |
+
+其中 L = 字串長度。
+
+## 圖解
+
+<Diagram data='{"nodes":[{"id":"root","label":"Root","type":"default"},{"id":"a","label":"a","type":"highlight"},{"id":"p1","label":"p","type":"highlight"},{"id":"p2","label":"p (isEnd)","type":"highlight"},{"id":"l","label":"l","type":"default"},{"id":"e","label":"e (isEnd)","type":"default"}],"edges":[{"from":"root","to":"a","label":"a"},{"from":"a","to":"p1","label":"p"},{"from":"p1","to":"p2","label":"p → app"},{"from":"p2","to":"l","label":"l"},{"from":"l","to":"e","label":"e → apple"}]}' />
+
+## 進階觀點
+
+<Callout type="tip" title="面試追問">
+- 用陣列 `[26]` vs `HashMap`：陣列存取 O(1) 但浪費空間（大部分子節點是 null），HashMap 節省空間但有 hash 開銷。面試時兩種都要會。
+- Trie 的實際應用：自動補全、拼字檢查、IP 路由表（用 Binary Trie）、搜尋引擎建議。
+- 進階操作：刪除單字、計算以某前綴開頭的單字數量、找最長公共前綴。
+- 空間優化：Compressed Trie（Radix Tree）把只有一個子節點的路徑壓縮成一個節點。
+</Callout>
+
+## 理解測驗
+
+<Quiz data='{"question":"search(\"app\") 和 startsWith(\"app\") 的差別是什麼？","options":["沒有差別","search 檢查完整單字是否存在（isEnd=true），startsWith 只檢查前綴路徑是否存在","search 更快","startsWith 會回傳所有匹配的字"],"answer":1,"explanation":"search 走完路徑後還要檢查 isEnd 標記，確認這是一個完整插入過的單字。startsWith 只要路徑存在就回傳 true。"}' />
+
+<Quiz data='{"question":"如果插入了 apple 和 app，Trie 中 p→p 這個節點的 isEnd 是什麼？","options":["false","true","undefined","取決於插入順序"],"answer":1,"explanation":"插入 app 時，走到第二個 p 節點會標記 isEnd=true。之後插入 apple 不會影響這個標記。所以 search(\"app\") 回傳 true。"}' />

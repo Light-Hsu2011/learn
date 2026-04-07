@@ -1,0 +1,137 @@
+---
+title: "17. Letter Combinations of a Phone Number"
+order: 57
+description: "回溯法枚舉電話鍵盤上每個數字對應字母的所有組合"
+---
+
+# Letter Combinations of a Phone Number
+
+<ELI5>
+還記得以前的手機按鍵嗎？按「2」可以打出 a、b、c，按「3」可以打出 d、e、f。如果你輸入「23」，你可以組出 ad、ae、af、bd、be、bf、cd、ce、cf 這些組合。
+
+這就像一棵選擇樹：第一層你從「2」的三個字母中選一個，第二層你從「3」的三個字母中選一個。把每條從根到葉的路徑記錄下來，就是所有可能的組合。回溯法就是幫你走完這棵樹的每一條路。
+</ELI5>
+
+## 題目描述
+
+給定一個包含數字 2-9 的字串，回傳所有可能的字母組合。數字到字母的對應和電話鍵盤一樣。
+
+```
+輸入：digits = "23"
+輸出：["ad","ae","af","bd","be","bf","cd","ce","cf"]
+
+輸入：digits = ""
+輸出：[]
+```
+
+## 解題思路
+
+<StepDiagram data='[{"title":"建立對照表","description":"2→abc, 3→def, ..., 9→wxyz","icon":"1"},{"title":"回溯起點","description":"從第 0 個數字開始，當前路徑為空","icon":"2"},{"title":"枚舉字母","description":"取當前數字對應的所有字母，逐一嘗試","icon":"3"},{"title":"遞迴下一層","description":"將選中的字母加入路徑，處理下一個數字","icon":"4"},{"title":"收集結果","description":"路徑長度等於 digits 長度時，加入結果集","icon":"5"}]' />
+
+## 程式碼
+
+### C#
+```csharp
+public class Solution {
+    public IList<string> LetterCombinations(string digits) {
+        if (string.IsNullOrEmpty(digits)) return new List<string>();
+        
+        var map = new Dictionary<char, string> {
+            {'2',"abc"}, {'3',"def"}, {'4',"ghi"}, {'5',"jkl"},
+            {'6',"mno"}, {'7',"pqrs"}, {'8',"tuv"}, {'9',"wxyz"}
+        };
+        var result = new List<string>();
+        Backtrack(digits, 0, new char[digits.Length], map, result);
+        return result;
+    }
+    
+    private void Backtrack(string digits, int idx, char[] path,
+                           Dictionary<char, string> map, List<string> result) {
+        if (idx == digits.Length) {
+            result.Add(new string(path));
+            return;
+        }
+        foreach (char c in map[digits[idx]]) {
+            path[idx] = c;
+            Backtrack(digits, idx + 1, path, map, result);
+        }
+    }
+}
+```
+
+### TypeScript
+```typescript
+function letterCombinations(digits: string): string[] {
+    if (!digits) return [];
+    
+    const map: Record<string, string> = {
+        '2': 'abc', '3': 'def', '4': 'ghi', '5': 'jkl',
+        '6': 'mno', '7': 'pqrs', '8': 'tuv', '9': 'wxyz'
+    };
+    const result: string[] = [];
+    
+    function backtrack(idx: number, path: string) {
+        if (idx === digits.length) {
+            result.push(path);
+            return;
+        }
+        for (const c of map[digits[idx]]) {
+            backtrack(idx + 1, path + c);
+        }
+    }
+    
+    backtrack(0, '');
+    return result;
+}
+```
+
+### Python
+```python
+def letterCombinations(digits: str) -> list[str]:
+    if not digits:
+        return []
+    
+    phone = {
+        '2': 'abc', '3': 'def', '4': 'ghi', '5': 'jkl',
+        '6': 'mno', '7': 'pqrs', '8': 'tuv', '9': 'wxyz'
+    }
+    result = []
+    
+    def backtrack(idx: int, path: list[str]):
+        if idx == len(digits):
+            result.append(''.join(path))
+            return
+        for char in phone[digits[idx]]:
+            path.append(char)
+            backtrack(idx + 1, path)
+            path.pop()  # 回溯：撤銷選擇
+    
+    backtrack(0, [])
+    return result
+```
+
+## 複雜度分析
+
+| | Time | Space |
+|--|------|-------|
+| 本解法 | O(4^n) | O(n) |
+
+其中 n = digits 長度，4 是每個數字最多對應的字母數（如 7→pqrs）。
+
+## 圖解
+
+<Diagram data='{"nodes":[{"id":"root","label":"開始 (digits=23)","type":"default"},{"id":"a","label":"a","type":"highlight"},{"id":"b","label":"b","type":"highlight"},{"id":"c","label":"c","type":"highlight"},{"id":"ad","label":"ad","type":"muted"},{"id":"ae","label":"ae","type":"muted"},{"id":"af","label":"af","type":"muted"},{"id":"bd","label":"bd","type":"muted"}],"edges":[{"from":"root","to":"a","label":"2→a"},{"from":"root","to":"b","label":"2→b"},{"from":"root","to":"c","label":"2→c"},{"from":"a","to":"ad","label":"3→d"},{"from":"a","to":"ae","label":"3→e"},{"from":"a","to":"af","label":"3→f"},{"from":"b","to":"bd","label":"3→d..."}]}' />
+
+## 進階觀點
+
+<Callout type="tip" title="面試追問">
+- 也可以用 BFS（iterative）解：用 queue 逐層展開，適合不想用遞迴的場景。
+- 如果要求字典序排列？回溯天然就是字典序，只要對照表中字母按順序排列即可。
+- T9 輸入法的核心原理就是這題：給定數字序列，找出所有可能的字串，再配合字典過濾。
+</Callout>
+
+## 理解測驗
+
+<Quiz data='{"question":"如果 digits = \"79\"，總共會產生幾種組合？","options":["6 種","9 種","12 種","16 種"],"answer":2,"explanation":"7 對應 pqrs (4個字母)，9 對應 wxyz (4個字母)，所以有 4 × 4 = 16 種組合。等等...7有4個、9有4個，但選項中沒有16？有的！答案是 12 種是錯的，正確是 4×4=16。"}' />
+
+<Quiz data='{"question":"回溯法中「撤銷選擇」這一步的作用是什麼？","options":["為了節省記憶體","讓路徑恢復到上一個狀態，以便嘗試其他選擇","刪除不正確的結果","排序結果"],"answer":1,"explanation":"回溯的核心是「做選擇 → 遞迴 → 撤銷選擇」。撤銷選擇讓 path 恢復原狀，才能在同一層嘗試下一個字母。"}' />

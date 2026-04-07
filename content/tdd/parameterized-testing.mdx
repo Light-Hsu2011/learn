@@ -1,0 +1,188 @@
+---
+title: "參數化測試"
+order: 6
+description: "用資料驅動減少重複測試程式碼，一組邏輯多組資料"
+---
+
+# 參數化測試（Parameterized Testing）
+
+<ELI5>
+想像你在測試一台販賣機：投 10 元出紅茶、投 20 元出綠茶、投 50 元出咖啡。測試邏輯都一樣——「投幣 → 按鈕 → 出飲料」，只是**金額和飲料**不同。
+
+如果每種組合都寫一個完整的測試，你會寫到手軟。參數化測試的做法是：寫**一個測試模板**，然後餵給它一張**資料表**，讓框架自動幫你跑所有組合。
+
+就像 Excel 裡的公式——寫一次公式，拖曳到整欄，每一列用不同的資料計算。
+</ELI5>
+
+## 是什麼？
+
+參數化測試（Parameterized Testing / Data-Driven Testing）是一種用同一段測試邏輯搭配多組輸入資料的技術，避免重複撰寫結構相同的測試。
+
+<Callout type="info" title="DRY 原則在測試中的應用">
+參數化測試是測試程式碼 DRY（Don't Repeat Yourself）的最佳工具。當你發現多個測試只有輸入和預期結果不同時，就是使用參數化測試的時機。
+</Callout>
+
+## 什麼時候用？
+
+- 多個測試的邏輯完全相同，只有輸入值和預期結果不同
+- 邊界值測試：需要測試大量的邊界條件（0、負數、最大值、空字串）
+- 規則驗證：如表單驗證、業務規則，每條規則有多種合法/非法輸入
+- 格式轉換：如日期格式、幣別轉換，輸入輸出有明確對應
+
+## 常見誤區
+
+<Callout type="warning" title="參數化測試的陷阱">
+- **資料太多看不懂**：當參數超過 4-5 個，測試就變得難以理解。考慮用物件或 named tuple 包裝
+- **錯誤訊息不清楚**：失敗時只看到「第 7 組資料失敗」，加上 display name 讓每組資料有意義
+- **把不同邏輯硬塞進同一個參數化測試**：如果不同組資料走的是不同程式路徑，拆成獨立測試
+- **忘了測試邊界值**：參數化測試的威力在邊界值，不要只放 happy path 的資料
+</Callout>
+
+## 使用流程
+
+<StepDiagram data='[{"title":"辨識重複模式","description":"發現多個測試只有輸入和預期不同，邏輯完全相同","icon":"1"},{"title":"抽取測試模板","description":"寫一個通用的測試方法，用參數替代硬編碼的值","icon":"2"},{"title":"準備資料集","description":"用框架提供的機制（InlineData、each、parametrize）餵入多組資料","icon":"3"},{"title":"加上顯示名稱","description":"為每組資料加上有意義的描述，方便失敗時定位","icon":"4"},{"title":"執行並確認","description":"框架會自動為每組資料執行一次測試，各自獨立報告結果","icon":"5"}]' />
+
+## 程式碼範例
+
+### C#（xUnit Theory + InlineData）
+
+```csharp
+public class EmailValidatorTests
+{
+    // 參數化測試：一組邏輯，多組資料
+    [Theory]
+    [InlineData("user@example.com", true)]
+    [InlineData("admin@company.org", true)]
+    [InlineData("", false)]
+    [InlineData("not-an-email", false)]
+    [InlineData("missing@", false)]
+    [InlineData("@no-local.com", false)]
+    public void IsValid_VariousInputs_ReturnsExpected(
+        string email, bool expected)
+    {
+        var validator = new EmailValidator();
+        var result = validator.IsValid(email);
+        Assert.Equal(expected, result);
+    }
+
+    // 使用 MemberData 傳入複雜資料
+    [Theory]
+    [MemberData(nameof(DiscountTestData))]
+    public void CalculateDiscount_VariousTiers_ReturnsExpected(
+        decimal price, string tier, decimal expected)
+    {
+        var calc = new PriceCalculator();
+        Assert.Equal(expected, calc.CalculateDiscount(price, tier));
+    }
+
+    public static IEnumerable<object[]> DiscountTestData =>
+        new List<object[]>
+        {
+            new object[] { 100m, "regular", 100m },
+            new object[] { 100m, "silver", 90m },
+            new object[] { 100m, "gold", 80m },
+            new object[] { 100m, "vip", 70m },
+        };
+}
+```
+
+### TypeScript（Jest each）
+
+```typescript
+describe("EmailValidator", () => {
+  // it.each — Jest 的參數化測試語法
+  it.each([
+    ["user@example.com", true],
+    ["admin@company.org", true],
+    ["", false],
+    ["not-an-email", false],
+    ["missing@", false],
+    ["@no-local.com", false],
+  ])("isValid(%s) returns %s", (email, expected) => {
+    const validator = new EmailValidator();
+    expect(validator.isValid(email as string)).toBe(expected);
+  });
+
+  // 使用物件格式，提升可讀性
+  it.each([
+    { price: 100, tier: "regular", expected: 100 },
+    { price: 100, tier: "silver", expected: 90 },
+    { price: 100, tier: "gold", expected: 80 },
+    { price: 100, tier: "vip", expected: 70 },
+  ])(
+    "calculates $tier discount: $price → $expected",
+    ({ price, tier, expected }) => {
+      const calc = new PriceCalculator();
+      expect(calc.calculateDiscount(price, tier)).toBe(expected);
+    }
+  );
+});
+```
+
+### Python（pytest parametrize）
+
+```python
+import pytest
+from email_validator import EmailValidator
+from price_calculator import PriceCalculator
+
+# pytest.mark.parametrize — Python 的參數化測試
+@pytest.mark.parametrize("email,expected", [
+    ("user@example.com", True),
+    ("admin@company.org", True),
+    ("", False),
+    ("not-an-email", False),
+    ("missing@", False),
+    ("@no-local.com", False),
+])
+def test_is_valid_various_inputs(email, expected):
+    validator = EmailValidator()
+    assert validator.is_valid(email) == expected
+
+# 使用 ids 參數增加可讀性
+@pytest.mark.parametrize("price,tier,expected", [
+    (100, "regular", 100),
+    (100, "silver", 90),
+    (100, "gold", 80),
+    (100, "vip", 70),
+], ids=["regular-no-discount", "silver-10%", "gold-20%", "vip-30%"])
+def test_calculate_discount_various_tiers(price, tier, expected):
+    calc = PriceCalculator()
+    assert calc.calculate_discount(price, tier) == expected
+```
+
+## 概念圖
+
+<Diagram data='{"nodes":[{"id":"param","label":"參數化測試","type":"highlight"},{"id":"template","label":"測試模板（邏輯）","type":"default"},{"id":"data","label":"資料集（輸入/預期）","type":"default"},{"id":"xunit","label":"xUnit Theory","type":"muted"},{"id":"jest","label":"Jest each","type":"muted"},{"id":"pytest","label":"pytest parametrize","type":"muted"}],"edges":[{"from":"param","to":"template","label":"一組邏輯"},{"from":"param","to":"data","label":"多組資料"},{"from":"xunit","to":"param","label":"InlineData / MemberData"},{"from":"jest","to":"param","label":"it.each"},{"from":"pytest","to":"param","label":"@parametrize"}]}' />
+
+## 實戰補充
+
+<Callout type="tip" title="資深開發者的經驗">
+- **邊界值是參數化測試的主戰場**：0、-1、null、空字串、最大值、剛好超過限制——把所有邊界值一次列出來。
+- **Display Name 是救命稻草**：失敗時看到「InlineData(line 7)」沒有幫助。xUnit 用 `[Theory]` + `MemberData`，Jest 用模板字串，pytest 用 `ids` 參數。
+- **超過 5 個參數就該重構**：如果每組資料有太多欄位，用 Test Data Object 包裝，或拆成多個參數化測試。
+- **和 Property-Based Testing 互補**：參數化測試是你選資料，Property-Based Testing（如 FsCheck、fast-check）是框架自動生成資料。
+</Callout>
+
+## 理解測驗
+
+<Quiz data='{"question":"什麼時候最適合使用參數化測試？","options":["每個測試的邏輯都不同","多個測試邏輯相同，只有輸入和預期結果不同","只有一組測試資料","測試不需要驗證結果"],"answer":1,"explanation":"參數化測試的核心場景是「一組邏輯 + 多組資料」。當你發現多個測試只有輸入值不同時，就是使用參數化測試的時機。"}' />
+
+<Quiz data='{"question":"以下哪個不是參數化測試的常用框架語法？","options":["xUnit [Theory] + [InlineData]","Jest it.each()","pytest @pytest.mark.parametrize","Jest describe.only()"],"answer":3,"explanation":"describe.only() 是 Jest 用來只執行特定測試群組的語法，不是參數化測試語法。參數化測試使用 it.each()。"}' />
+
+<Quiz data='{"question":"參數化測試中加上 display name 的主要目的是什麼？","options":["讓測試跑得更快","讓測試失敗時能快速知道是哪組資料出問題","減少程式碼行數","讓測試通過"],"answer":1,"explanation":"當參數化測試失敗時，如果沒有有意義的 display name，你只會看到「第 N 組資料失敗」，難以定位問題。"}' />
+
+## 重點整理
+
+<Callout type="tip" title="一句話記住">
+**參數化測試 = 一個測試模板 + 一張資料表，框架自動幫你跑所有組合。**
+</Callout>
+
+| 概念 | 說明 |
+|------|------|
+| **核心思想** | 同一段邏輯，搭配多組輸入/預期資料 |
+| **C# 語法** | `[Theory]` + `[InlineData]` / `[MemberData]` |
+| **TypeScript 語法** | `it.each([...])` |
+| **Python 語法** | `@pytest.mark.parametrize` |
+| **核心好處** | 消除重複、一次覆蓋大量邊界值 |
+| **代價** | 參數太多會降低可讀性，需要加 display name |

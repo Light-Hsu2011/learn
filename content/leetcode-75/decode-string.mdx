@@ -1,0 +1,146 @@
+---
+title: "394. Decode String"
+order: 26
+description: "用 Stack 處理巢狀的 k[encoded_string] 編碼字串"
+---
+
+# Decode String
+
+<ELI5>
+想像你收到一封神秘信件，上面寫著「3[abc]」，意思是把 abc 重複寫 3 次變成 abcabcabc。
+
+更複雜的是，信件裡還有「信中信」，像是「2[a3[bc]]」— 你得先把最裡面的 3[bc] 展開成 bcbcbc，拼上 a 變成 abcbcbc，再重複 2 次。
+
+這就像剝洋蔥一樣，要從最裡面開始處理，而 Stack 正好幫你記住「還沒處理完的外層」。
+</ELI5>
+
+## 題目描述
+
+給定一個編碼字串，規則為 `k[encoded_string]`，表示 `encoded_string` 重複 `k` 次。回傳解碼後的字串。
+
+```
+輸入: s = "3[a2[c]]"
+輸出: "accaccacc"
+
+輸入: s = "2[abc]3[cd]ef"
+輸出: "abcabccdcdcdef"
+```
+
+## 解題思路
+
+<StepDiagram data='[{"title":"遍歷字元","description":"逐一掃描字串中的每個字元","icon":"1"},{"title":"遇到數字","description":"累積多位數字（如 12 → 1*10+2）","icon":"2"},{"title":"遇到 [","description":"把當前字串和數字壓入 Stack，重置","icon":"3"},{"title":"遇到 ]","description":"從 Stack 彈出，組合：前綴 + 當前字串 × 次數","icon":"4"},{"title":"遇到字母","description":"直接附加到當前字串","icon":"5"}]' />
+
+## 程式碼
+
+### C#
+
+```csharp
+public class Solution {
+    public string DecodeString(string s) {
+        // Stack 儲存 (之前的字串, 重複次數)
+        var strStack = new Stack<string>();
+        var numStack = new Stack<int>();
+        var current = "";
+        int num = 0;
+
+        foreach (char c in s) {
+            if (char.IsDigit(c)) {
+                num = num * 10 + (c - '0'); // 處理多位數
+            } else if (c == '[') {
+                strStack.Push(current);  // 保存前綴
+                numStack.Push(num);      // 保存重複次數
+                current = "";
+                num = 0;
+            } else if (c == ']') {
+                var prev = strStack.Pop();
+                var repeat = numStack.Pop();
+                current = prev + string.Concat(Enumerable.Repeat(current, repeat));
+            } else {
+                current += c;
+            }
+        }
+        return current;
+    }
+}
+```
+
+### TypeScript
+
+```typescript
+function decodeString(s: string): string {
+    const strStack: string[] = [];
+    const numStack: number[] = [];
+    let current = "";
+    let num = 0;
+
+    for (const c of s) {
+        if (c >= "0" && c <= "9") {
+            num = num * 10 + Number(c); // 處理多位數
+        } else if (c === "[") {
+            strStack.push(current);  // 保存前綴
+            numStack.push(num);      // 保存重複次數
+            current = "";
+            num = 0;
+        } else if (c === "]") {
+            const prev = strStack.pop()!;
+            const repeat = numStack.pop()!;
+            current = prev + current.repeat(repeat);
+        } else {
+            current += c;
+        }
+    }
+    return current;
+}
+```
+
+### Python
+
+```python
+def decodeString(s: str) -> str:
+    str_stack = []
+    num_stack = []
+    current = ""
+    num = 0
+
+    for c in s:
+        if c.isdigit():
+            num = num * 10 + int(c)  # 處理多位數
+        elif c == '[':
+            str_stack.append(current)  # 保存前綴
+            num_stack.append(num)      # 保存重複次數
+            current = ""
+            num = 0
+        elif c == ']':
+            prev = str_stack.pop()
+            repeat = num_stack.pop()
+            current = prev + current * repeat
+        else:
+            current += c
+    return current
+```
+
+## 複雜度分析
+
+| | Time | Space |
+|--|------|-------|
+| 本解法 | O(n × maxK) | O(n) |
+
+其中 n 是解碼後字串長度，maxK 是最大重複次數。
+
+## 圖解
+
+<Diagram data='{"nodes":[{"id":"input","label":"輸入 3[a2[c]]","type":"muted"},{"id":"stack","label":"Stack（存前綴和重複次數）","type":"default"},{"id":"curr","label":"當前字串 current","type":"default"},{"id":"num","label":"數字暫存 num","type":"default"},{"id":"result","label":"結果 accaccacc","type":"highlight"}],"edges":[{"from":"input","to":"num","label":"解析數字"},{"from":"input","to":"stack","label":"遇到 [ 壓入"},{"from":"stack","to":"curr","label":"遇到 ] 彈出組合"},{"from":"curr","to":"result","label":"最終結果"}]}' />
+
+## 進階觀點
+
+<Callout type="tip" title="面試追問">
+**遞迴解法**：也可以用遞迴模擬 Stack，遇到 `[` 進入遞迴，遇到 `]` 返回。面試官可能追問兩種方法的差異。
+
+**變體題**：LC 726 Number of Atoms（化學式解析）、LC 1190 Reverse Substrings Between Each Pair of Parentheses。
+</Callout>
+
+## 理解測驗
+
+<Quiz data='{"question":"處理 \"12[a]\" 時，數字 12 要怎麼累積？","options":["直接取字元 1 和 2 分開處理","num = num * 10 + 當前數字","用 parseInt 一次讀完","不需要特別處理，數字都是一位"],"answer":1,"explanation":"數字可能是多位數，所以每遇到一個數字字元就用 num = num * 10 + digit 來累積。"}' />
+
+<Quiz data='{"question":"遇到 [ 時，為什麼要把當前字串壓入 Stack？","options":["因為要清空記憶體","因為需要保存外層的前綴，等內層解碼完再拼接","因為 Stack 需要保持平衡","因為要計算字串長度"],"answer":1,"explanation":"[ 代表進入新的一層，當前累積的字串是外層前綴，需要保存起來等內層處理完再拼接。"}' />

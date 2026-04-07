@@ -1,0 +1,110 @@
+---
+title: "739. Daily Temperatures"
+order: 74
+description: "單調遞減 Stack 追蹤尚未找到更暖天數的日子"
+---
+
+# Daily Temperatures
+
+<ELI5>
+你有一份每日氣溫紀錄，想知道：從每一天開始，要等幾天才會遇到更暖的天氣？
+
+想像你是一個排隊的人，手上拿著牌子寫著你的溫度。每個新來的人會跟隊伍尾巴的人比：如果你比前面的人更熱（溫度更高），那前面的人就找到答案了（等了幾天遇到比你更暖的天），他們就可以離開隊伍。
+
+這個「隊伍」就是一個 Stack，它保持「從底到頂溫度遞減」的性質——因為比你冷的人早就被你趕走了。
+</ELI5>
+
+## 題目描述
+
+給定每日溫度陣列 `temperatures`，回傳一個陣列 `answer`，其中 `answer[i]` 是從第 i 天開始要等幾天才有更高溫度。如果之後都沒有更高溫度，則為 0。
+
+```
+輸入：temperatures = [73,74,75,71,69,72,76,73]
+輸出：[1,1,4,2,1,1,0,0]
+```
+
+## 解題思路
+
+<StepDiagram data='[{"title":"初始化 Stack","description":"Stack 存索引（不是溫度值），方便計算天數差","icon":"1"},{"title":"遍歷每一天","description":"從左到右遍歷溫度陣列","icon":"2"},{"title":"彈出較冷的","description":"如果當前溫度 > Stack 頂端的溫度，彈出並計算天數差","icon":"3"},{"title":"壓入當前","description":"將當前索引壓入 Stack","icon":"4"},{"title":"Stack 剩餘","description":"遍歷結束後 Stack 中剩餘的索引，answer 為 0","icon":"5"}]' />
+
+## 程式碼
+
+### C#
+```csharp
+public class Solution {
+    public int[] DailyTemperatures(int[] temperatures) {
+        int n = temperatures.Length;
+        int[] answer = new int[n];
+        var stack = new Stack<int>(); // 存索引
+        
+        for (int i = 0; i < n; i++) {
+            // 當前溫度比 stack 頂端更高 → 找到更暖的天
+            while (stack.Count > 0 && temperatures[i] > temperatures[stack.Peek()]) {
+                int prevIdx = stack.Pop();
+                answer[prevIdx] = i - prevIdx;
+            }
+            stack.Push(i);
+        }
+        return answer; // Stack 中剩餘的索引，answer 自動是 0
+    }
+}
+```
+
+### TypeScript
+```typescript
+function dailyTemperatures(temperatures: number[]): number[] {
+    const n = temperatures.length;
+    const answer = new Array(n).fill(0);
+    const stack: number[] = []; // 存索引
+    
+    for (let i = 0; i < n; i++) {
+        while (stack.length > 0 && temperatures[i] > temperatures[stack[stack.length - 1]]) {
+            const prevIdx = stack.pop()!;
+            answer[prevIdx] = i - prevIdx;
+        }
+        stack.push(i);
+    }
+    return answer;
+}
+```
+
+### Python
+```python
+def dailyTemperatures(temperatures: list[int]) -> list[int]:
+    n = len(temperatures)
+    answer = [0] * n
+    stack = []  # 存索引
+    
+    for i in range(n):
+        while stack and temperatures[i] > temperatures[stack[-1]]:
+            prev_idx = stack.pop()
+            answer[prev_idx] = i - prev_idx
+        stack.append(i)
+    
+    return answer
+```
+
+## 複雜度分析
+
+| | Time | Space |
+|--|------|-------|
+| 本解法 | O(n) | O(n) |
+
+## 圖解
+
+<Diagram data='{"nodes":[{"id":"day0","label":"Day 0: 73°","type":"muted"},{"id":"day1","label":"Day 1: 74°","type":"default"},{"id":"stack","label":"Stack (遞減): [75, 71, 69]","type":"highlight"},{"id":"day5","label":"Day 5: 72° 來了","type":"highlight"},{"id":"pop","label":"彈出 69, 71 (比72冷)","type":"muted"},{"id":"result","label":"answer[4]=1, answer[3]=2","type":"default"}],"edges":[{"from":"day0","to":"day1","label":"74>73 彈出"},{"from":"stack","to":"day5","label":"新溫度"},{"from":"day5","to":"pop","label":"比較"},{"from":"pop","to":"result","label":"計算天數差"}]}' />
+
+## 進階觀點
+
+<Callout type="tip" title="面試追問">
+- 為什麼是 O(n) 而不是 O(n^2)？雖然有 while 迴圈，但每個索引最多被 push 和 pop 各一次，所以總操作數是 O(2n) = O(n)。
+- Stack 存索引而不是溫度值的原因：需要用索引計算天數差 `i - prevIdx`。
+- 這是「單調遞減 Stack」的經典應用。「Next Greater Element」系列題都用同樣的模式。
+- 變體：如果要找「之前最近的更暖天」，從右往左遍歷或反轉邏輯即可。
+</Callout>
+
+## 理解測驗
+
+<Quiz data='{"question":"為什麼 Stack 中的溫度保持遞減（從底到頂）？","options":["因為題目要求","因為每次遇到更高溫度就會彈出較冷的，留下的自然遞減","為了排序","這是隨機的"],"answer":1,"explanation":"每個新溫度進來時，會把 Stack 中所有比它低的都彈出。所以 Stack 中剩下的一定是從底到頂遞減的序列。"}' />
+
+<Quiz data='{"question":"遍歷結束後 Stack 中還有元素，它們的 answer 值是什麼？","options":["需要額外處理","0，因為陣列初始化就是 0，且它們之後沒有更高溫度","等於 n","無法確定"],"answer":1,"explanation":"Stack 中剩餘的索引代表之後沒有更高的溫度了。answer 陣列初始化為 0，不需要額外處理。"}' />

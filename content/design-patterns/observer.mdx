@@ -1,0 +1,339 @@
+---
+title: "Observer Pattern"
+order: 14
+description: "定義物件間的一對多依賴，當一個物件狀態改變時自動通知所有依賴者"
+---
+
+# Observer Pattern（觀察者模式）
+
+<ELI5>
+想像你訂閱了一個 **YouTube 頻道**：
+
+- 頻道發新影片 → 你收到通知
+- 你取消訂閱 → 就不會再收到通知了
+- 其他訂閱者不受影響，各自獨立收到通知
+
+頻道不需要一個一個打電話給觀眾，只要「發布」就好，YouTube 系統會自動通知所有訂閱者。
+
+這就像報紙訂閱一樣——報社不需要知道你是誰、住哪裡做什麼，只要你訂了，每天早上報紙就會送到你門口。取消訂閱，報紙就停了。
+</ELI5>
+
+## 是什麼？
+
+Observer Pattern 定義物件之間的**一對多依賴關係**，當被觀察的物件（Subject）狀態發生改變時，所有依賴它的觀察者（Observer）都會自動收到通知並更新。
+
+<Callout type="info" title="GoF 分類">
+Observer 屬於**行為型模式（Behavioral Pattern）**，重點在於物件之間如何建立動態的通知機制。
+</Callout>
+
+## 什麼時候用？
+
+- 一個物件的狀態改變需要通知其他物件，但你不想讓它們緊密耦合
+- 訂閱者的數量和種類在執行時會動態變化
+- 你需要建立事件驅動架構（Event-Driven Architecture）
+- UI 元件需要在資料變化時自動更新顯示
+
+## 什麼時候不該用？
+
+<Callout type="warning" title="過度設計警告">
+如果通知對象固定且數量少（例如只有 1-2 個），直接呼叫方法更簡單。Observer 會引入額外的間接層，且偵錯時通知鏈可能難以追蹤。當觀察者之間有執行順序依賴時，Observer Pattern 也不適合。
+</Callout>
+
+## 執行流程
+
+<StepDiagram data='[{"title":"定義 Subject 介面","description":"提供 Subscribe、Unsubscribe、Notify 方法","icon":"1"},{"title":"定義 Observer 介面","description":"宣告 Update 方法供 Subject 呼叫","icon":"2"},{"title":"實作具體 Subject","description":"維護觀察者清單，狀態變化時呼叫 Notify","icon":"3"},{"title":"實作具體 Observer","description":"在 Update 中定義收到通知後的反應","icon":"4"},{"title":"註冊與通知","description":"Observer 訂閱 Subject，Subject 狀態改變時通知所有 Observer","icon":"5"}]' />
+
+## 程式碼範例
+
+### C# 版本
+
+```csharp
+// 1. 定義介面
+public interface IObserver
+{
+    void Update(string videoTitle);
+}
+
+public interface IChannel
+{
+    void Subscribe(IObserver observer);
+    void Unsubscribe(IObserver observer);
+    void Notify();
+}
+
+// 2. 具體 Subject
+public class YouTubeChannel : IChannel
+{
+    private readonly List<IObserver> _subscribers = new();
+    private string _latestVideo = "";
+
+    public string ChannelName { get; }
+
+    public YouTubeChannel(string name) => ChannelName = name;
+
+    public void Subscribe(IObserver observer) => _subscribers.Add(observer);
+    public void Unsubscribe(IObserver observer) => _subscribers.Remove(observer);
+
+    public void Notify()
+    {
+        foreach (var subscriber in _subscribers)
+            subscriber.Update(_latestVideo);
+    }
+
+    public void PublishVideo(string title)
+    {
+        _latestVideo = title;
+        Console.WriteLine($"[{ChannelName}] 發布新影片：{title}");
+        Notify();
+    }
+}
+
+// 3. 具體 Observer
+public class Subscriber : IObserver
+{
+    public string Name { get; }
+    public Subscriber(string name) => Name = name;
+
+    public void Update(string videoTitle)
+    {
+        Console.WriteLine($"  {Name} 收到通知：新影片「{videoTitle}」已上線！");
+    }
+}
+
+// 4. 使用
+var channel = new YouTubeChannel("設計模式教學");
+var alice = new Subscriber("Alice");
+var bob = new Subscriber("Bob");
+
+channel.Subscribe(alice);
+channel.Subscribe(bob);
+channel.PublishVideo("Observer Pattern 完全指南");
+// Alice 和 Bob 都收到通知
+
+channel.Unsubscribe(bob);
+channel.PublishVideo("Strategy Pattern 快速入門");
+// 只有 Alice 收到通知
+```
+
+### TypeScript 版本
+
+```typescript
+// 1. 定義介面
+interface Observer {
+  update(videoTitle: string): void;
+}
+
+interface Channel {
+  subscribe(observer: Observer): void;
+  unsubscribe(observer: Observer): void;
+  notify(): void;
+}
+
+// 2. 具體 Subject
+class YouTubeChannel implements Channel {
+  private subscribers: Observer[] = [];
+  private latestVideo = "";
+
+  constructor(public channelName: string) {}
+
+  subscribe(observer: Observer) { this.subscribers.push(observer); }
+  unsubscribe(observer: Observer) {
+    this.subscribers = this.subscribers.filter(s => s !== observer);
+  }
+
+  notify() {
+    this.subscribers.forEach(s => s.update(this.latestVideo));
+  }
+
+  publishVideo(title: string) {
+    this.latestVideo = title;
+    console.log(`[${this.channelName}] 發布新影片：${title}`);
+    this.notify();
+  }
+}
+
+// 3. 具體 Observer
+class Subscriber implements Observer {
+  constructor(public name: string) {}
+  update(videoTitle: string) {
+    console.log(`  ${this.name} 收到通知：新影片「${videoTitle}」已上線！`);
+  }
+}
+
+// 4. 使用
+const channel = new YouTubeChannel("設計模式教學");
+const alice = new Subscriber("Alice");
+const bob = new Subscriber("Bob");
+
+channel.subscribe(alice);
+channel.subscribe(bob);
+channel.publishVideo("Observer Pattern 完全指南");
+
+channel.unsubscribe(bob);
+channel.publishVideo("Strategy Pattern 快速入門");
+```
+
+### Python 版本
+
+```python
+from abc import ABC, abstractmethod
+
+# 1. 定義介面
+class Observer(ABC):
+    @abstractmethod
+    def update(self, video_title: str) -> None:
+        pass
+
+class Channel(ABC):
+    @abstractmethod
+    def subscribe(self, observer: Observer) -> None:
+        pass
+    @abstractmethod
+    def unsubscribe(self, observer: Observer) -> None:
+        pass
+    @abstractmethod
+    def notify(self) -> None:
+        pass
+
+# 2. 具體 Subject
+class YouTubeChannel(Channel):
+    def __init__(self, name: str):
+        self.channel_name = name
+        self._subscribers: list[Observer] = []
+        self._latest_video = ""
+
+    def subscribe(self, observer: Observer) -> None:
+        self._subscribers.append(observer)
+
+    def unsubscribe(self, observer: Observer) -> None:
+        self._subscribers.remove(observer)
+
+    def notify(self) -> None:
+        for subscriber in self._subscribers:
+            subscriber.update(self._latest_video)
+
+    def publish_video(self, title: str) -> None:
+        self._latest_video = title
+        print(f"[{self.channel_name}] 發布新影片：{title}")
+        self.notify()
+
+# 3. 具體 Observer
+class Subscriber(Observer):
+    def __init__(self, name: str):
+        self.name = name
+
+    def update(self, video_title: str) -> None:
+        print(f"  {self.name} 收到通知：新影片「{video_title}」已上線！")
+
+# 4. 使用
+channel = YouTubeChannel("設計模式教學")
+alice = Subscriber("Alice")
+bob = Subscriber("Bob")
+
+channel.subscribe(alice)
+channel.subscribe(bob)
+channel.publish_video("Observer Pattern 完全指南")
+
+channel.unsubscribe(bob)
+channel.publish_video("Strategy Pattern 快速入門")
+```
+
+### Java 版本
+
+```java
+import java.util.ArrayList;
+import java.util.List;
+
+// 1. 定義介面
+public interface Observer {
+    void update(String videoTitle);
+}
+
+public interface Channel {
+    void subscribe(Observer observer);
+    void unsubscribe(Observer observer);
+    void notifyObservers();
+}
+
+// 2. 具體 Subject
+public class YouTubeChannel implements Channel {
+    private final List<Observer> subscribers = new ArrayList<>();
+    private String latestVideo = "";
+    private final String channelName;
+
+    public YouTubeChannel(String name) { this.channelName = name; }
+
+    public void subscribe(Observer o) { subscribers.add(o); }
+    public void unsubscribe(Observer o) { subscribers.remove(o); }
+
+    public void notifyObservers() {
+        for (Observer o : subscribers) o.update(latestVideo);
+    }
+
+    public void publishVideo(String title) {
+        latestVideo = title;
+        System.out.println("[" + channelName + "] 發布新影片：" + title);
+        notifyObservers();
+    }
+}
+
+// 3. 具體 Observer
+public class Subscriber implements Observer {
+    private final String name;
+    public Subscriber(String name) { this.name = name; }
+
+    public void update(String videoTitle) {
+        System.out.println("  " + name + " 收到通知：新影片「" + videoTitle + "」已上線！");
+    }
+}
+
+// 4. 使用
+YouTubeChannel channel = new YouTubeChannel("設計模式教學");
+Subscriber alice = new Subscriber("Alice");
+Subscriber bob = new Subscriber("Bob");
+
+channel.subscribe(alice);
+channel.subscribe(bob);
+channel.publishVideo("Observer Pattern 完全指南");
+
+channel.unsubscribe(bob);
+channel.publishVideo("Strategy Pattern 快速入門");
+```
+
+## 結構圖
+
+<Diagram data='{"nodes":[{"id":"client","label":"Client","type":"muted"},{"id":"subject","label":"Subject (IChannel)","type":"highlight"},{"id":"concrete_subject","label":"ConcreteSubject (YouTubeChannel)","type":"default"},{"id":"observer","label":"Observer Interface","type":"default"},{"id":"concrete_observer","label":"ConcreteObserver (Subscriber)","type":"default"}],"edges":[{"from":"client","to":"subject","label":"uses"},{"from":"subject","to":"observer","label":"notifies"},{"from":"concrete_subject","to":"subject","label":"implements"},{"from":"concrete_observer","to":"observer","label":"implements"}]}' />
+
+## 實戰補充
+
+<Callout type="tip" title="資深開發者經驗">
+**C# 原生支援**：C# 的 `event` 關鍵字就是 Observer Pattern 的語言級實作，搭配 `delegate` 使用非常方便。大部分情況下不需要手動實作 Observer。
+
+**Reactive Programming**：RxJS、Reactor、RxJava 把 Observer 推到極致。`Observable` 不只通知變化，還能做 filter、map、merge 等串流操作。
+
+**Event Bus 陷阱**：全域 Event Bus 很方便，但容易變成隱形的全域狀態。當事件滿天飛時，偵錯會變成噩夢。建議限制 Event Bus 的作用範圍，或改用更明確的 Mediator。
+
+**記憶體洩漏**：Observer 忘記取消訂閱是常見的 Bug。C# 的 `WeakReference`、React 的 `useEffect` cleanup、Angular 的 `takeUntil` 都是解法。
+</Callout>
+
+## 理解測驗
+
+<Quiz data='{"question":"Observer Pattern 中，Subject 和 Observer 之間是什麼關係？","options":["一對一","多對一","一對多","多對多"],"answer":2,"explanation":"Subject 維護一份 Observer 清單，狀態改變時通知所有已註冊的 Observer，這是典型的一對多關係。"}' />
+
+<Quiz data='{"question":"使用 Observer Pattern 最常見的 Bug 是什麼？","options":["Observer 太多導致效能問題","忘記取消訂閱導致記憶體洩漏","Subject 無法正常運作","通知順序錯誤"],"answer":1,"explanation":"Observer 忘記取消訂閱（Unsubscribe）是最常見的問題，會導致已經不需要的物件無法被垃圾回收，造成記憶體洩漏。"}' />
+
+<Quiz data='{"question":"以下哪個不是 Observer Pattern 的實際應用？","options":["C# 的 event/delegate 機制","React 的 useState + useEffect","DOM 的 addEventListener","for 迴圈遍歷陣列"],"answer":3,"explanation":"for 迴圈是單純的迭代操作，不涉及狀態改變的通知機制。其他三個都是 Observer Pattern 的實際應用。"}' />
+
+## 重點整理
+
+<Callout type="tip" title="一句話記住">
+**Observer Pattern = 訂閱制通知：Subject 狀態一變，所有訂閱者自動收到消息。**
+</Callout>
+
+| 概念 | 說明 |
+|------|------|
+| **Subject（被觀察者）** | 維護觀察者清單，狀態變化時發出通知 |
+| **Observer（觀察者）** | 定義接收通知的介面 |
+| **Subscribe/Unsubscribe** | 動態新增或移除觀察者 |
+| **核心好處** | 鬆耦合 — Subject 不需要知道 Observer 的具體型別 |
+| **代價** | 通知鏈難追蹤、忘記取消訂閱會記憶體洩漏 |

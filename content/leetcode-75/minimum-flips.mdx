@@ -1,0 +1,121 @@
+---
+title: "1318. Minimum Flips to Make a OR b Equal to c"
+order: 69
+description: "逐位元分析，根據 c 的每一位決定 a 和 b 需要翻轉幾次"
+---
+
+# Minimum Flips to Make a OR b Equal to c
+
+<ELI5>
+你有三個數字 a、b、c。你想透過翻轉 a 和 b 的某些位元（0 變 1 或 1 變 0），讓 `a OR b == c`。
+
+把它想成開關：c 的每一位告訴你「這盞燈要開還是關」。a 和 b 各有一排開關，OR 的意思是只要 a 或 b 任一個打開，燈就亮。
+
+- 如果 c 要「亮」（1）：a 或 b 至少有一個是 1 就好，都是 0 的話翻一個就行
+- 如果 c 要「暗」（0）：a 和 b 都必須是 0，有幾個 1 就要翻幾次
+</ELI5>
+
+## 題目描述
+
+給定三個正整數 a, b, c。回傳翻轉 a 和 b 中位元的最少次數，使得 `a OR b == c`。翻轉一位算一次操作。
+
+```
+輸入：a = 2, b = 6, c = 5
+輸出：3
+解釋：翻轉後 a=1(001), b=4(100)，1 OR 4 = 5
+
+輸入：a = 4, b = 2, c = 7
+輸出：1
+```
+
+## 解題思路
+
+<StepDiagram data='[{"title":"逐位元檢查","description":"從最低位到最高位，逐一檢查 a、b、c 的每一位","icon":"1"},{"title":"c 位元 = 1","description":"需要 a|b = 1：若 a 和 b 都是 0，翻轉 1 次","icon":"2"},{"title":"c 位元 = 0","description":"需要 a=0 且 b=0：a 是 1 翻一次，b 是 1 翻一次","icon":"3"},{"title":"累加翻轉數","description":"所有位元的翻轉次數加總","icon":"4"}]' />
+
+## 程式碼
+
+### C#
+```csharp
+public class Solution {
+    public int MinFlips(int a, int b, int c) {
+        int flips = 0;
+        while (a > 0 || b > 0 || c > 0) {
+            int bitA = a & 1, bitB = b & 1, bitC = c & 1;
+            
+            if (bitC == 1) {
+                // 需要 a|b = 1：至少一個是 1
+                if (bitA == 0 && bitB == 0) flips += 1;
+            } else {
+                // 需要 a=0 且 b=0：每個 1 都要翻
+                flips += bitA + bitB;
+            }
+            
+            a >>= 1; b >>= 1; c >>= 1;
+        }
+        return flips;
+    }
+}
+```
+
+### TypeScript
+```typescript
+function minFlips(a: number, b: number, c: number): number {
+    let flips = 0;
+    while (a > 0 || b > 0 || c > 0) {
+        const bitA = a & 1, bitB = b & 1, bitC = c & 1;
+        
+        if (bitC === 1) {
+            if (bitA === 0 && bitB === 0) flips += 1;
+        } else {
+            flips += bitA + bitB; // 每個 1 都要翻成 0
+        }
+        
+        a >>= 1; b >>= 1; c >>= 1;
+    }
+    return flips;
+}
+```
+
+### Python
+```python
+def minFlips(a: int, b: int, c: int) -> int:
+    flips = 0
+    while a or b or c:
+        bit_a, bit_b, bit_c = a & 1, b & 1, c & 1
+        
+        if bit_c == 1:
+            # 需要至少一個 1
+            if bit_a == 0 and bit_b == 0:
+                flips += 1
+        else:
+            # 兩個都必須是 0
+            flips += bit_a + bit_b
+        
+        a >>= 1; b >>= 1; c >>= 1
+    
+    return flips
+```
+
+## 複雜度分析
+
+| | Time | Space |
+|--|------|-------|
+| 本解法 | O(max(log a, log b, log c)) | O(1) |
+
+## 圖解
+
+<Diagram data='{"nodes":[{"id":"bits","label":"逐位元比較 a,b,c","type":"default"},{"id":"c1","label":"c=1: 需要 a|b=1","type":"highlight"},{"id":"c0","label":"c=0: 需要 a=b=0","type":"highlight"},{"id":"flip0","label":"都是0 → 翻1次","type":"muted"},{"id":"flip1","label":"有幾個1翻幾次","type":"muted"},{"id":"total","label":"累加所有翻轉","type":"default"}],"edges":[{"from":"bits","to":"c1","label":"c位=1"},{"from":"bits","to":"c0","label":"c位=0"},{"from":"c1","to":"flip0","label":"a=b=0"},{"from":"c0","to":"flip1","label":"計數1"},{"from":"flip0","to":"total","label":"+1"},{"from":"flip1","to":"total","label":"+count"}]}' />
+
+## 進階觀點
+
+<Callout type="tip" title="面試追問">
+- 為什麼 c=0 時可能需要翻 2 次（a 和 b 都是 1），但 c=1 時最多只翻 1 次？因為 OR 是「至少一個 1 就行」，只要翻一個 0→1 就滿足。但 c=0 要求兩邊都是 0，每個 1 都要翻。
+- 位元運算技巧：也可以用 `(a | b) ^ c` 找出需要改變的位，再用 `a & b & ((a | b) ^ c)` 找出需要額外翻轉的位（a 和 b 都是 1 且 c 是 0 的情況）。
+- 這種逐位元分析的思路也適用於其他位元操作題。
+</Callout>
+
+## 理解測驗
+
+<Quiz data='{"question":"當 c 的某一位是 0，而 a 和 b 的對應位都是 1 時，需要翻轉幾次？","options":["0 次","1 次","2 次","3 次"],"answer":2,"explanation":"c=0 要求 a|b=0，也就是 a 和 b 都必須是 0。兩個都是 1 的話，各要翻轉一次，共 2 次。"}' />
+
+<Quiz data='{"question":"當 c 的某一位是 1，而 a=1, b=0 時，需要翻轉幾次？","options":["0 次","1 次","2 次","無法確定"],"answer":0,"explanation":"c=1 只需要 a|b=1，已經有 a=1 了，a|b 已經是 1，不需要任何翻轉。"}' />

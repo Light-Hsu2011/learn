@@ -1,0 +1,99 @@
+---
+title: "1071. Greatest Common Divisor of Strings"
+order: 2
+description: "用 GCD 長度截取候選字串並驗證是否能重複拼成原字串"
+---
+
+# Greatest Common Divisor of Strings
+
+<ELI5>
+想像你有兩條不同長度的彩色紙帶，每條紙帶都是由同一種「基本圖案」重複貼出來的。你的任務是找出最長的那個「基本圖案」。
+
+比如一條紙帶是「abcabc」，另一條是「abc」— 它們的「基本圖案」就是「abc」。就像找兩個數字的最大公因數，只不過這裡是字串版本！
+</ELI5>
+
+## 題目描述
+
+給定兩個字串 `str1` 和 `str2`，找出能同時整除兩個字串的最長字串。字串 `t` 能整除字串 `s` 表示 `s` 可以由 `t` 重複拼接而成。
+
+```
+輸入：str1 = "ABCABC", str2 = "ABC"
+輸出："ABC"
+
+輸入：str1 = "ABABAB", str2 = "ABAB"
+輸出："AB"
+
+輸入：str1 = "LEET", str2 = "CODE"
+輸出：""
+```
+
+## 解題思路
+
+<StepDiagram data='[{"title":"檢查可行性","description":"若 str1+str2 !== str2+str1，則不存在公因子字串","icon":"1"},{"title":"求 GCD 長度","description":"對兩字串長度求最大公因數","icon":"2"},{"title":"截取候選","description":"取 str1 的前 gcd_len 個字元作為答案","icon":"3"}]' />
+
+## 程式碼
+
+### C#
+
+```csharp
+public class Solution {
+    public string GcdOfStrings(string str1, string str2) {
+        // 若拼接順序不同結果不同，代表沒有公因子
+        if (str1 + str2 != str2 + str1) return "";
+        // 用 GCD 求出最大公因子長度
+        int gcdLen = Gcd(str1.Length, str2.Length);
+        return str1.Substring(0, gcdLen);
+    }
+
+    private int Gcd(int a, int b) => b == 0 ? a : Gcd(b, a % b);
+}
+```
+
+### TypeScript
+
+```typescript
+function gcdOfStrings(str1: string, str2: string): string {
+    // 拼接檢查
+    if (str1 + str2 !== str2 + str1) return "";
+    const gcd = (a: number, b: number): number => b === 0 ? a : gcd(b, a % b);
+    return str1.substring(0, gcd(str1.length, str2.length));
+}
+```
+
+### Python
+
+```python
+from math import gcd
+
+def gcdOfStrings(str1: str, str2: str) -> str:
+    # 拼接檢查：如果沒有公因子，拼接順序會不同
+    if str1 + str2 != str2 + str1:
+        return ""
+    return str1[:gcd(len(str1), len(str2))]
+```
+
+## 複雜度分析
+
+| | Time | Space |
+|--|------|-------|
+| 本解法 | O(n + m) | O(n + m) |
+
+拼接比較需要 O(n+m)，GCD 計算為 O(log(min(n,m)))。
+
+## 圖解
+
+<Diagram data='{"nodes":[{"id":"s1","label":"str1: ABCABC","type":"default"},{"id":"s2","label":"str2: ABC","type":"default"},{"id":"check","label":"拼接檢查相等","type":"highlight"},{"id":"gcd","label":"GCD(6,3) = 3","type":"highlight"},{"id":"result","label":"ABC","type":"muted"}],"edges":[{"from":"s1","to":"check","label":""},{"from":"s2","to":"check","label":""},{"from":"check","to":"gcd","label":"通過"},{"from":"gcd","to":"result","label":"取前3字元"}]}' />
+
+## 進階觀點
+
+<Callout type="tip" title="面試追問">
+- **為什麼 str1+str2 === str2+str1 就保證有公因子？** 這是充要條件 — 若存在公因子 t，兩字串都由 t 重複組成，交換拼接順序不影響結果。
+- **暴力法怎麼做？** 從最長可能的候選開始（即較短字串），逐步縮短到能整除兩個長度的長度，逐一驗證。
+- **時間複雜度的瓶頸在哪？** 在字串拼接比較，不是 GCD 計算。
+</Callout>
+
+## 理解測驗
+
+<Quiz data='{"question":"str1 = \"LEET\", str2 = \"CODE\"，為什麼答案是空字串？","options":["因為長度不同","因為 LEET+CODE !== CODE+LEET","因為沒有共同字元","因為長度的 GCD 是 1"],"answer":1,"explanation":"LEETCODE !== CODELEET，拼接順序不同代表不存在公因子字串。"}' />
+
+<Quiz data='{"question":"GCD 在這題中扮演什麼角色？","options":["用來排序字串","決定公因子字串的長度","計算字元頻率","判斷字串是否相等"],"answer":1,"explanation":"公因子字串的長度必定是兩字串長度的最大公因數，因為它必須能整除兩者。"}' />

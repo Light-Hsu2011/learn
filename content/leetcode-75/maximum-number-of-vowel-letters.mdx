@@ -1,0 +1,117 @@
+---
+title: "1456. Maximum Number of Vowel Letters in a Substring"
+order: 15
+description: "用固定大小滑動窗口計算子字串中的母音數量"
+---
+
+# Maximum Number of Vowel Letters in a Substring
+
+<ELI5>
+跟上一題類似 — 你在一排字母中滑動一個固定寬度的窗口，但這次不是算數字的和，而是數窗口裡有幾個母音（a, e, i, o, u）。
+
+窗口每滑動一格：如果新進來的是母音就 +1，如果滑出去的是母音就 -1。全程追蹤最大值。
+</ELI5>
+
+## 題目描述
+
+給定字串 `s` 和整數 `k`，回傳長度為 `k` 的子字串中最多包含多少個母音字母。
+
+```
+輸入：s = "abciiidef", k = 3
+輸出：3（子字串 "iii"）
+
+輸入：s = "aeiou", k = 2
+輸出：2
+
+輸入：s = "leetcode", k = 3
+輸出：2（子字串 "lee" 或 "eet"）
+```
+
+## 解題思路
+
+<StepDiagram data='[{"title":"初始窗口","description":"計算前 k 個字元中母音的數量","icon":"1"},{"title":"滑動","description":"右邊進來的字元是母音就 +1","icon":"2"},{"title":"移除","description":"左邊離開的字元是母音就 -1","icon":"3"},{"title":"更新最大值","description":"每次滑動後比較並更新 maxVowels","icon":"4"}]' />
+
+## 程式碼
+
+### C#
+
+```csharp
+public class Solution {
+    public int MaxVowels(string s, int k) {
+        var vowels = new HashSet<char>("aeiou");
+        int count = 0;
+        // 初始窗口
+        for (int i = 0; i < k; i++)
+            if (vowels.Contains(s[i])) count++;
+        int maxCount = count;
+
+        // 滑動窗口
+        for (int i = k; i < s.Length; i++) {
+            if (vowels.Contains(s[i])) count++;
+            if (vowels.Contains(s[i - k])) count--;
+            maxCount = Math.Max(maxCount, count);
+        }
+        return maxCount;
+    }
+}
+```
+
+### TypeScript
+
+```typescript
+function maxVowels(s: string, k: number): number {
+    const vowels = new Set("aeiou");
+    let count = 0;
+    for (let i = 0; i < k; i++)
+        if (vowels.has(s[i])) count++;
+    let maxCount = count;
+
+    for (let i = k; i < s.length; i++) {
+        if (vowels.has(s[i])) count++;
+        if (vowels.has(s[i - k])) count--;
+        maxCount = Math.max(maxCount, count);
+    }
+    return maxCount;
+}
+```
+
+### Python
+
+```python
+def maxVowels(s: str, k: int) -> int:
+    vowels = set("aeiou")
+    count = sum(1 for c in s[:k] if c in vowels)
+    max_count = count
+
+    for i in range(k, len(s)):
+        count += (s[i] in vowels) - (s[i - k] in vowels)
+        max_count = max(max_count, count)
+
+    return max_count
+```
+
+## 複雜度分析
+
+| | Time | Space |
+|--|------|-------|
+| 本解法 | O(n) | O(1) |
+
+一次遍歷，母音集合大小固定為 O(1)。
+
+## 圖解
+
+<Diagram data='{"nodes":[{"id":"input","label":"s=abciiidef, k=3","type":"default"},{"id":"w1","label":"[abc] vowels=1","type":"default"},{"id":"w2","label":"[bci] vowels=1","type":"default"},{"id":"w3","label":"[cii] vowels=2","type":"default"},{"id":"w4","label":"[iii] vowels=3","type":"highlight"},{"id":"result","label":"maxVowels = 3","type":"muted"}],"edges":[{"from":"input","to":"w1","label":"初始"},{"from":"w1","to":"w2","label":"滑動"},{"from":"w2","to":"w3","label":"滑動"},{"from":"w3","to":"w4","label":"滑動"},{"from":"w4","to":"result","label":"最大值"}]}' />
+
+## 進階觀點
+
+<Callout type="tip" title="面試追問">
+- **跟上一題（Maximum Average Subarray）的差別？** 本質相同，只是「窗口值」從數字之和變成滿足條件的元素計數。
+- **如果窗口大小不固定？** 那就要用可變大小的滑動窗口（如 Longest Substring Without Repeating Characters）。
+- **提前終止？** 如果 maxCount == k，可以直接回傳（窗口裡全是母音）。
+</Callout>
+
+## 理解測驗
+
+<Quiz data='{"question":"Python 中 (s[i] in vowels) - (s[i-k] in vowels) 這個寫法為什麼能用？","options":["因為 Python 的 in 回傳數字","因為 Python 的 bool 是 int 的子類別，True=1、False=0，可以直接做算術","因為 Python 自動型別轉換","因為 Set 的特殊行為"],"answer":1,"explanation":"Python 的 True/False 就是 1/0，可以直接做加減運算。"}' />
+
+<Quiz data='{"question":"如果 s 全部是子音（沒有母音），結果是什麼？","options":["k","0","-1","error"],"answer":1,"explanation":"每個窗口的母音數都是 0，maxCount 始終為 0。"}' />

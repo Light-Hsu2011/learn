@@ -1,0 +1,178 @@
+---
+title: "994. Rotting Oranges"
+order: 48
+description: "多源 BFS 模擬腐爛橘子向四方擴散的過程"
+---
+
+# Rotting Oranges
+
+<ELI5>
+想像一個水果攤上擺滿了橘子。有些橘子已經爛了（值為 2），每過一分鐘，爛橘子會讓上下左右相鄰的新鮮橘子（值為 1）也變爛。
+
+你要算出所有橘子都爛掉需要幾分鐘？如果有些橘子永遠不會爛（被牆或空格隔開），回傳 -1。
+
+這是「多源 BFS」— 所有爛橘子同時開始擴散，就像多個火源同時點燃。
+</ELI5>
+
+## 題目描述
+
+給定一個 m×n 的網格，0 是空格，1 是新鮮橘子，2 是腐爛橘子。每分鐘，腐爛橘子的四鄰新鮮橘子會變腐爛。回傳所有橘子變爛的最少分鐘數，若不可能回傳 -1。
+
+```
+輸入: grid = [[2,1,1],[1,1,0],[0,1,1]]
+輸出: 4
+
+輸入: grid = [[2,1,1],[0,1,1],[1,0,1]]
+輸出: -1
+解釋: 左下角的橘子永遠不會爛
+```
+
+## 解題思路
+
+<StepDiagram data='[{"title":"收集所有爛橘子","description":"掃描網格，把所有 2 的位置加入 Queue，同時計數新鮮橘子","icon":"1"},{"title":"多源 BFS","description":"所有爛橘子同時開始擴散","icon":"2"},{"title":"每一輪 = 一分鐘","description":"處理 Queue 中當前層的所有爛橘子","icon":"3"},{"title":"感染鄰居","description":"四方向的新鮮橘子變爛，加入 Queue","icon":"4"},{"title":"檢查結果","description":"新鮮橘子數量 == 0？是→回傳分鐘數，否→-1","icon":"5"}]' />
+
+## 程式碼
+
+### C#
+
+```csharp
+public class Solution {
+    public int OrangesRotting(int[][] grid) {
+        int m = grid.Length, n = grid[0].Length;
+        var queue = new Queue<(int r, int c)>();
+        int fresh = 0;
+
+        // 收集所有爛橘子，計數新鮮橘子
+        for (int r = 0; r < m; r++) {
+            for (int c = 0; c < n; c++) {
+                if (grid[r][c] == 2) queue.Enqueue((r, c));
+                else if (grid[r][c] == 1) fresh++;
+            }
+        }
+
+        if (fresh == 0) return 0;
+
+        int[][] dirs = { new[]{0,1}, new[]{0,-1}, new[]{1,0}, new[]{-1,0} };
+        int minutes = 0;
+
+        while (queue.Count > 0 && fresh > 0) {
+            minutes++;
+            int size = queue.Count;
+            for (int i = 0; i < size; i++) {
+                var (r, c) = queue.Dequeue();
+                foreach (var d in dirs) {
+                    int nr = r + d[0], nc = c + d[1];
+                    if (nr >= 0 && nr < m && nc >= 0 && nc < n && grid[nr][nc] == 1) {
+                        grid[nr][nc] = 2;
+                        fresh--;
+                        queue.Enqueue((nr, nc));
+                    }
+                }
+            }
+        }
+        return fresh == 0 ? minutes : -1;
+    }
+}
+```
+
+### TypeScript
+
+```typescript
+function orangesRotting(grid: number[][]): number {
+    const m = grid.length, n = grid[0].length;
+    const queue: [number, number][] = [];
+    let fresh = 0;
+
+    for (let r = 0; r < m; r++) {
+        for (let c = 0; c < n; c++) {
+            if (grid[r][c] === 2) queue.push([r, c]);
+            else if (grid[r][c] === 1) fresh++;
+        }
+    }
+
+    if (fresh === 0) return 0;
+
+    const dirs = [[0, 1], [0, -1], [1, 0], [-1, 0]];
+    let minutes = 0;
+
+    while (queue.length > 0 && fresh > 0) {
+        minutes++;
+        const size = queue.length;
+        for (let i = 0; i < size; i++) {
+            const [r, c] = queue.shift()!;
+            for (const [dr, dc] of dirs) {
+                const nr = r + dr, nc = c + dc;
+                if (nr >= 0 && nr < m && nc >= 0 && nc < n && grid[nr][nc] === 1) {
+                    grid[nr][nc] = 2;
+                    fresh--;
+                    queue.push([nr, nc]);
+                }
+            }
+        }
+    }
+    return fresh === 0 ? minutes : -1;
+}
+```
+
+### Python
+
+```python
+from collections import deque
+
+def orangesRotting(grid: list[list[int]]) -> int:
+    m, n = len(grid), len(grid[0])
+    queue = deque()
+    fresh = 0
+
+    for r in range(m):
+        for c in range(n):
+            if grid[r][c] == 2:
+                queue.append((r, c))
+            elif grid[r][c] == 1:
+                fresh += 1
+
+    if fresh == 0:
+        return 0
+
+    dirs = [(0, 1), (0, -1), (1, 0), (-1, 0)]
+    minutes = 0
+
+    while queue and fresh > 0:
+        minutes += 1
+        for _ in range(len(queue)):
+            r, c = queue.popleft()
+            for dr, dc in dirs:
+                nr, nc = r + dr, c + dc
+                if 0 <= nr < m and 0 <= nc < n and grid[nr][nc] == 1:
+                    grid[nr][nc] = 2
+                    fresh -= 1
+                    queue.append((nr, nc))
+
+    return minutes if fresh == 0 else -1
+```
+
+## 複雜度分析
+
+| | Time | Space |
+|--|------|-------|
+| 本解法 | O(m × n) | O(m × n) |
+
+## 圖解
+
+<Diagram data='{"nodes":[{"id":"t0","label":"t=0: 爛[0,0]","type":"muted"},{"id":"t1","label":"t=1: [0,1],[1,0] 爛","type":"default"},{"id":"t2","label":"t=2: [0,2],[1,1] 爛","type":"default"},{"id":"t3","label":"t=3: [2,1] 爛","type":"default"},{"id":"t4","label":"t=4: [2,2] 爛","type":"highlight"}],"edges":[{"from":"t0","to":"t1","label":"1 分鐘"},{"from":"t1","to":"t2","label":"1 分鐘"},{"from":"t2","to":"t3","label":"1 分鐘"},{"from":"t3","to":"t4","label":"1 分鐘"}]}' />
+
+## 進階觀點
+
+<Callout type="tip" title="面試追問">
+**多源 BFS vs 單源 BFS**：單源 BFS 從一個起點擴散，多源 BFS 從所有起點同時擴散。概念上等於加了一個虛擬超級源點連接所有真正的起點。
+
+**邊界條件**：沒有新鮮橘子時直接回傳 0（不是 -1）。這是常見的 edge case 陷阱。
+
+**變體題**：LC 286 Walls and Gates（多源 BFS 求距離）、LC 1162 As Far from Land as Possible。
+</Callout>
+
+## 理解測驗
+
+<Quiz data='{"question":"為什麼所有爛橘子要同時放入 Queue，而不是一個一個處理？","options":["為了程式碼簡潔","因為所有爛橘子同時開始腐爛鄰居，是多源同時擴散","因為 Queue 要求一次放滿","因為效能考量"],"answer":1,"explanation":"題目說每分鐘所有爛橘子都會同時感染鄰居。多源 BFS 模擬了這個同時擴散的過程。"}' />
+
+<Quiz data='{"question":"如果一開始就沒有新鮮橘子，答案是什麼？","options":["0","1","-1","取決於爛橘子數量"],"answer":0,"explanation":"沒有新鮮橘子 = 不需要任何時間，所有橘子已經都爛了（或根本沒有橘子）。回傳 0。"}' />

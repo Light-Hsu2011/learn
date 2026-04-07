@@ -1,0 +1,302 @@
+---
+title: "Decorator Pattern"
+order: 10
+description: "動態地為物件附加額外的責任，比繼承更靈活"
+---
+
+# Decorator Pattern（裝飾器模式）
+
+<ELI5>
+想像你去手搖飲料店點了一杯**綠茶**。然後你說：「加珍珠！」店員不會倒掉你的茶重做一杯，而是在原本的茶上面**加珍珠**。你又說：「再加椰果！」一樣，直接在現有的飲料上加。
+
+每加一種料，飲料就多一層「裝飾」，但**基底的綠茶始終在那裡**。你可以隨意組合：綠茶 + 珍珠、綠茶 + 椰果、綠茶 + 珍珠 + 椰果 + 布丁...
+
+Decorator Pattern 就是這個概念 — 不改變原本的物件，一層一層往外「包」新功能上去。
+</ELI5>
+
+## 是什麼？
+
+Decorator Pattern 動態地為物件**附加額外的職責**。它用「包裝」的方式擴充功能，不需要修改原始類別，也不需要建立大量的子類別。每個 Decorator 包住前一個物件，形成一條裝飾鏈。
+
+<Callout type="info" title="GoF 分類">
+Decorator 屬於**結構型模式（Structural Pattern）**，重點在於如何組合類別和物件以形成更大的結構。
+</Callout>
+
+## 什麼時候用？
+
+- 你想在**不修改原始類別**的前提下增加功能
+- 你需要**靈活組合**多種功能（而非每種組合都開一個子類別）
+- 功能可以一層一層**疊加**上去（日誌、加密、壓縮、快取）
+
+## 什麼時候不該用？
+
+<Callout type="warning" title="過度設計警告">
+如果功能組合很少（只有一兩種），直接用繼承或在原始類別中加方法更簡單。Decorator 一層包一層的結構在除錯時會比較難追蹤呼叫鏈。裝飾器的順序也可能影響結果（先加密再壓縮 vs 先壓縮再加密），需要特別注意。
+</Callout>
+
+## 執行流程
+
+<StepDiagram data='[{"title":"定義 Component 介面","description":"宣告原始物件和裝飾器共用的方法","icon":"1"},{"title":"實作具體 Component","description":"基礎物件，提供核心功能","icon":"2"},{"title":"建立 Decorator 基底類別","description":"實作 Component 介面，持有另一個 Component 的參考","icon":"3"},{"title":"實作具體 Decorator","description":"在委派給內部 Component 的前後加上新功能","icon":"4"},{"title":"組合裝飾","description":"一層包一層，動態組合所需的功能","icon":"5"}]' />
+
+## 程式碼範例
+
+### C# 版本
+
+```csharp
+// Component 介面
+public interface IMessage
+{
+    string GetContent();
+}
+
+// 具體 Component
+public class PlainMessage : IMessage
+{
+    private readonly string _text;
+
+    public PlainMessage(string text) { _text = text; }
+
+    public string GetContent() => _text;
+}
+
+// Decorator 基底
+public abstract class MessageDecorator : IMessage
+{
+    protected readonly IMessage Inner;
+
+    protected MessageDecorator(IMessage inner) { Inner = inner; }
+
+    public abstract string GetContent();
+}
+
+// 具體 Decorator：加密
+public class EncryptedMessage : MessageDecorator
+{
+    public EncryptedMessage(IMessage inner) : base(inner) { }
+
+    public override string GetContent()
+    {
+        var original = Inner.GetContent();
+        return $"[ENCRYPTED]{Convert.ToBase64String(
+            System.Text.Encoding.UTF8.GetBytes(original))}[/ENCRYPTED]";
+    }
+}
+
+// 具體 Decorator：加上時間戳記
+public class TimestampedMessage : MessageDecorator
+{
+    public TimestampedMessage(IMessage inner) : base(inner) { }
+
+    public override string GetContent()
+        => $"[{DateTime.Now:HH:mm:ss}] {Inner.GetContent()}";
+}
+
+// 具體 Decorator：加上簽名
+public class SignedMessage : MessageDecorator
+{
+    private readonly string _signer;
+
+    public SignedMessage(IMessage inner, string signer) : base(inner)
+    {
+        _signer = signer;
+    }
+
+    public override string GetContent()
+        => $"{Inner.GetContent()} -- Signed by {_signer}";
+}
+
+// 使用：自由組合裝飾器
+IMessage msg = new PlainMessage("Hello, Design Patterns!");
+msg = new TimestampedMessage(msg);
+msg = new SignedMessage(msg, "Alice");
+Console.WriteLine(msg.GetContent());
+// [14:30:00] Hello, Design Patterns! -- Signed by Alice
+```
+
+### TypeScript 版本
+
+```typescript
+// Component 介面
+interface Message {
+  getContent(): string;
+}
+
+// 具體 Component
+class PlainMessage implements Message {
+  constructor(private text: string) {}
+
+  getContent(): string {
+    return this.text;
+  }
+}
+
+// 具體 Decorator：時間戳記
+class TimestampedMessage implements Message {
+  constructor(private inner: Message) {}
+
+  getContent(): string {
+    const time = new Date().toLocaleTimeString();
+    return `[${time}] ${this.inner.getContent()}`;
+  }
+}
+
+// 具體 Decorator：簽名
+class SignedMessage implements Message {
+  constructor(private inner: Message, private signer: string) {}
+
+  getContent(): string {
+    return `${this.inner.getContent()} -- Signed by ${this.signer}`;
+  }
+}
+
+// 具體 Decorator：大寫轉換
+class UpperCaseMessage implements Message {
+  constructor(private inner: Message) {}
+
+  getContent(): string {
+    return this.inner.getContent().toUpperCase();
+  }
+}
+
+// 使用
+let msg: Message = new PlainMessage("Hello, Design Patterns!");
+msg = new TimestampedMessage(msg);
+msg = new SignedMessage(msg, "Alice");
+console.log(msg.getContent());
+```
+
+### Python 版本
+
+```python
+from abc import ABC, abstractmethod
+from datetime import datetime
+
+# Component 介面
+class Message(ABC):
+    @abstractmethod
+    def get_content(self) -> str:
+        pass
+
+# 具體 Component
+class PlainMessage(Message):
+    def __init__(self, text: str):
+        self._text = text
+
+    def get_content(self) -> str:
+        return self._text
+
+# 具體 Decorator：時間戳記
+class TimestampedMessage(Message):
+    def __init__(self, inner: Message):
+        self._inner = inner
+
+    def get_content(self) -> str:
+        time = datetime.now().strftime("%H:%M:%S")
+        return f"[{time}] {self._inner.get_content()}"
+
+# 具體 Decorator：簽名
+class SignedMessage(Message):
+    def __init__(self, inner: Message, signer: str):
+        self._inner = inner
+        self._signer = signer
+
+    def get_content(self) -> str:
+        return f"{self._inner.get_content()} -- Signed by {self._signer}"
+
+# 具體 Decorator：大寫轉換
+class UpperCaseMessage(Message):
+    def __init__(self, inner: Message):
+        self._inner = inner
+
+    def get_content(self) -> str:
+        return self._inner.get_content().upper()
+
+# 使用
+msg: Message = PlainMessage("Hello, Design Patterns!")
+msg = TimestampedMessage(msg)
+msg = SignedMessage(msg, "Alice")
+print(msg.get_content())
+```
+
+### Java 版本
+
+```java
+// Component 介面
+public interface Message {
+    String getContent();
+}
+
+// 具體 Component
+public class PlainMessage implements Message {
+    private final String text;
+
+    public PlainMessage(String text) { this.text = text; }
+
+    public String getContent() { return text; }
+}
+
+// 具體 Decorator：時間戳記
+public class TimestampedMessage implements Message {
+    private final Message inner;
+
+    public TimestampedMessage(Message inner) { this.inner = inner; }
+
+    public String getContent() {
+        String time = java.time.LocalTime.now().toString().substring(0, 8);
+        return "[" + time + "] " + inner.getContent();
+    }
+}
+
+// 具體 Decorator：簽名
+public class SignedMessage implements Message {
+    private final Message inner;
+    private final String signer;
+
+    public SignedMessage(Message inner, String signer) {
+        this.inner = inner;
+        this.signer = signer;
+    }
+
+    public String getContent() {
+        return inner.getContent() + " -- Signed by " + signer;
+    }
+}
+
+// 使用
+Message msg = new PlainMessage("Hello, Design Patterns!");
+msg = new TimestampedMessage(msg);
+msg = new SignedMessage(msg, "Alice");
+System.out.println(msg.getContent());
+```
+
+## 結構圖
+
+<Diagram data='{"nodes":[{"id":"client","label":"Client","type":"muted"},{"id":"component","label":"Component (Message)","type":"highlight"},{"id":"concrete","label":"ConcreteComponent (PlainMessage)","type":"default"},{"id":"decorator","label":"Decorator Base","type":"highlight"},{"id":"decoratorA","label":"TimestampedMessage","type":"default"},{"id":"decoratorB","label":"SignedMessage","type":"default"}],"edges":[{"from":"client","to":"component","label":"uses"},{"from":"concrete","to":"component","label":"implements"},{"from":"decorator","to":"component","label":"implements & wraps"},{"from":"decoratorA","to":"decorator","label":"extends"},{"from":"decoratorB","to":"decorator","label":"extends"}]}' />
+
+## 實戰補充
+
+<Callout type="tip" title="資深開發者經驗">
+Decorator 在 .NET 中最經典的應用是 **Stream 的層層包裝**：`FileStream` → `BufferedStream` → `GZipStream` → `CryptoStream`，每一層都是一個 Decorator。ASP.NET Core 的 Middleware Pipeline 也是 Decorator 的變體 — 每個 Middleware 包住下一個，依序處理 Request/Response。在 Java 世界，`java.io` 整個體系就是 Decorator Pattern 的教科書實作。設計時注意裝飾器的**順序**：先壓縮再加密和先加密再壓縮的結果完全不同。
+</Callout>
+
+## 理解測驗
+
+<Quiz data='{"question":"Decorator Pattern 比繼承更靈活的原因是什麼？","options":["Decorator 執行速度更快","Decorator 可以在執行時動態組合功能，繼承在編譯時就固定了","Decorator 的程式碼更少","Decorator 不需要介面"],"answer":1,"explanation":"繼承在編譯時就決定了類別結構，而 Decorator 可以在執行時自由組合不同的裝飾器，靈活度更高。"}' />
+
+<Quiz data='{"question":"以下哪個是 Decorator Pattern 在實務中的應用？","options":["React 的 Virtual DOM","Java 的 BufferedInputStream 包裝 FileInputStream",".NET 的 Garbage Collection","Python 的 List Comprehension"],"answer":1,"explanation":"Java IO 中 BufferedInputStream 包裝 FileInputStream 是經典的 Decorator 應用，一層包一層來疊加緩衝、壓縮、加密等功能。"}' />
+
+<Quiz data='{"question":"Decorator 和被裝飾的物件之間是什麼關係？","options":["Decorator 繼承被裝飾的物件","Decorator 和被裝飾的物件實作相同的介面，且 Decorator 持有被裝飾物件的參考","被裝飾的物件持有 Decorator 的參考","兩者沒有任何關係"],"answer":1,"explanation":"Decorator 和被裝飾物件都實作相同的 Component 介面，Decorator 內部持有一個 Component 參考，在自己的方法中先/後委派給內部物件。"}' />
+
+## 重點整理
+
+<Callout type="tip" title="一句話記住">
+**Decorator Pattern = 一層包一層，動態疊加功能而不修改原始物件。**
+</Callout>
+
+| 概念 | 說明 |
+|------|------|
+| **Component（共用介面）** | 原始物件和裝飾器共同的介面 |
+| **ConcreteComponent** | 基礎物件，提供核心功能 |
+| **Decorator** | 實作 Component 介面，持有另一個 Component |
+| **核心好處** | 比繼承更靈活的功能擴充，遵循開放封閉原則 |
+| **代價** | 多層包裝增加除錯難度，裝飾器順序可能影響結果 |

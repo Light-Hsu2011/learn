@@ -1,0 +1,205 @@
+---
+title: "設計分散式檔案儲存"
+order: 13
+description: "雲端儲存的核心：同步、衝突解決、元資料管理"
+---
+
+# 設計分散式檔案儲存
+
+<ELI5>
+想像一個**多人共用的雲端硬碟**：
+
+你在公司電腦上改了一份簡報，回家打開筆電，簡報已經自動更新了。你同事也在改同一份檔案——系統得決定**誰的版本算數**，或是幫你們**合併修改**。
+
+這就像一間圖書館有多個分館，每本書都有好幾份副本。你在 A 分館改了一頁，系統要確保 B、C 分館的副本也跟著更新，而且不能搞混誰改了什麼！
+
+核心挑戰：**大檔案怎麼快速同步**、**多人同時改怎麼辦**、**網路斷了怎麼處理**。
+</ELI5>
+
+## 問題定義
+
+<Callout type="info" title="System Design 進階題">
+「設計一個類似 Google Drive / Dropbox 的分散式檔案儲存服務」考驗你對檔案切塊、差異同步（Delta Sync）、衝突解決和元資料管理的掌握程度。
+</Callout>
+
+設計一個雲端檔案儲存服務，支援多裝置同步、版本控制，並能在多人協作時正確處理衝突。
+
+## 需求分析
+
+### Functional Requirements
+
+- 上傳與下載檔案（支援大檔案，數 GB 等級）
+- 跨裝置自動同步
+- 檔案版本控制（查看歷史版本、還原）
+- 分享檔案/資料夾給其他用戶
+
+### Non-Functional Requirements
+
+- **高可靠性**：檔案絕對不能遺失（durability 99.9999999%）
+- **低延遲同步**：小檔案修改後 < 5 秒同步到其他裝置
+- **頻寬效率**：只傳輸有修改的部分，不重傳整個檔案
+- **離線支援**：斷網時可繼續編輯，連線後自動同步
+
+## 注意事項
+
+<Callout type="warning" title="衝突解決是最難的部分">
+兩個用戶同時離線修改同一個檔案，上線後系統面臨衝突。自動合併（如文字檔 diff merge）只對部分檔案格式可行，二進位檔案（如 .pptx）通常只能保留兩個版本讓用戶手動選擇。設計時必須明確定義衝突解決策略。
+</Callout>
+
+## 設計流程
+
+<StepDiagram data='[{"title":"檔案切塊（Block Splitting）","description":"將檔案切成固定大小的 Block，每個 Block 計算 Hash 作為唯一識別","icon":"1"},{"title":"差異比對（Delta Sync）","description":"比對本地與雲端的 Block Hash，只上傳有變更的 Block","icon":"2"},{"title":"元資料更新","description":"在 Metadata DB 記錄檔案結構：哪些 Block 組成這個檔案的哪個版本","icon":"3"},{"title":"通知同步","description":"透過 Notification Service 推送變更通知到其他已連線裝置","icon":"4"},{"title":"衝突偵測與解決","description":"比對版本向量，偵測並處理多裝置同時修改的衝突","icon":"5"}]' />
+
+## 架構設計
+
+### 大檔案切塊（Block Splitting）
+
+將檔案切成 4MB 的 Block，每個 Block 以其內容的 SHA-256 Hash 作為 ID。這帶來兩個好處：
+
+- **去重（Deduplication）**：相同內容的 Block 只存一份
+- **差異同步**：修改檔案後只上傳變更的 Block，節省頻寬
+
+### Delta Sync 流程
+
+1. Client 計算本地檔案所有 Block 的 Hash
+2. 與 Metadata DB 中的版本比對
+3. 只上傳 Hash 不同的 Block
+4. 更新 Metadata，建立新版本記錄
+
+### 程式碼範例：Block Splitting
+
+#### C# 版本
+
+```csharp
+public record FileBlock(string Hash, byte[] Data, int Index);
+
+public class BlockSplitter
+{
+    private const int BlockSize = 4 * 1024 * 1024; // 4MB
+
+    public List<FileBlock> Split(Stream fileStream)
+    {
+        var blocks = new List<FileBlock>();
+        var buffer = new byte[BlockSize];
+        int index = 0;
+        int bytesRead;
+
+        while ((bytesRead = fileStream.Read(buffer, 0, BlockSize)) > 0)
+        {
+            var data = buffer[..bytesRead];
+            var hash = Convert.ToHexString(SHA256.HashData(data)).ToLower();
+            blocks.Add(new FileBlock(hash, data, index++));
+        }
+
+        return blocks;
+    }
+
+    public List<FileBlock> GetChangedBlocks(
+        List<FileBlock> localBlocks, HashSet<string> remoteHashes)
+    {
+        return localBlocks.Where(b => !remoteHashes.Contains(b.Hash)).ToList();
+    }
+}
+```
+
+#### TypeScript 版本
+
+```typescript
+import { createHash } from "crypto";
+
+interface FileBlock {
+  hash: string;
+  data: Buffer;
+  index: number;
+}
+
+const BLOCK_SIZE = 4 * 1024 * 1024; // 4MB
+
+function splitFile(fileBuffer: Buffer): FileBlock[] {
+  const blocks: FileBlock[] = [];
+
+  for (let i = 0; i < fileBuffer.length; i += BLOCK_SIZE) {
+    const data = fileBuffer.subarray(i, i + BLOCK_SIZE);
+    const hash = createHash("sha256").update(data).digest("hex");
+    blocks.push({ hash, data, index: blocks.length });
+  }
+
+  return blocks;
+}
+
+function getChangedBlocks(
+  localBlocks: FileBlock[],
+  remoteHashes: Set<string>
+): FileBlock[] {
+  return localBlocks.filter((b) => !remoteHashes.has(b.hash));
+}
+```
+
+#### Python 版本
+
+```python
+import hashlib
+from dataclasses import dataclass
+
+BLOCK_SIZE = 4 * 1024 * 1024  # 4MB
+
+@dataclass
+class FileBlock:
+    hash: str
+    data: bytes
+    index: int
+
+def split_file(file_path: str) -> list[FileBlock]:
+    blocks = []
+    with open(file_path, "rb") as f:
+        index = 0
+        while chunk := f.read(BLOCK_SIZE):
+            block_hash = hashlib.sha256(chunk).hexdigest()
+            blocks.append(FileBlock(block_hash, chunk, index))
+            index += 1
+    return blocks
+
+def get_changed_blocks(
+    local_blocks: list[FileBlock], remote_hashes: set[str]
+) -> list[FileBlock]:
+    return [b for b in local_blocks if b.hash not in remote_hashes]
+```
+
+## 架構圖
+
+<Diagram data='{"nodes":[{"id":"client","label":"Client (Desktop/Mobile)","type":"muted"},{"id":"api","label":"API Server","type":"default"},{"id":"metadata","label":"Metadata DB","type":"highlight"},{"id":"block-storage","label":"Block Storage","type":"highlight"},{"id":"notify","label":"Notification Service","type":"default"},{"id":"queue","label":"Sync Queue","type":"default"},{"id":"client2","label":"Other Devices","type":"muted"}],"edges":[{"from":"client","to":"api","label":"upload changed blocks"},{"from":"api","to":"block-storage","label":"store blocks"},{"from":"api","to":"metadata","label":"update file version"},{"from":"api","to":"queue","label":"enqueue sync event"},{"from":"queue","to":"notify","label":"dispatch"},{"from":"notify","to":"client2","label":"push notification"},{"from":"client2","to":"api","label":"pull changed blocks"},{"from":"api","to":"block-storage","label":"read blocks"}]}' />
+
+## 延伸討論
+
+<Callout type="tip" title="資深開發者筆記">
+**一致性模型**：Dropbox 採用「最後寫入者勝出」（Last Writer Wins）搭配衝突副本。Google Drive 對 Google Docs 使用 Operational Transformation（OT）實現即時協作。選擇哪種策略取決於檔案類型和協作模式。
+
+**離線支援**：Client 端維護本地資料庫（如 SQLite），記錄所有離線操作。重新連線後，用版本向量（Version Vector）偵測衝突，依序同步變更。Dropbox 的 Client 有超過 50% 的程式碼在處理離線場景。
+
+**Content-Defined Chunking（CDC）**：固定大小切塊有個問題——在檔案開頭插入一段內容，後面所有 Block 的邊界都會移位，導致大量不必要的重傳。CDC（如 Rabin fingerprint）根據內容特徵決定切割點，插入/刪除只影響局部 Block。
+
+**元資料 vs 檔案分離**：Metadata DB 用關聯式資料庫（PostgreSQL）儲存目錄結構、權限、版本歷史；Block Storage 用物件儲存（S3）儲存實際資料。兩者獨立擴展，元資料讀取頻繁可加 Redis 快取。
+</Callout>
+
+## 理解測驗
+
+<Quiz data='{"question":"為什麼要把檔案切成 Block 而不是整個檔案上傳？","options":["切成 Block 可以讓檔案變小","切成 Block 後只需上傳有修改的部分，並且相同內容可以去重","切成 Block 可以提高檔案的安全性","切成 Block 是為了支援不同的檔案格式"],"answer":1,"explanation":"Block Splitting 的兩大好處：Delta Sync（只傳變更的 Block）節省頻寬，Deduplication（相同 Hash 的 Block 只存一份）節省儲存空間。"}' />
+
+<Quiz data='{"question":"兩個用戶同時離線修改同一個二進位檔案（如 .pptx），上線後系統通常如何處理？","options":["自動合併兩人的修改","隨機丟棄其中一人的修改","保留兩個版本作為衝突副本，讓用戶手動選擇","拒絕兩人的修改，要求重新編輯"],"answer":2,"explanation":"二進位檔案無法像文字檔那樣做 diff merge。業界標準做法是保留兩個版本（如 Dropbox 的 Conflicted Copy），讓用戶自行決定保留哪個版本。"}' />
+
+<Quiz data='{"question":"Content-Defined Chunking（CDC）相比固定大小切塊的主要優勢是什麼？","options":["CDC 可以讓檔案壓縮率更高","CDC 的切割點基於內容特徵，檔案中間插入資料不會導致後續所有 Block 重傳","CDC 不需要計算 Hash","CDC 可以處理更大的檔案"],"answer":1,"explanation":"固定大小切塊在檔案開頭插入資料時，後續所有 Block 邊界移位，全部需要重傳。CDC 根據內容特徵（如 Rabin fingerprint）決定切割點，插入只影響局部，大幅減少不必要的同步量。"}' />
+
+## 重點整理
+
+<Callout type="tip" title="一句話記住">
+**分散式檔案儲存 = Block 切塊去重 + Delta Sync 省頻寬 + 版本向量解衝突 + 離線優先設計。**
+</Callout>
+
+| 概念 | 說明 |
+|------|------|
+| **Block Splitting** | 檔案切成固定大小的 Block，以 Hash 識別 |
+| **Delta Sync** | 只同步有變更的 Block，節省頻寬 |
+| **Deduplication** | 相同內容的 Block 只儲存一份 |
+| **Version Vector** | 追蹤各裝置的修改版本，偵測衝突 |
+| **Conflict Resolution** | 文字檔可嘗試 merge，二進位檔保留衝突副本 |
+| **核心挑戰** | 衝突解決、離線支援、大檔案頻寬效率 |

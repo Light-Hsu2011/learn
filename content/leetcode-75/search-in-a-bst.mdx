@@ -1,0 +1,121 @@
+---
+title: "700. Search in a Binary Search Tree"
+order: 41
+description: "利用 BST 左小右大的性質高效搜尋目標值"
+---
+
+# Search in a Binary Search Tree
+
+<ELI5>
+想像你在玩「猜數字」遊戲。每次你猜一個數字，對方會告訴你「太大了」或「太小了」。
+
+BST（Binary Search Tree）就是這樣的結構 — 每個節點的左邊都比它小，右邊都比它大。你不需要每個節點都看，只要根據大小關係決定往左走還是往右走。
+
+就像在字典裡找一個字，你不會從第一頁翻到最後一頁，而是翻到中間看看，然後決定往前翻還是往後翻。
+</ELI5>
+
+## 題目描述
+
+給定一棵 BST 的根節點 root 和一個整數 val，回傳以 val 為根的子樹。如果不存在，回傳 null。
+
+```
+輸入: root = [4,2,7,1,3], val = 2
+輸出: [2,1,3]
+
+輸入: root = [4,2,7,1,3], val = 5
+輸出: null
+```
+
+## 解題思路
+
+<StepDiagram data='[{"title":"比較當前值","description":"root.val 和 val 比較","icon":"1"},{"title":"相等","description":"找到了，回傳當前節點","icon":"2"},{"title":"val 較小","description":"目標在左子樹，往左走","icon":"3"},{"title":"val 較大","description":"目標在右子樹，往右走","icon":"4"}]' />
+
+## 程式碼
+
+### C#
+
+```csharp
+public class Solution {
+    // 迭代解法（推薦）
+    public TreeNode SearchBST(TreeNode root, int val) {
+        while (root != null && root.val != val) {
+            root = val < root.val ? root.left : root.right;
+        }
+        return root;
+    }
+
+    // 遞迴解法
+    public TreeNode SearchBSTRecursive(TreeNode root, int val) {
+        if (root == null || root.val == val) return root;
+        return val < root.val
+            ? SearchBSTRecursive(root.left, val)
+            : SearchBSTRecursive(root.right, val);
+    }
+}
+```
+
+### TypeScript
+
+```typescript
+// 迭代解法
+function searchBST(root: TreeNode | null, val: number): TreeNode | null {
+    while (root && root.val !== val) {
+        root = val < root.val ? root.left : root.right;
+    }
+    return root;
+}
+
+// 遞迴解法
+function searchBSTRecursive(root: TreeNode | null, val: number): TreeNode | null {
+    if (!root || root.val === val) return root;
+    return val < root.val
+        ? searchBSTRecursive(root.left, val)
+        : searchBSTRecursive(root.right, val);
+}
+```
+
+### Python
+
+```python
+# 迭代解法
+def searchBST(root: Optional[TreeNode], val: int) -> Optional[TreeNode]:
+    while root and root.val != val:
+        root = root.left if val < root.val else root.right
+    return root
+
+# 遞迴解法
+def searchBSTRecursive(root: Optional[TreeNode], val: int) -> Optional[TreeNode]:
+    if not root or root.val == val:
+        return root
+    return searchBSTRecursive(root.left, val) if val < root.val \
+        else searchBSTRecursive(root.right, val)
+```
+
+## 複雜度分析
+
+| | Time | Space |
+|--|------|-------|
+| 迭代 | O(h) | O(1) |
+| 遞迴 | O(h) | O(h) |
+
+h 是樹高。平衡 BST 中 h = O(log n)，最壞（skewed）h = O(n)。
+
+## 圖解
+
+<Diagram data='{"nodes":[{"id":"n4","label":"4","type":"default"},{"id":"n2","label":"2 ← 找到！","type":"highlight"},{"id":"n7","label":"7","type":"muted"},{"id":"n1","label":"1","type":"default"},{"id":"n3","label":"3","type":"default"}],"edges":[{"from":"n4","to":"n2","label":"2 < 4, 往左"},{"from":"n2","to":"n1","label":""},{"from":"n2","to":"n3","label":""},{"from":"n4","to":"n7","label":""}]}' />
+
+## 進階觀點
+
+<Callout type="tip" title="面試追問">
+**迭代 vs 遞迴**：面試官通常偏好迭代解法，因為 O(1) 空間且沒有 stack overflow 風險。
+
+**BST 性質的延伸應用**：中序遍歷 BST 會得到排序序列。這個性質在很多題目中都很關鍵。
+
+**變體題**：LC 701 Insert into a BST（插入）、LC 450 Delete Node in a BST（刪除，更複雜）。
+</Callout>
+
+## 理解測驗
+
+<Quiz data='{"question":"為什麼 BST 搜尋比普通二元樹搜尋快？","options":["因為 BST 的節點比較少","因為 BST 左小右大的性質讓我們每步可以排除一半的子樹","因為 BST 一定是平衡的","因為 BST 用了特殊的資料結構"],"answer":1,"explanation":"BST 的核心性質是左子樹 < 根 < 右子樹，每次比較後可以排除一整個子樹，類似二分搜尋。"}' />
+
+<Quiz data='{"question":"BST 搜尋的最壞時間複雜度是什麼？何時發生？","options":["O(1)，永遠是常數","O(log n)，當樹平衡時","O(n)，當樹退化成鏈表時","O(n²)，當有重複元素時"],"answer":2,"explanation":"當 BST 退化成一條直線（每個節點只有一個子節點），搜尋退化為線性掃描 O(n)。"}' />

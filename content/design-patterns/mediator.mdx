@@ -1,0 +1,321 @@
+---
+title: "Mediator Pattern"
+order: 19
+description: "定義一個物件來封裝一組物件之間的互動方式"
+---
+
+# Mediator Pattern（中介者模式）
+
+<ELI5>
+想像一個繁忙的**機場**：
+
+- 如果每架飛機都直接跟其他飛機喊話溝通，10 架飛機就有 45 條溝通線路，一團混亂
+- 所以有了**塔台（Control Tower）**：所有飛機只跟塔台溝通，塔台統一協調
+- 飛機 A 要降落？告訴塔台就好，塔台會通知跑道上的飛機 B 讓開
+
+塔台就是「中介者（Mediator）」。它把「多對多」的混亂溝通變成「多對一」的有序溝通。
+
+就像聊天室一樣——你不用知道其他人的 IP 地址，只要把訊息發到聊天室，聊天室會幫你轉發給所有人。
+</ELI5>
+
+## 是什麼？
+
+Mediator Pattern 定義一個**中介物件**來封裝一組物件之間的互動。各物件不再直接互相引用，而是透過中介者來溝通，降低物件之間的耦合度。
+
+<Callout type="info" title="GoF 分類">
+Mediator 屬於**行為型模式（Behavioral Pattern）**，重點在於用一個中心物件來協調多個物件之間的互動。
+</Callout>
+
+## 什麼時候用？
+
+- 多個物件之間有複雜的交互關係，形成網狀結構
+- 你想把分散在各物件中的互動邏輯集中管理
+- 表單中多個欄位之間有聯動關係（選了 A，B 要跟著變）
+- 你需要一個事件調度中心來協調不同模組
+
+## 什麼時候不該用？
+
+<Callout type="warning" title="過度設計警告">
+Mediator 很容易變成「上帝物件（God Object）」，把所有邏輯都塞進去。如果物件之間只有簡單的一對一關係，直接呼叫就好。當 Mediator 變得過於龐大時，考慮拆分成多個小 Mediator。
+</Callout>
+
+## 執行流程
+
+<StepDiagram data='[{"title":"定義 Mediator 介面","description":"宣告通知方法供 Colleague 呼叫","icon":"1"},{"title":"定義 Colleague 基類","description":"持有 Mediator 參考，事件發生時通知 Mediator","icon":"2"},{"title":"實作具體 Mediator","description":"接收通知後，協調相關 Colleague 的反應","icon":"3"},{"title":"實作具體 Colleague","description":"只跟 Mediator 溝通，不直接引用其他 Colleague","icon":"4"},{"title":"Client 組裝","description":"建立 Mediator 和 Colleague，註冊關係","icon":"5"}]' />
+
+## 程式碼範例
+
+### C# 版本
+
+```csharp
+// 1. Mediator 介面
+public interface IChatRoom
+{
+    void SendMessage(string message, User sender);
+    void AddUser(User user);
+}
+
+// 2. Colleague 基類
+public abstract class User
+{
+    protected IChatRoom ChatRoom;
+    public string Name { get; }
+
+    protected User(string name, IChatRoom chatRoom)
+    {
+        Name = name;
+        ChatRoom = chatRoom;
+        chatRoom.AddUser(this);
+    }
+
+    public void Send(string message) => ChatRoom.SendMessage(message, this);
+    public abstract void Receive(string message, string fromUser);
+}
+
+// 3. 具體 Colleague
+public class ChatUser : User
+{
+    public ChatUser(string name, IChatRoom chatRoom) : base(name, chatRoom) { }
+
+    public override void Receive(string message, string fromUser)
+    {
+        Console.WriteLine($"  [{Name}] 收到來自 {fromUser} 的訊息：{message}");
+    }
+}
+
+// 4. 具體 Mediator
+public class ChatRoom : IChatRoom
+{
+    private readonly List<User> _users = new();
+
+    public void AddUser(User user)
+    {
+        _users.Add(user);
+        Console.WriteLine($"[聊天室] {user.Name} 加入了聊天室");
+    }
+
+    public void SendMessage(string message, User sender)
+    {
+        Console.WriteLine($"[聊天室] {sender.Name} 說：{message}");
+        foreach (var user in _users)
+        {
+            if (user != sender)
+                user.Receive(message, sender.Name);
+        }
+    }
+}
+
+// 5. 使用
+var chatRoom = new ChatRoom();
+var alice = new ChatUser("Alice", chatRoom);
+var bob = new ChatUser("Bob", chatRoom);
+var charlie = new ChatUser("Charlie", chatRoom);
+
+alice.Send("大家好！");
+// Bob 和 Charlie 收到訊息
+
+bob.Send("嗨 Alice！");
+// Alice 和 Charlie 收到訊息
+```
+
+### TypeScript 版本
+
+```typescript
+// 1. Mediator 介面
+interface ChatRoom {
+  sendMessage(message: string, sender: User): void;
+  addUser(user: User): void;
+}
+
+// 2. Colleague
+class User {
+  constructor(public name: string, private chatRoom: ChatRoom) {
+    chatRoom.addUser(this);
+  }
+
+  send(message: string) { this.chatRoom.sendMessage(message, this); }
+
+  receive(message: string, fromUser: string) {
+    console.log(`  [${this.name}] 收到來自 ${fromUser} 的訊息：${message}`);
+  }
+}
+
+// 3. 具體 Mediator
+class ConcreteChatRoom implements ChatRoom {
+  private users: User[] = [];
+
+  addUser(user: User) {
+    this.users.push(user);
+    console.log(`[聊天室] ${user.name} 加入了聊天室`);
+  }
+
+  sendMessage(message: string, sender: User) {
+    console.log(`[聊天室] ${sender.name} 說：${message}`);
+    this.users
+      .filter(u => u !== sender)
+      .forEach(u => u.receive(message, sender.name));
+  }
+}
+
+// 4. 使用
+const chatRoom = new ConcreteChatRoom();
+const alice = new User("Alice", chatRoom);
+const bob = new User("Bob", chatRoom);
+const charlie = new User("Charlie", chatRoom);
+
+alice.send("大家好！");
+bob.send("嗨 Alice！");
+```
+
+### Python 版本
+
+```python
+from abc import ABC, abstractmethod
+
+# 1. Mediator 介面
+class ChatRoom(ABC):
+    @abstractmethod
+    def send_message(self, message: str, sender: "User") -> None:
+        pass
+    @abstractmethod
+    def add_user(self, user: "User") -> None:
+        pass
+
+# 2. Colleague
+class User:
+    def __init__(self, name: str, chat_room: ChatRoom):
+        self.name = name
+        self._chat_room = chat_room
+        chat_room.add_user(self)
+
+    def send(self, message: str) -> None:
+        self._chat_room.send_message(message, self)
+
+    def receive(self, message: str, from_user: str) -> None:
+        print(f"  [{self.name}] 收到來自 {from_user} 的訊息：{message}")
+
+# 3. 具體 Mediator
+class ConcreteChatRoom(ChatRoom):
+    def __init__(self):
+        self._users: list[User] = []
+
+    def add_user(self, user: User) -> None:
+        self._users.append(user)
+        print(f"[聊天室] {user.name} 加入了聊天室")
+
+    def send_message(self, message: str, sender: User) -> None:
+        print(f"[聊天室] {sender.name} 說：{message}")
+        for user in self._users:
+            if user != sender:
+                user.receive(message, sender.name)
+
+# 4. 使用
+chat_room = ConcreteChatRoom()
+alice = User("Alice", chat_room)
+bob = User("Bob", chat_room)
+charlie = User("Charlie", chat_room)
+
+alice.send("大家好！")
+bob.send("嗨 Alice！")
+```
+
+### Java 版本
+
+```java
+import java.util.ArrayList;
+import java.util.List;
+
+// 1. Mediator 介面
+public interface ChatRoom {
+    void sendMessage(String message, User sender);
+    void addUser(User user);
+}
+
+// 2. Colleague
+public class User {
+    private final String name;
+    private final ChatRoom chatRoom;
+
+    public User(String name, ChatRoom chatRoom) {
+        this.name = name;
+        this.chatRoom = chatRoom;
+        chatRoom.addUser(this);
+    }
+
+    public String getName() { return name; }
+
+    public void send(String message) {
+        chatRoom.sendMessage(message, this);
+    }
+
+    public void receive(String message, String fromUser) {
+        System.out.println("  [" + name + "] 收到來自 " + fromUser + " 的訊息：" + message);
+    }
+}
+
+// 3. 具體 Mediator
+public class ConcreteChatRoom implements ChatRoom {
+    private final List<User> users = new ArrayList<>();
+
+    public void addUser(User user) {
+        users.add(user);
+        System.out.println("[聊天室] " + user.getName() + " 加入了聊天室");
+    }
+
+    public void sendMessage(String message, User sender) {
+        System.out.println("[聊天室] " + sender.getName() + " 說：" + message);
+        for (User user : users) {
+            if (user != sender) {
+                user.receive(message, sender.getName());
+            }
+        }
+    }
+}
+
+// 4. 使用
+ChatRoom chatRoom = new ConcreteChatRoom();
+User alice = new User("Alice", chatRoom);
+User bob = new User("Bob", chatRoom);
+User charlie = new User("Charlie", chatRoom);
+
+alice.send("大家好！");
+bob.send("嗨 Alice！");
+```
+
+## 結構圖
+
+<Diagram data='{"nodes":[{"id":"client","label":"Client","type":"muted"},{"id":"mediator","label":"Mediator (ChatRoom)","type":"highlight"},{"id":"colleague_a","label":"Colleague A (Alice)","type":"default"},{"id":"colleague_b","label":"Colleague B (Bob)","type":"default"},{"id":"colleague_c","label":"Colleague C (Charlie)","type":"default"}],"edges":[{"from":"client","to":"mediator","label":"creates"},{"from":"colleague_a","to":"mediator","label":"communicates via"},{"from":"colleague_b","to":"mediator","label":"communicates via"},{"from":"colleague_c","to":"mediator","label":"communicates via"}]}' />
+
+## 實戰補充
+
+<Callout type="tip" title="資深開發者經驗">
+**MediatR 套件**：.NET 生態系的 MediatR 是 Mediator Pattern 的熱門實作，搭配 CQRS 把 Command/Query 的分發解耦。`IRequest` + `IRequestHandler` 讓 Controller 只需 `_mediator.Send(command)` 就好。
+
+**表單欄位聯動**：前端的複雜表單（選了國家就更新城市選項、勾了某選項就停用另一個欄位）用 Mediator 集中管理聯動邏輯，避免欄位之間互相引用形成義大利麵。
+
+**防止 God Object**：Mediator 最大的風險是變成 God Object。解法：按業務功能拆分成多個小 Mediator，或搭配 Pipeline Behavior（MediatR 的做法）把橫切關注點（Log、Validation）抽出。
+
+**Mediator vs Observer**：Observer 是廣播（一對多通知），Mediator 是協調（多對多互動的中心化管理）。Observer 的 Subject 不管 Observer 怎麼反應，Mediator 會根據事件來協調各方行為。
+</Callout>
+
+## 理解測驗
+
+<Quiz data='{"question":"Mediator Pattern 解決的核心問題是什麼？","options":["程式執行太慢","多個物件之間的網狀依賴變成星狀依賴","記憶體不夠用","資料庫查詢太慢"],"answer":1,"explanation":"Mediator 把物件之間的多對多溝通集中到一個中介者，將網狀依賴（每個都認識每個）簡化為星狀依賴（每個只認識 Mediator）。"}' />
+
+<Quiz data='{"question":"Mediator Pattern 最常見的風險是什麼？","options":["效能太差","Mediator 變成 God Object，所有邏輯都塞在裡面","物件太多","無法序列化"],"answer":1,"explanation":"所有互動邏輯都集中在 Mediator 中，如果不注意拆分，它會越來越大，變成無法維護的 God Object。"}' />
+
+<Quiz data='{"question":"以下哪個場景最適合用 Mediator Pattern？","options":["簡單的 A 呼叫 B","10 個 UI 元件之間有複雜的聯動關係","讀取一個檔案","計算兩個數字的加法"],"answer":1,"explanation":"多個元件之間有複雜的交互關係時，Mediator 可以把散亂的互動邏輯集中管理，避免各元件直接互相引用。"}' />
+
+## 重點整理
+
+<Callout type="tip" title="一句話記住">
+**Mediator Pattern = 中央調度：所有人只跟塔台溝通，塔台負責協調。**
+</Callout>
+
+| 概念 | 說明 |
+|------|------|
+| **Mediator（中介者介面）** | 定義物件之間溝通的介面 |
+| **ConcreteMediator** | 實作協調邏輯，知道所有 Colleague |
+| **Colleague（同事）** | 只跟 Mediator 溝通，不直接引用其他 Colleague |
+| **核心好處** | 把網狀依賴簡化為星狀，降低耦合度 |
+| **代價** | Mediator 可能變成 God Object |

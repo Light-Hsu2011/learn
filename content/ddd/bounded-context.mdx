@@ -1,0 +1,239 @@
+---
+title: "Bounded Context"
+order: 6
+description: "劃清邊界：同一個詞在不同上下文有不同意義"
+---
+
+# Bounded Context（限界上下文）
+
+<ELI5>
+「蘋果」這個詞，在**水果店**聽到，你想到的是紅紅甜甜的水果。在**電子產品店**聽到，你想到的是 iPhone 和 MacBook。
+
+同一個詞，放在不同的場景（Context）裡，意思完全不同。如果有人跟你說「幫我買一個蘋果」，你不知道他要水果還是手機 — 除非你知道你們在哪個「上下文」裡對話。
+
+Bounded Context 就是在你的系統中**劃清邊界**，讓每個區域裡的詞彙都有明確的、唯一的意義。
+</ELI5>
+
+## 是什麼？
+
+Bounded Context 是 DDD 戰略設計的核心概念。它定義了一個**語意邊界**，在這個邊界內，所有的術語（Ubiquitous Language）都有明確且一致的定義。不同的 Bounded Context 可以對同一個現實世界概念有不同的模型。
+
+<Callout type="info" title="DDD 戰略設計">
+Bounded Context 是 DDD 戰略設計（Strategic Design）的基礎。如果說 Entity、Value Object 是「怎麼寫程式」，Bounded Context 就是「怎麼切系統」。
+</Callout>
+
+## 核心觀念
+
+- **語意邊界**：同一個詞在不同 BC 裡有不同的模型。「Customer」在銷售 BC 有聯絡方式和購買紀錄，在物流 BC 只有收件地址
+- **一個 BC 一個 Ubiquitous Language**：每個 BC 內部維護自己的統一語言，跨 BC 的同名詞彙互不干擾
+- **獨立的模型**：每個 BC 有自己的 Entity、Value Object、Aggregate，不與其他 BC 共享 Domain Model
+- **BC 與微服務**：一個 BC 可以對應一個微服務，但不一定。單體應用中，BC 可以是不同的模組或命名空間
+- **明確的邊界介面**：BC 之間透過定義好的介面（API、Events、Shared Kernel）溝通
+
+## 常見誤區
+
+<Callout type="warning" title="常見誤區">
+**誤區一**：試圖建立一個「統一的 Domain Model」跨越整個系統。這會導致模型越來越臃腫，充滿 if-else 來處理不同場景。每個 BC 有自己的模型才對。
+
+**誤區二**：把 Bounded Context 等同於微服務。BC 是邏輯邊界，微服務是部署邊界。一個 BC 可以拆成多個微服務，也可以多個 BC 部署在同一個服務中。
+
+**誤區三**：BC 之間共享資料庫表。每個 BC 應該擁有自己的資料儲存，避免透過資料庫造成隱性耦合。
+</Callout>
+
+## 劃分流程
+
+<StepDiagram data='[{"title":"識別子領域","description":"分析業務，找出核心域、支撐域、通用域","icon":"1"},{"title":"發現語意分歧","description":"找出同名但不同義的概念（如 Product 在銷售和倉儲的差異）","icon":"2"},{"title":"劃定邊界","description":"把語意一致的概念劃入同一個 Bounded Context","icon":"3"},{"title":"定義上下文地圖","description":"畫出各 BC 之間的關係（Context Map）","icon":"4"},{"title":"設計整合方式","description":"決定 BC 之間用 API、Events、Shared Kernel 等方式溝通","icon":"5"}]' />
+
+## 程式碼範例
+
+### C# 版本
+
+```csharp
+// === 銷售 BC (Sales Context) ===
+namespace Sales.Domain
+{
+    // 銷售 BC 的 Customer：有購買紀錄和聯絡方式
+    public class Customer : Entity<Guid>
+    {
+        public string Name { get; private set; }
+        public Email Email { get; private set; }
+        public CustomerTier Tier { get; private set; }   // VIP、一般
+        private readonly List<OrderId> _orderHistory = new();
+
+        public Customer(Guid id, string name, Email email) : base(id)
+        {
+            Name = name;
+            Email = email;
+            Tier = CustomerTier.Regular;
+        }
+
+        public void UpgradeToVip()
+        {
+            if (_orderHistory.Count >= 10)
+                Tier = CustomerTier.VIP;
+        }
+    }
+}
+
+// === 物流 BC (Shipping Context) ===
+namespace Shipping.Domain
+{
+    // 物流 BC 的 Customer：只關心收件資訊
+    public class Customer : Entity<Guid>
+    {
+        public string RecipientName { get; private set; }
+        public Address ShippingAddress { get; private set; }
+        public PhoneNumber Phone { get; private set; }
+
+        public Customer(Guid id, string recipientName, Address address, PhoneNumber phone)
+            : base(id)
+        {
+            RecipientName = recipientName;
+            ShippingAddress = address;
+            Phone = phone;
+        }
+    }
+}
+
+// === Anti-Corruption Layer：轉換不同 BC 的模型 ===
+namespace Shipping.Infrastructure
+{
+    public class SalesCustomerAdapter
+    {
+        public Shipping.Domain.Customer ToShippingCustomer(
+            Sales.Contracts.CustomerDto salesCustomer,
+            Address shippingAddress)
+        {
+            return new Shipping.Domain.Customer(
+                id: salesCustomer.Id,
+                recipientName: salesCustomer.Name,
+                address: shippingAddress,
+                phone: new PhoneNumber(salesCustomer.Phone)
+            );
+        }
+    }
+}
+```
+
+### TypeScript 版本
+
+```typescript
+// === 銷售 BC ===
+// sales/domain/customer.ts
+class SalesCustomer {
+  constructor(
+    public readonly id: string,
+    public name: string,
+    public email: Email,
+    public tier: CustomerTier = CustomerTier.Regular,
+    private orderHistory: string[] = [],
+  ) {}
+
+  upgradeToVip(): void {
+    if (this.orderHistory.length >= 10) {
+      this.tier = CustomerTier.VIP;
+    }
+  }
+}
+
+// === 物流 BC ===
+// shipping/domain/customer.ts
+class ShippingCustomer {
+  constructor(
+    public readonly id: string,
+    public recipientName: string,
+    public shippingAddress: Address,
+    public phone: PhoneNumber,
+  ) {}
+}
+
+// === ACL：模型轉換 ===
+// shipping/infrastructure/sales-customer-adapter.ts
+function toShippingCustomer(
+  salesCustomer: SalesCustomerDto,
+  address: Address,
+): ShippingCustomer {
+  return new ShippingCustomer(
+    salesCustomer.id,
+    salesCustomer.name,
+    address,
+    new PhoneNumber(salesCustomer.phone),
+  );
+}
+```
+
+### Python 版本
+
+```python
+# === 銷售 BC ===
+# sales/domain/customer.py
+class SalesCustomer:
+    def __init__(self, id: str, name: str, email: Email):
+        self.id = id
+        self.name = name
+        self.email = email
+        self.tier = CustomerTier.REGULAR
+        self._order_history: list[str] = []
+
+    def upgrade_to_vip(self) -> None:
+        if len(self._order_history) >= 10:
+            self.tier = CustomerTier.VIP
+
+# === 物流 BC ===
+# shipping/domain/customer.py
+class ShippingCustomer:
+    def __init__(self, id: str, recipient_name: str,
+                 shipping_address: Address, phone: PhoneNumber):
+        self.id = id
+        self.recipient_name = recipient_name
+        self.shipping_address = shipping_address
+        self.phone = phone
+
+# === ACL ===
+# shipping/infrastructure/sales_customer_adapter.py
+def to_shipping_customer(
+    sales_customer: SalesCustomerDto, address: Address
+) -> ShippingCustomer:
+    return ShippingCustomer(
+        id=sales_customer.id,
+        recipient_name=sales_customer.name,
+        shipping_address=address,
+        phone=PhoneNumber(sales_customer.phone),
+    )
+```
+
+## 概念圖
+
+<Diagram data='{"nodes":[{"id":"sales","label":"Sales BC","type":"highlight"},{"id":"shipping","label":"Shipping BC","type":"highlight"},{"id":"billing","label":"Billing BC","type":"highlight"},{"id":"sales_customer","label":"Customer（銷售模型）","type":"default"},{"id":"shipping_customer","label":"Customer（物流模型）","type":"default"},{"id":"acl","label":"Anti-Corruption Layer","type":"muted"}],"edges":[{"from":"sales","to":"sales_customer","label":"定義"},{"from":"shipping","to":"shipping_customer","label":"定義"},{"from":"sales","to":"acl","label":"透過 ACL 溝通"},{"from":"acl","to":"shipping","label":"模型轉換"},{"from":"sales","to":"billing","label":"Domain Events"}]}' />
+
+## 實戰補充
+
+<Callout type="tip" title="資深開發者筆記">
+在 C# 單體應用中，用 **namespace** 或 **Project** 來隔離 Bounded Context 是最實用的做法。例如 `Sales.Domain`、`Shipping.Domain`、`Billing.Domain` 各自是獨立的專案，共用同一個 Solution。
+
+劃分 BC 的一個實用技巧：當你發現一個 Entity 的屬性和行為在不同場景中差異很大時（如 Customer 在銷售和物流），就是需要拆分成不同 BC 的訊號。
+
+BC 之間的資料同步用 Domain Events 或 Integration Events。千萬不要讓兩個 BC 共用同一張資料表 — 這會讓兩邊的模型演化被綁死在一起。
+</Callout>
+
+## 理解測驗
+
+<Quiz data='{"question":"為什麼「Customer」在銷售 BC 和物流 BC 可以是不同的模型？","options":["因為工程師偷懶","因為兩個 BC 關心的面向不同，銷售關心購買行為，物流關心收件資訊","因為資料庫不支援共享","因為程式語言的限制"],"answer":1,"explanation":"每個 Bounded Context 只關心自己需要的面向。銷售 BC 的 Customer 有購買紀錄和 VIP 等級，物流 BC 的 Customer 只需要收件地址和電話。強迫共用一個模型會讓它變得臃腫。"}' />
+
+<Quiz data='{"question":"Bounded Context 和微服務的關係是？","options":["一對一，每個 BC 就是一個微服務","BC 是邏輯邊界，微服務是部署邊界，兩者可以不對齊","微服務比 BC 更大","它們是同一個概念"],"answer":1,"explanation":"Bounded Context 是邏輯邊界（程式碼和模型的劃分），微服務是部署邊界（如何打包和運行）。一個 BC 可以是一個微服務，也可以拆成多個，或多個 BC 部署在一個服務中。"}' />
+
+<Quiz data='{"question":"以下哪個做法違反了 Bounded Context 的原則？","options":["每個 BC 有自己的 Customer 模型","BC 之間用 Domain Events 溝通","兩個 BC 共用同一張資料表","用 Anti-Corruption Layer 轉換模型"],"answer":2,"explanation":"共用資料表會造成隱性耦合，一邊修改 schema 會影響另一邊。每個 BC 應該擁有自己的資料儲存。"}' />
+
+## 重點整理
+
+<Callout type="tip" title="一句話記住">
+**Bounded Context = 語意邊界，每個邊界裡的詞彙都有唯一明確的意義。**
+</Callout>
+
+| 概念 | 說明 |
+|------|------|
+| **語意邊界** | 同名概念在不同 BC 有不同模型 |
+| **獨立模型** | 每個 BC 有自己的 Entity/VO/Aggregate |
+| **獨立儲存** | 每個 BC 有自己的資料庫或 Schema |
+| **BC vs 微服務** | 邏輯邊界 vs 部署邊界，可以不對齊 |
+| **ACL** | 跨 BC 溝通時用 Anti-Corruption Layer 轉換模型 |

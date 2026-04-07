@@ -1,0 +1,163 @@
+---
+title: "2336. Smallest Number in Infinite Set"
+order: 50
+description: "用 Min Heap 搭配 HashSet 管理無限集合的最小元素"
+---
+
+# Smallest Number in Infinite Set
+
+<ELI5>
+想像一個無限長的排隊號碼機，從 1 開始：1, 2, 3, 4, 5⋯⋯
+
+你可以做兩件事：
+1. **抽號碼**：拿走目前最小的號碼。
+2. **退號碼**：把之前拿走的號碼放回去。
+
+如果你拿了 1 和 2，現在最小的是 3。如果你把 1 放回去，最小的又變成 1 了。
+
+用一個 Min Heap 管理「被放回來的號碼」，再用一個指針追蹤「還沒被碰過的最小號碼」，就能高效處理。
+</ELI5>
+
+## 題目描述
+
+實作 `SmallestInfiniteSet` 類別：
+- `popSmallest()`：移除並回傳集合中最小的整數。
+- `addBack(num)`：如果 num 不在集合中，把它加回去。
+
+```
+輸入: ["SmallestInfiniteSet","addBack","popSmallest","popSmallest","popSmallest","addBack","popSmallest","popSmallest","popSmallest"]
+      [[],[2],[],[],[],[1],[],[],[]]
+輸出: [null,null,1,2,3,null,1,4,5]
+```
+
+## 解題思路
+
+<StepDiagram data='[{"title":"初始化","description":"current = 1（下一個未被碰過的最小值），Min Heap 和 HashSet 為空","icon":"1"},{"title":"popSmallest","description":"如果 Heap 有東西且 < current，從 Heap 取；否則回傳 current++","icon":"2"},{"title":"addBack","description":"如果 num < current 且不在 Heap 中，加入 Heap 和 HashSet","icon":"3"}]' />
+
+## 程式碼
+
+### C#
+
+```csharp
+public class SmallestInfiniteSet {
+    private int current;  // 未被碰過的最小值
+    private PriorityQueue<int, int> minHeap;
+    private HashSet<int> addedBack;
+
+    public SmallestInfiniteSet() {
+        current = 1;
+        minHeap = new PriorityQueue<int, int>();
+        addedBack = new HashSet<int>();
+    }
+
+    public int PopSmallest() {
+        // 優先從 Heap 取（被放回來的小號碼）
+        if (minHeap.Count > 0 && minHeap.Peek() < current) {
+            int val = minHeap.Dequeue();
+            addedBack.Remove(val);
+            return val;
+        }
+        return current++; // 否則取 current 並遞增
+    }
+
+    public void AddBack(int num) {
+        // 只有 < current 的數才需要加回（>= current 的本來就在集合中）
+        if (num < current && addedBack.Add(num)) {
+            minHeap.Enqueue(num, num);
+        }
+    }
+}
+```
+
+### TypeScript
+
+```typescript
+class SmallestInfiniteSet {
+    private current: number;
+    private addedBack: Set<number>;
+    private heap: number[];
+
+    constructor() {
+        this.current = 1;
+        this.addedBack = new Set();
+        this.heap = [];
+    }
+
+    popSmallest(): number {
+        if (this.heap.length > 0 && this.heap[0] < this.current) {
+            const val = this.heap.shift()!;
+            this.addedBack.delete(val);
+            this.heap.sort((a, b) => a - b); // 維持排序
+            return val;
+        }
+        return this.current++;
+    }
+
+    addBack(num: number): void {
+        if (num < this.current && !this.addedBack.has(num)) {
+            this.addedBack.add(num);
+            this.heap.push(num);
+            this.heap.sort((a, b) => a - b);
+        }
+    }
+}
+```
+
+### Python
+
+```python
+import heapq
+
+class SmallestInfiniteSet:
+    def __init__(self):
+        self.current = 1  # 未被碰過的最小值
+        self.min_heap = []
+        self.added_back = set()
+
+    def popSmallest(self) -> int:
+        # 優先從 Heap 取
+        if self.min_heap and self.min_heap[0] < self.current:
+            val = heapq.heappop(self.min_heap)
+            self.added_back.remove(val)
+            return val
+        val = self.current
+        self.current += 1
+        return val
+
+    def addBack(self, num: int) -> None:
+        # 只有 < current 的數才需要加回
+        if num < self.current and num not in self.added_back:
+            self.added_back.add(num)
+            heapq.heappush(self.min_heap, num)
+```
+
+## 複雜度分析
+
+| | Time | Space |
+|--|------|-------|
+| popSmallest | O(log n) | O(n) |
+| addBack | O(log n) | O(n) |
+
+n 是被 addBack 加回的元素數量。
+
+## 圖解
+
+<Diagram data='{"nodes":[{"id":"init","label":"current=1, heap=[]","type":"default"},{"id":"pop1","label":"pop→1, current=2","type":"default"},{"id":"pop2","label":"pop→2, current=3","type":"default"},{"id":"pop3","label":"pop→3, current=4","type":"default"},{"id":"add1","label":"addBack(1), heap=[1]","type":"default"},{"id":"pop4","label":"pop→1 (from heap), current=4","type":"highlight"},{"id":"pop5","label":"pop→4, current=5","type":"highlight"}],"edges":[{"from":"init","to":"pop1","label":""},{"from":"pop1","to":"pop2","label":""},{"from":"pop2","to":"pop3","label":""},{"from":"pop3","to":"add1","label":""},{"from":"add1","to":"pop4","label":""},{"from":"pop4","to":"pop5","label":""}]}' />
+
+## 進階觀點
+
+<Callout type="tip" title="面試追問">
+**為什麼需要 HashSet？** 防止同一個數被多次 addBack 到 Heap 中。沒有 HashSet 的話，Heap 可能有重複元素。
+
+**為什麼 `num >= current` 時不需要 addBack？** 因為 current 代表「所有 ≥ current 的數都還在集合中」，所以不需要額外操作。
+
+**TreeSet 解法**：用 TreeSet（有序集合）也可以，addBack 和 popSmallest 都是 O(log n)，且天然去重。
+
+**變體題**：LC 703 Kth Largest Element in a Stream、LC 295 Find Median from Data Stream。
+</Callout>
+
+## 理解測驗
+
+<Quiz data='{"question":"addBack(5) 時，如果 current = 3，需要把 5 加入 Heap 嗎？","options":["需要","不需要，因為 5 >= current，代表 5 本來就在集合中","需要，因為 5 是正整數","取決於 Heap 的大小"],"answer":1,"explanation":"current = 3 表示 3, 4, 5, 6... 都還在集合中。5 >= 3，所以 5 本來就沒被移除，不需要加回。"}' />
+
+<Quiz data='{"question":"popSmallest 時，為什麼要先檢查 Heap？","options":["因為 Heap 的元素比較大","因為 Heap 中可能有比 current 更小的被放回的數","因為 Heap 操作比較快","因為 current 可能是 0"],"answer":1,"explanation":"有些數被 pop 後又 addBack 了，它們比 current 小，存在 Heap 中。必須優先取 Heap 中最小的。"}' />

@@ -1,0 +1,420 @@
+---
+title: "State Pattern"
+order: 18
+description: "讓物件在內部狀態改變時改變它的行為，看起來像是改變了類別"
+---
+
+# State Pattern（狀態模式）
+
+<ELI5>
+想像一個**紅綠燈**：
+
+- **紅燈**時：車子停下來，行人可以過馬路
+- **綠燈**時：車子通行，行人等待
+- **黃燈**時：車子準備停下，行人準備過馬路
+
+同一個紅綠燈，在不同狀態下的行為完全不同。紅綠燈不是換了一個新的燈，而是**內部狀態改變**了，行為也跟著改變。
+
+就像你的手機——鎖定時按按鈕只會亮螢幕，解鎖後按按鈕可以開 App。同一個按鈕，不同狀態下做不同的事。
+</ELI5>
+
+## 是什麼？
+
+State Pattern 讓物件在**內部狀態改變時改變它的行為**。每個狀態被封裝成獨立的類別，物件把行為委派給當前的狀態物件。從外部看，好像物件改變了它的類別。
+
+<Callout type="info" title="GoF 分類">
+State 屬於**行為型模式（Behavioral Pattern）**，重點在於用物件組合取代大量的 if-else 狀態判斷。
+</Callout>
+
+## 什麼時候用？
+
+- 物件的行為取決於它的狀態，且狀態在執行時會頻繁切換
+- 程式碼中有大量基於狀態的 if-else 或 switch 判斷
+- 你需要實作狀態機（State Machine）
+- 不同狀態下同一個操作的行為完全不同
+
+## 什麼時候不該用？
+
+<Callout type="warning" title="過度設計警告">
+如果狀態只有 2-3 個且不太可能增加，用簡單的 enum + switch 就夠了。State Pattern 適合狀態多、轉換邏輯複雜、且狀態會擴增的場景。每個狀態都要建一個類別，簡單場景反而增加複雜度。
+</Callout>
+
+## 執行流程
+
+<StepDiagram data='[{"title":"定義 State 介面","description":"宣告所有狀態共用的行為方法","icon":"1"},{"title":"實作具體 State","description":"每個狀態類別實作該狀態下的行為","icon":"2"},{"title":"建立 Context","description":"持有當前狀態的參考，委派行為給狀態","icon":"3"},{"title":"狀態轉換","description":"在狀態類別內部決定下一個狀態","icon":"4"},{"title":"Client 操作","description":"Client 只跟 Context 互動，不需要知道當前狀態","icon":"5"}]' />
+
+## 程式碼範例
+
+### C# 版本
+
+```csharp
+// 1. State 介面
+public interface IOrderState
+{
+    void Next(Order order);
+    void Cancel(Order order);
+    string GetStatus();
+}
+
+// 2. 具體狀態
+public class PendingState : IOrderState
+{
+    public void Next(Order order)
+    {
+        Console.WriteLine("訂單已確認，開始處理");
+        order.SetState(new ProcessingState());
+    }
+
+    public void Cancel(Order order)
+    {
+        Console.WriteLine("訂單已取消");
+        order.SetState(new CancelledState());
+    }
+
+    public string GetStatus() => "待確認";
+}
+
+public class ProcessingState : IOrderState
+{
+    public void Next(Order order)
+    {
+        Console.WriteLine("訂單已出貨");
+        order.SetState(new ShippedState());
+    }
+
+    public void Cancel(Order order)
+    {
+        Console.WriteLine("處理中的訂單無法取消，請聯繫客服");
+    }
+
+    public string GetStatus() => "處理中";
+}
+
+public class ShippedState : IOrderState
+{
+    public void Next(Order order)
+    {
+        Console.WriteLine("訂單已送達，交易完成");
+        order.SetState(new CompletedState());
+    }
+
+    public void Cancel(Order order)
+    {
+        Console.WriteLine("已出貨無法取消，請申請退貨");
+    }
+
+    public string GetStatus() => "已出貨";
+}
+
+public class CompletedState : IOrderState
+{
+    public void Next(Order order) => Console.WriteLine("訂單已完成，無法繼續");
+    public void Cancel(Order order) => Console.WriteLine("已完成訂單無法取消");
+    public string GetStatus() => "已完成";
+}
+
+public class CancelledState : IOrderState
+{
+    public void Next(Order order) => Console.WriteLine("已取消訂單無法繼續");
+    public void Cancel(Order order) => Console.WriteLine("訂單已經取消了");
+    public string GetStatus() => "已取消";
+}
+
+// 3. Context
+public class Order
+{
+    private IOrderState _state;
+
+    public Order() => _state = new PendingState();
+
+    public void SetState(IOrderState state) => _state = state;
+    public void Next() => _state.Next(this);
+    public void Cancel() => _state.Cancel(this);
+    public string GetStatus() => _state.GetStatus();
+}
+
+// 4. 使用
+var order = new Order();
+Console.WriteLine($"狀態：{order.GetStatus()}"); // 待確認
+order.Next();   // 訂單已確認，開始處理
+order.Next();   // 訂單已出貨
+order.Cancel(); // 已出貨無法取消，請申請退貨
+order.Next();   // 訂單已送達，交易完成
+```
+
+### TypeScript 版本
+
+```typescript
+// 1. State 介面
+interface OrderState {
+  next(order: Order): void;
+  cancel(order: Order): void;
+  getStatus(): string;
+}
+
+// 2. 具體狀態
+class PendingState implements OrderState {
+  next(order: Order) {
+    console.log("訂單已確認，開始處理");
+    order.setState(new ProcessingState());
+  }
+  cancel(order: Order) {
+    console.log("訂單已取消");
+    order.setState(new CancelledState());
+  }
+  getStatus() { return "待確認"; }
+}
+
+class ProcessingState implements OrderState {
+  next(order: Order) {
+    console.log("訂單已出貨");
+    order.setState(new ShippedState());
+  }
+  cancel(order: Order) { console.log("處理中的訂單無法取消"); }
+  getStatus() { return "處理中"; }
+}
+
+class ShippedState implements OrderState {
+  next(order: Order) {
+    console.log("訂單已送達，交易完成");
+    order.setState(new CompletedState());
+  }
+  cancel(order: Order) { console.log("已出貨無法取消"); }
+  getStatus() { return "已出貨"; }
+}
+
+class CompletedState implements OrderState {
+  next(_order: Order) { console.log("訂單已完成"); }
+  cancel(_order: Order) { console.log("已完成無法取消"); }
+  getStatus() { return "已完成"; }
+}
+
+class CancelledState implements OrderState {
+  next(_order: Order) { console.log("已取消無法繼續"); }
+  cancel(_order: Order) { console.log("已經取消了"); }
+  getStatus() { return "已取消"; }
+}
+
+// 3. Context
+class Order {
+  private state: OrderState = new PendingState();
+
+  setState(state: OrderState) { this.state = state; }
+  next() { this.state.next(this); }
+  cancel() { this.state.cancel(this); }
+  getStatus() { return this.state.getStatus(); }
+}
+
+// 4. 使用
+const order = new Order();
+console.log(`狀態：${order.getStatus()}`); // 待確認
+order.next();   // 訂單已確認，開始處理
+order.next();   // 訂單已出貨
+order.next();   // 訂單已送達，交易完成
+```
+
+### Python 版本
+
+```python
+from abc import ABC, abstractmethod
+
+# 1. State 介面
+class OrderState(ABC):
+    @abstractmethod
+    def next(self, order: "Order") -> None:
+        pass
+    @abstractmethod
+    def cancel(self, order: "Order") -> None:
+        pass
+    @abstractmethod
+    def get_status(self) -> str:
+        pass
+
+# 2. 具體狀態
+class PendingState(OrderState):
+    def next(self, order: "Order") -> None:
+        print("訂單已確認，開始處理")
+        order.set_state(ProcessingState())
+
+    def cancel(self, order: "Order") -> None:
+        print("訂單已取消")
+        order.set_state(CancelledState())
+
+    def get_status(self) -> str:
+        return "待確認"
+
+class ProcessingState(OrderState):
+    def next(self, order: "Order") -> None:
+        print("訂單已出貨")
+        order.set_state(ShippedState())
+
+    def cancel(self, order: "Order") -> None:
+        print("處理中的訂單無法取消")
+
+    def get_status(self) -> str:
+        return "處理中"
+
+class ShippedState(OrderState):
+    def next(self, order: "Order") -> None:
+        print("訂單已送達，交易完成")
+        order.set_state(CompletedState())
+
+    def cancel(self, order: "Order") -> None:
+        print("已出貨無法取消")
+
+    def get_status(self) -> str:
+        return "已出貨"
+
+class CompletedState(OrderState):
+    def next(self, order: "Order") -> None:
+        print("訂單已完成")
+    def cancel(self, order: "Order") -> None:
+        print("已完成無法取消")
+    def get_status(self) -> str:
+        return "已完成"
+
+class CancelledState(OrderState):
+    def next(self, order: "Order") -> None:
+        print("已取消無法繼續")
+    def cancel(self, order: "Order") -> None:
+        print("已經取消了")
+    def get_status(self) -> str:
+        return "已取消"
+
+# 3. Context
+class Order:
+    def __init__(self):
+        self._state: OrderState = PendingState()
+
+    def set_state(self, state: OrderState) -> None:
+        self._state = state
+
+    def next(self) -> None:
+        self._state.next(self)
+
+    def cancel(self) -> None:
+        self._state.cancel(self)
+
+    def get_status(self) -> str:
+        return self._state.get_status()
+
+# 4. 使用
+order = Order()
+print(f"狀態：{order.get_status()}")  # 待確認
+order.next()    # 訂單已確認，開始處理
+order.next()    # 訂單已出貨
+order.next()    # 訂單已送達，交易完成
+```
+
+### Java 版本
+
+```java
+// 1. State 介面
+public interface OrderState {
+    void next(Order order);
+    void cancel(Order order);
+    String getStatus();
+}
+
+// 2. 具體狀態
+public class PendingState implements OrderState {
+    public void next(Order order) {
+        System.out.println("訂單已確認，開始處理");
+        order.setState(new ProcessingState());
+    }
+    public void cancel(Order order) {
+        System.out.println("訂單已取消");
+        order.setState(new CancelledState());
+    }
+    public String getStatus() { return "待確認"; }
+}
+
+public class ProcessingState implements OrderState {
+    public void next(Order order) {
+        System.out.println("訂單已出貨");
+        order.setState(new ShippedState());
+    }
+    public void cancel(Order order) {
+        System.out.println("處理中的訂單無法取消");
+    }
+    public String getStatus() { return "處理中"; }
+}
+
+public class ShippedState implements OrderState {
+    public void next(Order order) {
+        System.out.println("訂單已送達，交易完成");
+        order.setState(new CompletedState());
+    }
+    public void cancel(Order order) {
+        System.out.println("已出貨無法取消");
+    }
+    public String getStatus() { return "已出貨"; }
+}
+
+public class CompletedState implements OrderState {
+    public void next(Order order) { System.out.println("訂單已完成"); }
+    public void cancel(Order order) { System.out.println("已完成無法取消"); }
+    public String getStatus() { return "已完成"; }
+}
+
+public class CancelledState implements OrderState {
+    public void next(Order order) { System.out.println("已取消無法繼續"); }
+    public void cancel(Order order) { System.out.println("已經取消了"); }
+    public String getStatus() { return "已取消"; }
+}
+
+// 3. Context
+public class Order {
+    private OrderState state = new PendingState();
+
+    public void setState(OrderState state) { this.state = state; }
+    public void next() { state.next(this); }
+    public void cancel() { state.cancel(this); }
+    public String getStatus() { return state.getStatus(); }
+}
+
+// 4. 使用
+Order order = new Order();
+System.out.println("狀態：" + order.getStatus()); // 待確認
+order.next();   // 訂單已確認，開始處理
+order.next();   // 訂單已出貨
+order.next();   // 訂單已送達，交易完成
+```
+
+## 結構圖
+
+<Diagram data='{"nodes":[{"id":"client","label":"Client","type":"muted"},{"id":"context","label":"Context (Order)","type":"highlight"},{"id":"state","label":"State Interface","type":"default"},{"id":"state_a","label":"ConcreteState A (Pending)","type":"default"},{"id":"state_b","label":"ConcreteState B (Processing)","type":"default"},{"id":"state_c","label":"ConcreteState C (Shipped)","type":"default"}],"edges":[{"from":"client","to":"context","label":"uses"},{"from":"context","to":"state","label":"delegates to"},{"from":"state_a","to":"state","label":"implements"},{"from":"state_b","to":"state","label":"implements"},{"from":"state_c","to":"state","label":"implements"}]}' />
+
+## 實戰補充
+
+<Callout type="tip" title="資深開發者經驗">
+**訂單狀態機**：電商系統的訂單流程是 State Pattern 最經典的應用場景。每個狀態有明確的合法轉換，非法操作會被拒絕。
+
+**遊戲角色狀態**：RPG 遊戲中角色的「正常」「中毒」「暈眩」「無敵」狀態，不同狀態下攻擊、防禦、移動的行為都不同。
+
+**State vs Strategy**：State Pattern 的狀態之間知道彼此的存在（狀態 A 知道要切換到狀態 B），Strategy 的策略之間互不相識。State 強調狀態轉換，Strategy 強調演算法替換。
+
+**工作流程引擎**：審批流程、CI/CD Pipeline、文件審核流程，都可以用 State Pattern 來管理。搭配持久化（存到資料庫），可以實現跨 Session 的長期狀態管理。
+</Callout>
+
+## 理解測驗
+
+<Quiz data='{"question":"State Pattern 和大量 if-else 相比，最大的優勢是什麼？","options":["執行速度更快","每個狀態封裝在獨立類別，新增狀態不用修改現有程式碼","使用更少的記憶體","程式碼行數更少"],"answer":1,"explanation":"State Pattern 把每個狀態的行為封裝在獨立類別中，新增狀態只需新增一個類別，符合開放封閉原則。if-else 則需要修改現有程式碼。"}' />
+
+<Quiz data='{"question":"State Pattern 中，狀態轉換的邏輯通常放在哪裡？","options":["Client 端","Context 的建構函式","具體 State 類別內部","全域設定檔"],"answer":2,"explanation":"狀態轉換邏輯通常放在具體 State 類別中。例如 PendingState 知道 next() 要切換到 ProcessingState。這讓每個狀態類別管理自己的轉換規則。"}' />
+
+<Quiz data='{"question":"State Pattern 和 Strategy Pattern 最關鍵的差異是什麼？","options":["State 用介面，Strategy 用抽象類別","State 的各狀態知道彼此存在且會自動切換，Strategy 的各策略互不相識","State 只能用在遊戲，Strategy 只能用在排序","兩者完全一樣，只是名字不同"],"answer":1,"explanation":"State Pattern 的核心是狀態之間的轉換——狀態 A 知道下一步要切到狀態 B。Strategy Pattern 的各策略彼此獨立，由 Client 決定用哪個。"}' />
+
+## 重點整理
+
+<Callout type="tip" title="一句話記住">
+**State Pattern = 物件的行為隨狀態自動切換：狀態變了，行為就變了。**
+</Callout>
+
+| 概念 | 說明 |
+|------|------|
+| **State（狀態介面）** | 定義所有狀態共用的行為方法 |
+| **ConcreteState（具體狀態）** | 實作該狀態下的行為和轉換邏輯 |
+| **Context（上下文）** | 持有當前狀態，委派行為給狀態物件 |
+| **核心好處** | 消除 if-else 狀態判斷，新增狀態符合開放封閉原則 |
+| **代價** | 狀態少時過度設計，狀態類別數量會增加 |

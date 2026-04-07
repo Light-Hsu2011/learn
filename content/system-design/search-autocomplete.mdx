@@ -1,0 +1,197 @@
+---
+title: "設計搜尋自動補全"
+order: 11
+description: "輸入即搜尋的即時體驗：Trie、排名、快取策略"
+---
+
+# 設計搜尋自動補全（Search Autocomplete）
+
+<ELI5>
+想像手機鍵盤的預測輸入功能：
+
+你才打了「早安」兩個字，鍵盤就跳出「早安你好」、「早安問候」、「早安圖片」讓你選。它怎麼做到的？
+
+1. 記住大家**最常打的句子**（頻率統計）
+2. 用一棵**神奇的樹**（Trie）把所有句子的開頭連起來
+3. 你每多打一個字，就沿著樹往下走，找到下面**最熱門的幾個**建議
+
+就像圖書館的分類索引卡片，從「科」→「科學」→「科學-物理」→「科學-物理-量子力學」，每一層都幫你縮小範圍。
+</ELI5>
+
+## 問題定義
+
+<Callout type="info" title="核心挑戰">
+設計一個搜尋自動補全系統，在用戶輸入的每一次按鍵後，200 毫秒內回傳 Top-K 最相關的搜尋建議。系統需處理每秒數萬次查詢，且建議內容隨搜尋趨勢即時更新。
+</Callout>
+
+## 需求分析
+
+**Functional Requirements：**
+- 用戶輸入前綴，回傳 Top-K（通常 5-10 個）最熱門的搜尋建議
+- 建議根據搜尋頻率排名
+- 支援即時更新（trending topics 能快速出現）
+- 支援多語系搜尋
+
+**Non-functional Requirements：**
+- 超低延遲：P99 < 200ms（用戶感知即時）
+- 高可用：搜尋建議掛掉不影響主搜尋功能
+- 可擴展：支撐每秒 10 萬次以上的查詢
+- 資料新鮮度：熱門搜尋在分鐘級別內出現在建議中
+
+## 注意事項
+
+<Callout type="warning" title="實戰陷阱">
+**前端 Debounce 是第一道防線。** 如果每次按鍵都發 API 請求，打「JavaScript」8 個字母就是 8 次請求。用 Debounce（等用戶停止打字 100-200ms 再發請求）可以減少 50-80% 的請求量。另外，瀏覽器快取前綴結果也很重要——「jav」的結果可以複用給「java」的前端過濾。
+</Callout>
+
+## 設計流程
+
+<StepDiagram data='[{"title":"收集搜尋資料","description":"Data Collection Service 記錄每次搜尋查詢和頻率","icon":"1"},{"title":"聚合頻率統計","description":"Analytics 定期（或即時）計算每個查詢詞的熱門程度","icon":"2"},{"title":"建構 Trie","description":"Trie Builder 將頻率資料建構成前綴樹，每個節點附帶 Top-K 結果","icon":"3"},{"title":"分散式部署","description":"將 Trie 分片部署到多個 Trie Service 節點","icon":"4"},{"title":"用戶輸入查詢","description":"前端 Debounce 後發送前綴給 API Gateway","icon":"5"},{"title":"查詢 Trie Service","description":"API Gateway 路由到對應的 Trie 分片，查詢 Top-K 結果","icon":"6"},{"title":"多層快取回傳","description":"結果經 Browser Cache → CDN → Server Cache 多層快取加速","icon":"7"}]' />
+
+## 架構設計
+
+### Trie 資料結構（含 Top-K）
+
+```csharp
+public class TrieNode
+{
+    public Dictionary<char, TrieNode> Children { get; } = new();
+    public bool IsEndOfWord { get; set; }
+    // 預先計算此前綴下的 Top-K 結果，避免查詢時遍歷
+    public List<(string Query, long Frequency)> TopK { get; set; } = new();
+}
+
+public class AutocompleteTrie
+{
+    private readonly TrieNode _root = new();
+    private const int K = 10;
+
+    public void Insert(string query, long frequency)
+    {
+        var node = _root;
+        foreach (var ch in query)
+        {
+            if (!node.Children.ContainsKey(ch))
+                node.Children[ch] = new TrieNode();
+
+            node = node.Children[ch];
+            // 更新每個前綴節點的 Top-K
+            UpdateTopK(node, query, frequency);
+        }
+        node.IsEndOfWord = true;
+    }
+
+    public List<string> Search(string prefix)
+    {
+        var node = _root;
+        foreach (var ch in prefix)
+        {
+            if (!node.Children.ContainsKey(ch))
+                return new List<string>();
+            node = node.Children[ch];
+        }
+        return node.TopK.Select(x => x.Query).ToList();
+    }
+
+    private void UpdateTopK(TrieNode node, string query, long freq)
+    {
+        var existing = node.TopK.FindIndex(x => x.Query == query);
+        if (existing >= 0) node.TopK.RemoveAt(existing);
+
+        node.TopK.Add((query, freq));
+        node.TopK = node.TopK.OrderByDescending(x => x.Frequency)
+                             .Take(K).ToList();
+    }
+}
+```
+
+### 前端 Debounce + 快取
+
+```typescript
+class AutocompleteClient {
+  private cache = new Map<string, string[]>();
+  private debounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+  onInput(prefix: string, callback: (results: string[]) => void): void {
+    // 先檢查本地快取
+    if (this.cache.has(prefix)) {
+      callback(this.cache.get(prefix)!);
+      return;
+    }
+
+    // Debounce：等用戶停止打字 150ms 再發請求
+    if (this.debounceTimer) clearTimeout(this.debounceTimer);
+
+    this.debounceTimer = setTimeout(async () => {
+      const results = await fetch(`/api/autocomplete?q=${prefix}`)
+        .then((res) => res.json());
+
+      // 快取結果
+      this.cache.set(prefix, results);
+      callback(results);
+    }, 150);
+  }
+}
+```
+
+### 資料收集與 Trie 更新（Write Path）
+
+```python
+from collections import Counter
+from datetime import datetime, timedelta
+
+class DataCollectionService:
+    """收集搜尋查詢，定期聚合後觸發 Trie 重建"""
+
+    def __init__(self):
+        self.buffer: list[str] = []
+        self.frequency_store: Counter = Counter()
+
+    def record_query(self, query: str) -> None:
+        """每次搜尋時記錄（寫入 Kafka/Log）"""
+        self.buffer.append(query.lower().strip())
+
+    def aggregate(self) -> dict[str, int]:
+        """每 N 分鐘聚合一次頻率"""
+        self.frequency_store.update(self.buffer)
+        self.buffer.clear()
+
+        # 套用時間衰減：7 天前的搜尋權重降低
+        # 實務上用 Exponential Decay 或 Sliding Window
+        return dict(self.frequency_store.most_common(100_000))
+
+    def trigger_trie_rebuild(self, freq_data: dict[str, int]) -> None:
+        """將聚合結果送給 Trie Builder 重建"""
+        # 離線建構新 Trie → 原子替換線上 Trie
+        pass
+```
+
+## 架構圖
+
+<Diagram data='{"nodes":[{"id":"client","label":"Client (Browser)","type":"muted"},{"id":"cdn","label":"CDN Cache","type":"default"},{"id":"gateway","label":"API Gateway","type":"highlight"},{"id":"trie","label":"Trie Service (Read)","type":"highlight"},{"id":"cache","label":"Server Cache (Redis)","type":"default"},{"id":"collector","label":"Data Collection","type":"default"},{"id":"analytics","label":"Analytics (Spark)","type":"default"},{"id":"builder","label":"Trie Builder","type":"default"},{"id":"storage","label":"Trie Storage (S3)","type":"muted"}],"edges":[{"from":"client","to":"cdn","label":"Debounce 後查詢"},{"from":"cdn","to":"gateway","label":"Cache Miss"},{"from":"gateway","to":"cache","label":"查 Redis"},{"from":"cache","to":"trie","label":"Cache Miss"},{"from":"client","to":"collector","label":"搜尋記錄（Write Path）"},{"from":"collector","to":"analytics","label":"聚合頻率"},{"from":"analytics","to":"builder","label":"觸發重建"},{"from":"builder","to":"storage","label":"新 Trie 快照"},{"from":"storage","to":"trie","label":"載入新 Trie"}]}' />
+
+## 延伸討論
+
+<Callout type="tip" title="進階優化">
+**Trie 分片策略。** 當資料量大到一台機器放不下整棵 Trie 時，可以按首字母分片（a-f 到 Shard 1、g-m 到 Shard 2 等）。API Gateway 根據查詢前綴路由到對應分片。另一個方向是用 Trie + DAAT（Document-At-A-Time）結合個人化因素（用戶搜尋歷史、地理位置）來排序結果，讓建議更精準。
+</Callout>
+
+## 理解測驗
+
+<Quiz data='{"question":"為什麼 Trie 的每個節點都預先儲存 Top-K 結果？","options":["節省記憶體","避免查詢時遍歷整棵子樹來找最熱門結果，大幅降低查詢延遲","讓 Trie 更容易序列化","減少寫入頻率"],"answer":1,"explanation":"如果不預存 Top-K，每次查詢前綴後都要遍歷該節點下的所有子節點來計算最熱門結果，時間複雜度可能是 O(N)。預存 Top-K 讓查詢變成 O(L)（L 是前綴長度），滿足 200ms 以內的延遲要求。"}' />
+
+<Quiz data='{"question":"前端 Debounce 的主要目的是什麼？","options":["讓打字速度變快","減少不必要的 API 請求，避免後端被瞬間大量查詢壓垮","讓搜尋結果更準確","防止 XSS 攻擊"],"answer":1,"explanation":"用戶快速打字時，每個按鍵都觸發請求是浪費的（中間結果用戶根本不看）。Debounce 等用戶停止打字 100-200ms 後才發請求，可減少 50-80% 的請求量。"}' />
+
+<Quiz data='{"question":"Trie 的離線重建（而非線上即時更新）有什麼好處？","options":["讓系統更複雜，顯得更專業","避免寫入操作影響讀取性能，且能原子性地替換整棵 Trie","讓資料更即時","減少儲存空間"],"answer":1,"explanation":"線上 Trie 主要服務讀取查詢（QPS 極高），如果同時執行寫入會產生鎖競爭。離線建構新 Trie 後原子替換，讀取服務完全不受影響，這就是 Read Path / Write Path 分離的經典應用。"}' />
+
+## 重點整理
+
+| 概念 | 說明 |
+|------|------|
+| **Trie（前綴樹）** | 核心資料結構，按字元逐層儲存，查詢複雜度 O(L) |
+| **Top-K 預計算** | 每個 Trie 節點預存最熱門結果，避免即時遍歷 |
+| **Debounce** | 前端防抖動，減少 50-80% 的 API 請求 |
+| **多層快取** | Browser → CDN → Redis → Trie Service 四層快取 |
+| **Read/Write 分離** | 讀取走 Trie Service，寫入走 Data Collection + 離線重建 |
+| **Trie 分片** | 按首字母或 Hash 分片，水平擴展 |
+| **時間衰減** | 舊搜尋權重降低，讓趨勢搜尋能快速浮現 |

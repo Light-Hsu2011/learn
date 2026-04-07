@@ -1,0 +1,243 @@
+---
+title: "Context Mapping"
+order: 7
+description: "定義 Bounded Context 之間的關係模式，管理系統整合"
+---
+
+# Context Mapping（上下文映射）
+
+<ELI5>
+想像世界上有很多**國家**，它們之間有各種外交關係：
+
+- 有些是**盟友**（Shared Kernel）— 一起制定共同的標準
+- 有些是**貿易夥伴**（Customer-Supplier）— 一方提供商品，一方購買使用
+- 有些是**附庸國**（Conformist）— 完全照著大國的規則走
+- 有些國家會設立**海關**（Anti-Corruption Layer）— 進口的東西要轉換成自己的格式
+
+Context Mapping 就是畫出你系統中各個 Bounded Context 之間的「外交關係圖」，讓所有人知道誰和誰怎麼合作。
+</ELI5>
+
+## 是什麼？
+
+Context Mapping 是 DDD 戰略設計中描述**多個 Bounded Context 之間關係**的工具。它定義了各 BC 之間的整合模式、權力關係和溝通方式，是系統架構的宏觀藍圖。
+
+<Callout type="info" title="DDD 戰略設計">
+Context Map 不是技術架構圖，而是**團隊協作關係圖**。每種映射模式反映的不只是技術整合方式，更反映了團隊之間的權力動態和協作模式。
+</Callout>
+
+## 核心觀念
+
+- **Shared Kernel（共享核心）**：兩個 BC 共享一小部分模型，任何修改都需要雙方同意。適用於緊密合作的團隊
+- **Customer-Supplier（客戶-供應商）**：上游 BC 提供服務，下游 BC 消費服務。上游考慮下游的需求，但上游有最終決定權
+- **Conformist（跟隨者）**：下游 BC 完全採用上游的模型，不做任何轉換。適用於下游沒有議價能力的情況
+- **Anti-Corruption Layer（防腐層）**：下游 BC 在邊界建立轉換層，把上游的模型翻譯成自己的模型。保護自己不受上游變更影響
+- **Open Host Service（開放主機服務）**：上游提供公開的 API 和文件化的協議，讓多個下游 BC 整合
+- **Published Language（發布語言）**：用標準格式（如 JSON Schema、Protobuf）定義 BC 間交換的資料格式
+
+## 常見誤區
+
+<Callout type="warning" title="常見誤區">
+**誤區一**：只畫技術架構圖（API 呼叫、Message Queue），不考慮團隊關係。Context Map 的核心是反映團隊之間的協作動態。
+
+**誤區二**：所有 BC 之間都用 Shared Kernel。Shared Kernel 要求雙方團隊密切協調，成本很高，只適用於關係最緊密的 BC。
+
+**誤區三**：忽略 Conformist 模式的存在。當你整合第三方 API（如 Stripe、LINE Pay）時，你就是 Conformist — 你無法要求對方改模型。
+</Callout>
+
+## 映射選擇流程
+
+<StepDiagram data='[{"title":"列出所有 BC","description":"盤點系統中的所有 Bounded Context","icon":"1"},{"title":"識別依賴關係","description":"找出哪些 BC 之間有資料或功能的依賴","icon":"2"},{"title":"判斷權力關係","description":"誰是上游（提供者）？誰是下游（消費者）？雙方的議價能力如何？","icon":"3"},{"title":"選擇映射模式","description":"根據團隊關係和技術需求，為每對 BC 選擇合適的模式","icon":"4"},{"title":"繪製 Context Map","description":"畫出完整的上下文映射圖，標注每對 BC 的關係模式","icon":"5"}]' />
+
+## 程式碼範例
+
+### C# 版本
+
+```csharp
+// === Anti-Corruption Layer 範例 ===
+// 上游：第三方支付 API（你無法控制它的模型）
+namespace ExternalPayment
+{
+    // 第三方的回應格式（你不能改）
+    public class PaymentGatewayResponse
+    {
+        public string txn_id { get; set; }
+        public string status_code { get; set; }    // "00" = 成功
+        public long amount_cents { get; set; }       // 金額用「分」
+        public string currency_code { get; set; }
+    }
+}
+
+// 下游：你的 Billing BC，用 ACL 隔離
+namespace Billing.Infrastructure.Acl
+{
+    // ACL：把第三方的模型翻譯成自己的
+    public class PaymentGatewayAdapter : IPaymentGateway
+    {
+        private readonly ExternalPaymentClient _client;
+
+        public PaymentGatewayAdapter(ExternalPaymentClient client)
+        {
+            _client = client;
+        }
+
+        public async Task<PaymentResult> ProcessPayment(Money amount, PaymentMethod method)
+        {
+            // 轉換成第三方的格式
+            var request = new ExternalPaymentRequest
+            {
+                AmountCents = (long)(amount.Amount * 100),
+                CurrencyCode = amount.Currency,
+                Method = MapPaymentMethod(method),
+            };
+
+            var response = await _client.Charge(request);
+
+            // ACL：把第三方回應翻譯成自己的 Domain 模型
+            return new PaymentResult(
+                TransactionId: new TransactionId(response.txn_id),
+                Status: MapStatus(response.status_code),
+                Amount: new Money(response.amount_cents / 100m, response.currency_code)
+            );
+        }
+
+        private PaymentStatus MapStatus(string code) => code switch
+        {
+            "00" => PaymentStatus.Succeeded,
+            "01" => PaymentStatus.Declined,
+            _    => PaymentStatus.Failed,
+        };
+    }
+}
+
+// === Open Host Service 範例 ===
+namespace Sales.Api
+{
+    // 對外公開的 API — Published Language
+    [ApiController]
+    [Route("api/v1/orders")]
+    public class OrdersController : ControllerBase
+    {
+        [HttpGet("{id}")]
+        public async Task<OrderDto> GetOrder(Guid id)
+        {
+            var order = await _orderRepository.GetById(id);
+            return OrderDtoMapper.ToDto(order); // 用 DTO 對外，不暴露 Domain Model
+        }
+    }
+}
+```
+
+### TypeScript 版本
+
+```typescript
+// === Anti-Corruption Layer ===
+// 第三方支付的回應（你不能改）
+interface PaymentGatewayResponse {
+  txn_id: string;
+  status_code: string; // "00" = 成功
+  amount_cents: number;
+  currency_code: string;
+}
+
+// ACL：翻譯成你的 Domain 模型
+class PaymentGatewayAdapter implements PaymentGateway {
+  constructor(private client: ExternalPaymentClient) {}
+
+  async processPayment(amount: Money, method: PaymentMethod): Promise<PaymentResult> {
+    const response = await this.client.charge({
+      amountCents: Math.round(amount.amount * 100),
+      currencyCode: amount.currency,
+      method: this.mapMethod(method),
+    });
+
+    return {
+      transactionId: new TransactionId(response.txn_id),
+      status: this.mapStatus(response.status_code),
+      amount: Money.create(response.amount_cents / 100, response.currency_code),
+    };
+  }
+
+  private mapStatus(code: string): PaymentStatus {
+    switch (code) {
+      case "00": return PaymentStatus.Succeeded;
+      case "01": return PaymentStatus.Declined;
+      default:   return PaymentStatus.Failed;
+    }
+  }
+}
+```
+
+### Python 版本
+
+```python
+# === Anti-Corruption Layer ===
+from dataclasses import dataclass
+
+@dataclass
+class PaymentGatewayResponse:
+    """第三方的回應（不能改）"""
+    txn_id: str
+    status_code: str
+    amount_cents: int
+    currency_code: str
+
+class PaymentGatewayAdapter:
+    """ACL：翻譯成 Domain 模型"""
+    def __init__(self, client: ExternalPaymentClient):
+        self._client = client
+
+    async def process_payment(self, amount: Money, method: PaymentMethod) -> PaymentResult:
+        response = await self._client.charge(
+            amount_cents=int(amount.amount * 100),
+            currency_code=amount.currency,
+            method=self._map_method(method),
+        )
+        return PaymentResult(
+            transaction_id=TransactionId(response.txn_id),
+            status=self._map_status(response.status_code),
+            amount=Money(response.amount_cents / 100, response.currency_code),
+        )
+
+    def _map_status(self, code: str) -> PaymentStatus:
+        mapping = {"00": PaymentStatus.SUCCEEDED, "01": PaymentStatus.DECLINED}
+        return mapping.get(code, PaymentStatus.FAILED)
+```
+
+## 關係圖
+
+<Diagram data='{"nodes":[{"id":"sales","label":"Sales BC","type":"highlight"},{"id":"shipping","label":"Shipping BC","type":"default"},{"id":"billing","label":"Billing BC","type":"default"},{"id":"payment","label":"第三方支付 (External)","type":"muted"},{"id":"inventory","label":"Inventory BC","type":"default"},{"id":"shared","label":"Shared Kernel (共用型別)","type":"muted"}],"edges":[{"from":"sales","to":"shipping","label":"Customer-Supplier"},{"from":"sales","to":"billing","label":"Customer-Supplier"},{"from":"billing","to":"payment","label":"ACL (Conformist)"},{"from":"sales","to":"inventory","label":"Domain Events"},{"from":"sales","to":"shared","label":"共享"},{"from":"shipping","to":"shared","label":"共享"}]}' />
+
+## 實戰補充
+
+<Callout type="tip" title="資深開發者筆記">
+在實務中，最常用到的三種模式是 **Anti-Corruption Layer**、**Customer-Supplier**、和 **Open Host Service**。
+
+ACL 是必修課：只要你整合第三方系統（支付、物流、ERP），就需要 ACL。把第三方的 SDK 或 API Client 封裝在 Infrastructure 層，用你自己的 Domain Interface 隔離。
+
+在 .NET 專案中，ACL 的實作通常是一個 Adapter 類別，實作 Domain 層定義的介面，放在 Infrastructure 專案中。DI Container 負責把 Adapter 注入到 Application Service。
+
+畫 Context Map 的最好時機是系統設計初期和每次大型重構之前。用 Miro 或 draw.io 畫一張圖，貼在團隊 Wiki 上，所有人都能看到系統的宏觀架構。
+</Callout>
+
+## 理解測驗
+
+<Quiz data='{"question":"當你整合一個你無法控制的第三方 API 時，最適合用哪種模式？","options":["Shared Kernel","Customer-Supplier","Conformist + Anti-Corruption Layer","Partnership"],"answer":2,"explanation":"面對無法控制的第三方 API，你是 Conformist（必須遵從對方的格式），但應該加上 ACL（防腐層）來保護自己的 Domain Model 不被第三方的模型汙染。"}' />
+
+<Quiz data='{"question":"Shared Kernel 的主要風險是什麼？","options":["效能太差","任何修改都需要雙方團隊協調，成本高","會洩漏資料","無法測試"],"answer":1,"explanation":"Shared Kernel 表示兩個 BC 共享一部分程式碼。任何修改都需要雙方同意和協調，如果團隊溝通不順暢，會成為瓶頸。"}' />
+
+<Quiz data='{"question":"Context Map 反映的是什麼？","options":["資料庫 Schema","API 端點列表","Bounded Context 之間的關係模式和團隊協作動態","類別繼承關係"],"answer":2,"explanation":"Context Map 不只是技術架構圖，更反映了團隊之間的權力關係和協作方式。每種映射模式背後都有對應的團隊動態。"}' />
+
+## 重點整理
+
+<Callout type="tip" title="一句話記住">
+**Context Mapping = BC 之間的外交關係圖，決定誰跟誰怎麼合作。**
+</Callout>
+
+| 模式 | 說明 |
+|------|------|
+| **Shared Kernel** | 共享一小部分模型，修改需雙方同意 |
+| **Customer-Supplier** | 上游提供、下游消費，上游有決定權 |
+| **Conformist** | 下游完全採用上游模型，不做轉換 |
+| **ACL** | 下游建轉換層，隔離上游模型 |
+| **Open Host Service** | 上游提供公開 API 讓多方整合 |
+| **Published Language** | 用標準格式定義交換的資料結構 |

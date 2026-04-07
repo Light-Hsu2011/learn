@@ -1,0 +1,210 @@
+---
+title: "Ubiquitous Language"
+order: 1
+description: "統一語言：讓工程師和業務人員說同一種話，消除溝通鴻溝"
+---
+
+# Ubiquitous Language（統一語言）
+
+<ELI5>
+想像你去日本旅行，你的旅伴有台灣人、美國人、日本人。如果大家各說各的語言，光是點個餐就要比手畫腳半天。
+
+這時候有人拿出一本**旅行翻譯手冊**，把所有常用詞彙統一翻譯好：「這個叫 ramen、那個叫 tempura」。大家都用這本手冊來溝通，誤會立刻減少 90%。
+
+Ubiquitous Language 就是你的專案裡那本**翻譯手冊** — 工程師、PM、業務、設計師，所有人都用同一套術語來描述同一件事。
+</ELI5>
+
+## 是什麼？
+
+Ubiquitous Language 是 DDD 的基石概念：團隊中所有人（開發者、領域專家、PM）共同建立並使用**一套統一的術語**來描述業務概念。這套語言不只存在於文件中，更要直接反映在程式碼裡。
+
+<Callout type="info" title="DDD 核心基礎">
+Ubiquitous Language 是 DDD 所有戰術與戰略模式的前提。沒有統一語言，Entity、Value Object、Aggregate 等概念都會失去意義。
+</Callout>
+
+## 核心觀念
+
+- **術語不一致 = Bug 的溫床**：業務說「訂單」，工程師寫 `Transaction`，QA 測「購買紀錄」— 三個詞指同一件事，但每次溝通都要翻譯，翻譯就會出錯
+- **程式碼即文件**：變數名、方法名、類別名都要使用 Ubiquitous Language，讀程式碼就像讀業務規格書
+- **Glossary 是活文件**：建立術語表並持續維護，新進成員靠它上手，老成員靠它對齊
+- **語言隨 Bounded Context 變化**：同一個詞在不同 Context 可能有不同意義，每個 Context 有自己的 Ubiquitous Language
+
+## 常見誤區
+
+<Callout type="warning" title="常見誤區">
+**誤區一**：以為 Ubiquitous Language 只是寫一份名詞對照表就完事。實際上它必須被所有人在日常溝通、程式碼、文件中持續使用。
+
+**誤區二**：工程師自己發明術語（例如把「庫存」叫做 `item_count`），沒有和領域專家對齊。程式碼裡的命名必須來自業務語言。
+
+**誤區三**：試圖建立一個「全公司統一」的語言。Ubiquitous Language 的範圍是 Bounded Context，不是整間公司。
+</Callout>
+
+## 建立流程
+
+<StepDiagram data='[{"title":"召集領域專家","description":"找齊業務、PM、開發者，一起開 Event Storming 或需求工作坊","icon":"1"},{"title":"識別核心術語","description":"列出所有業務概念，找出同義詞和歧義詞","icon":"2"},{"title":"建立 Glossary","description":"每個術語給出明確定義，標註所屬 Bounded Context","icon":"3"},{"title":"反映到程式碼","description":"類別名、方法名、變數名全部使用 Glossary 中的術語","icon":"4"},{"title":"持續維護","description":"需求變更時同步更新 Glossary 和程式碼命名","icon":"5"}]' />
+
+## 程式碼範例
+
+### C# 版本
+
+```csharp
+// ❌ 術語不統一：工程師自己取名
+public class Txn
+{
+    public decimal Amt { get; set; }
+    public string Cust { get; set; }
+    public int Qty { get; set; }
+}
+
+// ✅ 使用 Ubiquitous Language
+public class Order
+{
+    public OrderId Id { get; }
+    public Customer Customer { get; }
+    public Money TotalAmount { get; private set; }
+    public IReadOnlyList<OrderLineItem> LineItems => _lineItems.AsReadOnly();
+    
+    private readonly List<OrderLineItem> _lineItems = new();
+
+    public void AddLineItem(Product product, Quantity quantity)
+    {
+        var lineItem = new OrderLineItem(product, quantity);
+        _lineItems.Add(lineItem);
+        TotalAmount = CalculateTotal();
+    }
+
+    public void Place()
+    {
+        if (!_lineItems.Any())
+            throw new InvalidOperationException("Cannot place an order with no line items.");
+        // 「下單」這個動作，業務和工程師都叫 Place Order
+    }
+
+    private Money CalculateTotal() =>
+        _lineItems.Aggregate(Money.Zero, (sum, item) => sum + item.Subtotal);
+}
+```
+
+### TypeScript 版本
+
+```typescript
+// ❌ 術語不統一
+interface Txn {
+  amt: number;
+  cust: string;
+  qty: number;
+}
+
+// ✅ 使用 Ubiquitous Language
+interface OrderLineItem {
+  product: Product;
+  quantity: Quantity;
+  subtotal: Money;
+}
+
+class Order {
+  private lineItems: OrderLineItem[] = [];
+  
+  constructor(
+    public readonly id: OrderId,
+    public readonly customer: Customer,
+  ) {}
+
+  addLineItem(product: Product, quantity: Quantity): void {
+    this.lineItems.push({
+      product,
+      quantity,
+      subtotal: product.price.multiply(quantity.value),
+    });
+  }
+
+  place(): void {
+    if (this.lineItems.length === 0) {
+      throw new Error("Cannot place an order with no line items.");
+    }
+    // 業務術語直接成為方法名
+  }
+
+  get totalAmount(): Money {
+    return this.lineItems.reduce(
+      (sum, item) => sum.add(item.subtotal),
+      Money.zero(),
+    );
+  }
+}
+```
+
+### Python 版本
+
+```python
+from dataclasses import dataclass, field
+from typing import List
+
+# ❌ 術語不統一
+class Txn:
+    def __init__(self, amt, cust, qty):
+        self.amt = amt
+        self.cust = cust
+        self.qty = qty
+
+# ✅ 使用 Ubiquitous Language
+@dataclass
+class OrderLineItem:
+    product: "Product"
+    quantity: "Quantity"
+    
+    @property
+    def subtotal(self) -> "Money":
+        return self.product.price * self.quantity.value
+
+@dataclass
+class Order:
+    id: "OrderId"
+    customer: "Customer"
+    _line_items: List[OrderLineItem] = field(default_factory=list)
+
+    def add_line_item(self, product: "Product", quantity: "Quantity") -> None:
+        self._line_items.append(OrderLineItem(product, quantity))
+
+    def place(self) -> None:
+        if not self._line_items:
+            raise ValueError("Cannot place an order with no line items.")
+
+    @property
+    def total_amount(self) -> "Money":
+        return sum((item.subtotal for item in self._line_items), Money.zero())
+```
+
+## 概念圖
+
+<Diagram data='{"nodes":[{"id":"expert","label":"領域專家 (Domain Expert)","type":"muted"},{"id":"dev","label":"開發者 (Developer)","type":"muted"},{"id":"ul","label":"Ubiquitous Language","type":"highlight"},{"id":"glossary","label":"Glossary（術語表）","type":"default"},{"id":"code","label":"程式碼命名","type":"default"},{"id":"doc","label":"需求文件 / User Story","type":"default"}],"edges":[{"from":"expert","to":"ul","label":"共同建立"},{"from":"dev","to":"ul","label":"共同建立"},{"from":"ul","to":"glossary","label":"記錄於"},{"from":"ul","to":"code","label":"反映在"},{"from":"ul","to":"doc","label":"使用於"}]}' />
+
+## 實戰補充
+
+<Callout type="tip" title="資深開發者筆記">
+在實務專案中，最有效建立 Ubiquitous Language 的方式是 **Event Storming**：用便利貼把所有業務事件貼在牆上，過程中自然會發現術語不一致的地方。每次發現分歧，就當場討論並決定統一用語，然後記進 Glossary。
+
+另一個技巧：在 Code Review 時檢查命名是否符合 Ubiquitous Language。如果有人寫了 `updateStatus()`，但業務術語是「核准訂單」，就應該改成 `approveOrder()`。
+</Callout>
+
+## 理解測驗
+
+<Quiz data='{"question":"為什麼 Ubiquitous Language 是 DDD 的基礎？","options":["因為它讓程式碼看起來比較專業","因為它確保所有人對業務概念有一致的理解，減少溝通誤差","因為它是一種程式語言","因為它能讓程式跑得更快"],"answer":1,"explanation":"Ubiquitous Language 的核心價值在於消除團隊成員之間的溝通鴻溝，確保從需求到程式碼都使用一致的術語。"}' />
+
+<Quiz data='{"question":"以下哪個做法違反了 Ubiquitous Language 原則？","options":["在程式碼中用 Order 表示訂單","業務說「出貨」，工程師在程式碼中寫 ship()","業務說「退款」，工程師在程式碼中寫 updateBalance()","在 Glossary 中記錄每個術語的定義"],"answer":2,"explanation":"業務說「退款」但程式碼寫 updateBalance()，這就是術語不一致。應該寫 refund() 來對齊業務語言。"}' />
+
+<Quiz data='{"question":"Ubiquitous Language 的適用範圍是？","options":["整間公司統一一套語言","每個 Bounded Context 有自己的 Ubiquitous Language","每個工程師自己定義自己的語言","只有業務人員需要遵守"],"answer":1,"explanation":"Ubiquitous Language 的範圍是 Bounded Context。同一個詞在不同 Context 可能有不同含義，所以每個 Context 維護自己的統一語言。"}' />
+
+## 重點整理
+
+<Callout type="tip" title="一句話記住">
+**Ubiquitous Language = 團隊的共同語言，從會議室到程式碼都用同一套術語。**
+</Callout>
+
+| 概念 | 說明 |
+|------|------|
+| **Ubiquitous Language** | 團隊共同建立的統一業務術語 |
+| **Glossary** | 記錄所有術語定義的活文件 |
+| **程式碼即文件** | 類別名、方法名直接使用業務術語 |
+| **核心好處** | 消除溝通鴻溝，減少因術語不一致造成的 Bug |
+| **適用範圍** | 每個 Bounded Context 各自維護 |

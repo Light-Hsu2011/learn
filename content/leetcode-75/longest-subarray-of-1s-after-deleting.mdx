@@ -1,0 +1,112 @@
+---
+title: "1493. Longest Subarray of 1's After Deleting One Element"
+order: 17
+description: "用滑動窗口允許最多一個 0 來找刪除一個元素後最長的全 1 子陣列"
+---
+
+# Longest Subarray of 1's After Deleting One Element
+
+<ELI5>
+跟上一題（Max Consecutive Ones III）幾乎一樣！差別在於：你不是「把 0 變成 1」，而是「刪掉一個元素」。因為必須刪除恰好一個元素，所以最終答案要減 1。
+
+就像一串珍珠項鍊，允許拿掉一顆黑珠子，看最長能串多少白珠子。但因為拿掉後少了一個位置，長度自然少 1。
+</ELI5>
+
+## 題目描述
+
+給定二進位陣列 `nums`，刪除恰好一個元素後，回傳最長的全 1 子陣列長度。
+
+```
+輸入：nums = [1,1,0,1,1,1,0,1,1]
+輸出：5（刪除 nums[2]，得到 [1,1,1,1,1]）
+
+輸入：nums = [0,1,1,1,0,1,1,0,1]
+輸出：4
+
+輸入：nums = [1,1,1]
+輸出：2（必須刪除一個元素）
+```
+
+## 解題思路
+
+<StepDiagram data='[{"title":"等同上題","description":"滑動窗口允許最多 1 個 0（k=1）","icon":"1"},{"title":"擴張右邊","description":"right 往右移，追蹤 0 的數量","icon":"2"},{"title":"收縮左邊","description":"0 的數量超過 1 時，left 收縮","icon":"3"},{"title":"結果減一","description":"窗口長度 - 1 就是刪除一個元素後的長度","icon":"4"}]' />
+
+## 程式碼
+
+### C#
+
+```csharp
+public class Solution {
+    public int LongestSubarray(int[] nums) {
+        int left = 0, zeroCount = 0, maxLen = 0;
+        for (int right = 0; right < nums.Length; right++) {
+            if (nums[right] == 0) zeroCount++;
+            while (zeroCount > 1) {
+                if (nums[left] == 0) zeroCount--;
+                left++;
+            }
+            // 窗口長度 - 1（因為必須刪除一個元素）
+            maxLen = Math.Max(maxLen, right - left);
+        }
+        return maxLen;
+    }
+}
+```
+
+### TypeScript
+
+```typescript
+function longestSubarray(nums: number[]): number {
+    let left = 0, zeroCount = 0, maxLen = 0;
+    for (let right = 0; right < nums.length; right++) {
+        if (nums[right] === 0) zeroCount++;
+        while (zeroCount > 1) {
+            if (nums[left] === 0) zeroCount--;
+            left++;
+        }
+        maxLen = Math.max(maxLen, right - left); // 不是 right-left+1
+    }
+    return maxLen;
+}
+```
+
+### Python
+
+```python
+def longestSubarray(nums: list[int]) -> int:
+    left = zero_count = max_len = 0
+    for right in range(len(nums)):
+        if nums[right] == 0:
+            zero_count += 1
+        while zero_count > 1:
+            if nums[left] == 0:
+                zero_count -= 1
+            left += 1
+        # right - left 而非 right - left + 1
+        max_len = max(max_len, right - left)
+    return max_len
+```
+
+## 複雜度分析
+
+| | Time | Space |
+|--|------|-------|
+| 本解法 | O(n) | O(1) |
+
+## 圖解
+
+<Diagram data='{"nodes":[{"id":"input","label":"[1,1,0,1,1,1,0,1,1]","type":"default"},{"id":"window","label":"窗口 [1,1,0,1,1,1] len=6","type":"highlight"},{"id":"delete","label":"刪除 0 → [1,1,1,1,1] len=5","type":"highlight"},{"id":"result","label":"maxLen = 5","type":"muted"}],"edges":[{"from":"input","to":"window","label":"允許 1 個 0"},{"from":"window","to":"delete","label":"刪除操作"},{"from":"delete","to":"result","label":"窗口長度-1"}]}' />
+
+## 進階觀點
+
+<Callout type="tip" title="面試追問">
+- **為什麼是 right - left 而不是 right - left + 1？** 因為必須刪除一個元素，等於窗口長度少 1。
+- **全是 1 的陣列怎麼辦？** 仍然必須刪除一個，所以答案是 n-1。我們的公式 right-left 在全 1 時，最大窗口為整個陣列，right-left = n-1，正好正確。
+- **跟 Max Consecutive Ones III 的本質差異？** 翻轉是「不減少元素數量」，刪除是「減少一個」，所以答案差 1。
+</Callout>
+
+## 理解測驗
+
+<Quiz data='{"question":"nums = [1,1,1] 的答案為什麼是 2 而不是 3？","options":["因為有 bug","因為題目規定必須刪除恰好一個元素，即使全是 1 也要刪一個","因為有 0","因為陣列太短"],"answer":1,"explanation":"題目要求必須刪除一個元素，所以即使全是 1，長度也要減 1。"}' />
+
+<Quiz data='{"question":"這題跟 Max Consecutive Ones III (k=1) 的程式碼差在哪裡？","options":["完全不同","只差在計算 maxLen 時用 right-left 而非 right-left+1","資料結構不同","需要額外的 HashMap"],"answer":1,"explanation":"核心邏輯完全一樣（允許 1 個 0 的滑動窗口），只是最後長度的計算少 1。"}' />

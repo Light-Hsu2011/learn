@@ -1,0 +1,227 @@
+---
+title: "TDD 與 Legacy Code"
+order: 7
+description: "如何在沒有測試的舊程式碼中安全地引入測試和重構"
+---
+
+# TDD 與 Legacy Code
+
+<ELI5>
+想像你住在一棟 30 年的老房子裡，牆壁裡的電線沒有圖紙，水管走向不明。你想換新的廚房，但又怕一拆牆就水管爆裂、電線走火。
+
+怎麼辦？先**搭鷹架**——在你要動工的區域加上保護和測量（這就是加測試）。確認鷹架穩了之後，才小心地拆掉舊的、換上新的。每拆一小塊，就檢查一次鷹架還穩不穩。
+
+Legacy Code 的翻修也是一樣：先用測試「搭鷹架」保護現有行為，再安全地重構。不搭鷹架就動工，是在玩俄羅斯輪盤。
+</ELI5>
+
+## 是什麼？
+
+Michael Feathers 在《Working Effectively with Legacy Code》中定義：**Legacy Code 就是沒有測試的程式碼**。不管它多新或多舊，沒有測試就無法安全修改。
+
+<Callout type="info" title="Legacy Code 的定義">
+Legacy Code 不等於「老程式碼」。一個月前寫的、沒有測試的程式碼就是 Legacy Code。重點不是年齡，而是**能否安全修改**。
+</Callout>
+
+## 核心觀念
+
+- **Characterization Test（特徵測試）**：記錄現有行為的測試，不管行為對不對，先記下來
+- **Seam（接縫）**：程式碼中可以插入測試的地方，不需要修改原始程式碼
+- **Sprout Method**：在既有方法旁邊長出新方法，新方法有完整測試
+- **Sprout Class**：把新功能放到新類別中，新類別有完整測試
+- **Wrap Method**：用新方法包住舊方法，在前後加上新行為（有測試保護）
+- **依賴打破技術（Dependency-Breaking Techniques）**：解開糾纏的依賴，讓程式碼可測試
+
+## 常見誤區
+
+<Callout type="warning" title="Legacy Code 改造的陷阱">
+- **想一次重寫全部**：大規模重寫的失敗率極高。用小步驟、漸進式的方式改善
+- **改了行為卻沒發現**：沒有 Characterization Test 就重構，等於蒙著眼睛走鋼索
+- **追求完美的測試覆蓋率**：先測最危險的部分（常改動的、有 Bug 的），不需要一次全部補測試
+- **在測試中引入更多依賴**：打破依賴的目的是讓測試更簡單，不是更複雜
+</Callout>
+
+## 改造流程
+
+<StepDiagram data='[{"title":"辨識修改區域","description":"找到你需要修改的程式碼區域，理解它的現有行為","icon":"1"},{"title":"找到 Seam（接縫）","description":"找到可以插入測試的切入點，不需要改原始程式碼","icon":"2"},{"title":"寫 Characterization Test","description":"記錄現有行為——不管對錯，先確保有測試覆蓋","icon":"3"},{"title":"打破依賴","description":"用 Extract Interface、Introduce Parameter 等技術解開依賴","icon":"4"},{"title":"安全重構","description":"在 Characterization Test 的保護下，小步驟重構程式碼","icon":"5"},{"title":"加入新功能","description":"用 Sprout Method/Class 或 TDD 的方式加入新功能","icon":"6"}]' />
+
+## 程式碼範例
+
+### C#（xUnit）
+
+```csharp
+// 原始 Legacy Code — 難以測試，依賴寫死
+public class ReportGenerator
+{
+    public string Generate(int userId)
+    {
+        // 直接存取資料庫（無法測試）
+        var db = new SqlConnection("Server=prod;...");
+        var user = db.Query<User>($"SELECT * FROM Users WHERE Id={userId}");
+
+        // 直接呼叫外部服務（無法測試）
+        var emailService = new SmtpEmailService();
+        emailService.Send(user.Email, "Report Ready");
+
+        return $"Report for {user.Name}";
+    }
+}
+
+// Step 1: 找到 Seam — 用 Extract Interface 打破依賴
+public interface IUserRepository
+{
+    User GetById(int id);
+}
+
+public interface IEmailService
+{
+    void Send(string to, string subject);
+}
+
+// Step 2: 重構後的版本 — 依賴注入
+public class ReportGenerator
+{
+    private readonly IUserRepository _repo;
+    private readonly IEmailService _email;
+
+    public ReportGenerator(IUserRepository repo, IEmailService email)
+    {
+        _repo = repo;
+        _email = email;
+    }
+
+    public string Generate(int userId)
+    {
+        var user = _repo.GetById(userId);
+        _email.Send(user.Email, "Report Ready");
+        return $"Report for {user.Name}";
+    }
+}
+
+// Step 3: Characterization Test — 記錄現有行為
+[Fact]
+public void Generate_ExistingUser_ReturnsReportWithName()
+{
+    var stubRepo = new Mock<IUserRepository>();
+    stubRepo.Setup(r => r.GetById(1))
+            .Returns(new User { Name = "Alice", Email = "a@test.com" });
+    var mockEmail = new Mock<IEmailService>();
+
+    var generator = new ReportGenerator(stubRepo.Object, mockEmail.Object);
+    var result = generator.Generate(1);
+
+    Assert.Equal("Report for Alice", result);
+    mockEmail.Verify(e => e.Send("a@test.com", "Report Ready"));
+}
+
+// Step 4: Sprout Method — 新功能用 TDD 寫
+public string GenerateWithSummary(int userId)
+{
+    var report = Generate(userId);
+    var summary = BuildSummary(report); // 新方法，有完整 TDD
+    return $"{report}\n{summary}";
+}
+```
+
+### TypeScript（Jest）
+
+```typescript
+// Legacy Code — 直接呼叫 fetch，無法測試
+class ReportGenerator {
+  async generate(userId: number): Promise<string> {
+    // 打破依賴：把 fetch 抽成可注入的依賴
+    const user = await this.userRepo.getById(userId);
+    await this.emailService.send(user.email, "Report Ready");
+    return `Report for ${user.name}`;
+  }
+
+  constructor(
+    private userRepo: UserRepository,
+    private emailService: EmailService
+  ) {}
+}
+
+// Characterization Test — 記錄現有行為
+describe("ReportGenerator", () => {
+  it("returns report with user name", async () => {
+    const stubRepo = {
+      getById: jest.fn().mockResolvedValue({
+        name: "Alice",
+        email: "a@test.com",
+      }),
+    };
+    const mockEmail = { send: jest.fn() };
+
+    const generator = new ReportGenerator(stubRepo, mockEmail);
+    const result = await generator.generate(1);
+
+    expect(result).toBe("Report for Alice");
+    expect(mockEmail.send).toHaveBeenCalledWith("a@test.com", "Report Ready");
+  });
+});
+```
+
+### Python（pytest）
+
+```python
+# Legacy Code 改造流程
+# Step 1: Characterization Test — 先記錄現有行為
+def test_generate_existing_user_returns_report(mocker):
+    mock_repo = mocker.Mock()
+    mock_repo.get_by_id.return_value = User(name="Alice", email="a@test.com")
+    mock_email = mocker.Mock()
+
+    generator = ReportGenerator(mock_repo, mock_email)
+    result = generator.generate(1)
+
+    assert result == "Report for Alice"
+    mock_email.send.assert_called_once_with("a@test.com", "Report Ready")
+
+# Step 2: Sprout Method — 用 TDD 加新功能
+def test_generate_with_summary_includes_summary():
+    mock_repo = mocker.Mock()
+    mock_repo.get_by_id.return_value = User(name="Alice", email="a@test.com")
+    mock_email = mocker.Mock()
+
+    generator = ReportGenerator(mock_repo, mock_email)
+    result = generator.generate_with_summary(1)
+
+    assert "Report for Alice" in result
+    assert "Summary:" in result
+```
+
+## 概念圖
+
+<Diagram data='{"nodes":[{"id":"legacy","label":"Legacy Code (無測試)","type":"highlight"},{"id":"char","label":"Characterization Test","type":"default"},{"id":"seam","label":"Seam (接縫)","type":"default"},{"id":"sprout","label":"Sprout Method/Class","type":"default"},{"id":"wrap","label":"Wrap Method","type":"default"},{"id":"safe","label":"安全重構","type":"highlight"},{"id":"tdd","label":"TDD 新功能","type":"highlight"}],"edges":[{"from":"legacy","to":"seam","label":"找到切入點"},{"from":"seam","to":"char","label":"記錄現有行為"},{"from":"char","to":"safe","label":"有測試保護"},{"from":"safe","to":"sprout","label":"新功能長在旁邊"},{"from":"safe","to":"wrap","label":"包住舊方法"},{"from":"sprout","to":"tdd","label":"用 TDD 開發"},{"from":"wrap","to":"tdd","label":"用 TDD 開發"}]}' />
+
+## 實戰補充
+
+<Callout type="tip" title="資深開發者的經驗">
+- **先讀《Working Effectively with Legacy Code》**：Michael Feathers 這本書是 Legacy Code 改造的聖經，定義了 25 種以上的依賴打破技術。
+- **Boy Scout Rule**：每次碰到 Legacy Code，就讓它比你發現時好一點點。不需要一次修好全部。
+- **Golden Master Testing**：對於複雜的 Legacy Code，先記錄完整的輸入/輸出，任何改動都跟 Golden Master 比對。
+- **最危險的區域優先**：先補測試在最常修改、最容易出 Bug 的區域。用 `git log --follow` 找到修改頻率最高的檔案。
+- **不要害怕「醜陋」的測試**：Characterization Test 不追求漂亮，它的目的是保護你的安全。先有再好。
+</Callout>
+
+## 理解測驗
+
+<Quiz data='{"question":"Michael Feathers 對 Legacy Code 的定義是什麼？","options":["超過 5 年的程式碼","用舊語言寫的程式碼","沒有測試的程式碼","沒有文件的程式碼"],"answer":2,"explanation":"Michael Feathers 定義 Legacy Code 為沒有測試的程式碼。不管程式碼多新或多舊，沒有測試就無法安全修改。"}' />
+
+<Quiz data='{"question":"Characterization Test 的目的是什麼？","options":["驗證程式碼是否正確","記錄程式碼的現有行為，不管對錯","取代所有單元測試","提升程式碼效能"],"answer":1,"explanation":"Characterization Test 記錄程式碼目前的行為，目的是在重構時偵測行為是否被意外改變。它不判斷對錯，只記錄事實。"}' />
+
+<Quiz data='{"question":"Sprout Method 的做法是什麼？","options":["刪掉舊方法，寫新的","在舊方法旁邊新增一個有完整測試的方法來實作新功能","把所有程式碼搬到新專案","用 Mock 取代舊方法"],"answer":1,"explanation":"Sprout Method 是在既有方法旁邊「長出」新方法。新方法用 TDD 開發、有完整測試，然後從舊方法呼叫它。"}' />
+
+## 重點整理
+
+<Callout type="tip" title="一句話記住">
+**Legacy Code = 沒測試的程式碼。先搭鷹架（Characterization Test），再安全翻修。**
+</Callout>
+
+| 技術 | 說明 |
+|------|------|
+| **Characterization Test** | 記錄現有行為的測試，保護重構安全 |
+| **Seam（接縫）** | 可以插入測試的程式碼切入點 |
+| **Sprout Method** | 新功能長在舊方法旁邊，用 TDD 開發 |
+| **Sprout Class** | 新功能放到新類別，用 TDD 開發 |
+| **Wrap Method** | 用新方法包住舊方法，加上新行為 |
+| **核心原則** | 小步驟、漸進式改善，不要大規模重寫 |

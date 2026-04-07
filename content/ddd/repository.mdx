@@ -1,0 +1,285 @@
+---
+title: "Repository Pattern"
+order: 8
+description: "把資料存取抽象化，讓領域層不依賴基礎設施細節"
+---
+
+# Repository Pattern（儲存庫模式）
+
+<ELI5>
+想像你去**圖書館**借書。你跟櫃檯說：「我要借《哈利波特》。」館員幫你找到書，你不需要知道書放在哪個樓層、哪個書架、第幾格。
+
+還書的時候也一樣，你交給櫃檯就好，館員會把它放回正確的位置。
+
+Repository 就是你程式裡的「圖書館櫃檯」— 你只要說「給我這張訂單」或「存一下這個客戶」，Repository 負責和資料庫打交道，你的業務邏輯完全不需要知道資料存在哪裡、用什麼資料庫。
+</ELI5>
+
+## 是什麼？
+
+Repository 是一個抽象層，提供類似**集合（Collection）的介面**來存取 Aggregate Root。它把資料存取的細節隱藏起來，讓 Domain 層不依賴任何基礎設施（資料庫、ORM、API）。
+
+<Callout type="info" title="DDD 基礎設施抽象">
+Repository 介面定義在 Domain 層，實作放在 Infrastructure 層。這是 DDD 中實現**依賴反轉原則（DIP）**的關鍵手段 — Domain 定義需求，Infrastructure 負責實現。
+</Callout>
+
+## 核心觀念
+
+- **只為 Aggregate Root 建 Repository**：內部 Entity 和 Value Object 透過 Root 存取，不需要獨立的 Repository
+- **介面在 Domain 層**：`IOrderRepository` 定義在 Domain，`OrderRepository` 實作在 Infrastructure
+- **Collection 語意**：Repository 的方法像操作集合 — `Add`、`GetById`、`Remove`，不暴露 SQL 或 ORM 細節
+- **Unit of Work 搭配**：Repository 通常搭配 Unit of Work 模式，確保一個交易內的所有變更一次提交
+- **不要在 Repository 放業務邏輯**：Repository 只負責存取，業務規則放在 Entity 和 Domain Service
+
+## 常見誤區
+
+<Callout type="warning" title="常見誤區">
+**誤區一**：為每個 Entity 都建一個 Repository。只有 Aggregate Root 才有 Repository。OrderLineItem 是 Order 的一部分，透過 Order Repository 存取。
+
+**誤區二**：Repository 裡面寫業務邏輯（如 `GetVipCustomersWithRecentOrders`）。這類複雜查詢應該用專門的 Query Service 或 Read Model 處理。
+
+**誤區三**：Repository 回傳 DTO 或 ViewModel。Repository 回傳的是 Domain Model（Aggregate Root），DTO 的轉換由 Application Service 或 Mapper 負責。
+</Callout>
+
+## 實作流程
+
+<StepDiagram data='[{"title":"定義 Repository 介面","description":"在 Domain 層定義介面，宣告 Add、GetById、Remove 等方法","icon":"1"},{"title":"實作 Repository","description":"在 Infrastructure 層用 EF Core、Dapper 等實作介面","icon":"2"},{"title":"註冊 DI","description":"在 DI Container 中把介面綁定到實作","icon":"3"},{"title":"Application Service 使用","description":"Application Service 透過介面操作 Repository","icon":"4"},{"title":"搭配 Unit of Work","description":"確保一個交易內的所有 Repository 操作一次提交","icon":"5"}]' />
+
+## 程式碼範例
+
+### C# 版本
+
+```csharp
+// === Domain 層：定義介面 ===
+namespace Domain.Orders
+{
+    public interface IOrderRepository
+    {
+        Task<Order?> GetById(Guid id);
+        Task Add(Order order);
+        Task Remove(Order order);
+    }
+
+    // 通用 Repository 介面（可選）
+    public interface IRepository<T> where T : AggregateRoot<Guid>
+    {
+        Task<T?> GetById(Guid id);
+        Task Add(T aggregate);
+        Task Remove(T aggregate);
+    }
+
+    // Unit of Work
+    public interface IUnitOfWork
+    {
+        Task<int> SaveChanges(CancellationToken cancellationToken = default);
+    }
+}
+
+// === Infrastructure 層：實作 ===
+namespace Infrastructure.Persistence
+{
+    public class OrderRepository : IOrderRepository
+    {
+        private readonly AppDbContext _context;
+
+        public OrderRepository(AppDbContext context)
+        {
+            _context = context;
+        }
+
+        public async Task<Order?> GetById(Guid id)
+        {
+            return await _context.Orders
+                .Include(o => o.LineItems) // 載入 Aggregate 內部的 Entity
+                .FirstOrDefaultAsync(o => o.Id == id);
+        }
+
+        public async Task Add(Order order)
+        {
+            await _context.Orders.AddAsync(order);
+        }
+
+        public async Task Remove(Order order)
+        {
+            _context.Orders.Remove(order);
+        }
+    }
+
+    public class UnitOfWork : IUnitOfWork
+    {
+        private readonly AppDbContext _context;
+
+        public UnitOfWork(AppDbContext context) => _context = context;
+
+        public async Task<int> SaveChanges(CancellationToken cancellationToken = default)
+        {
+            return await _context.SaveChangesAsync(cancellationToken);
+        }
+    }
+}
+
+// === Application 層：使用 ===
+namespace Application.Orders
+{
+    public class PlaceOrderHandler
+    {
+        private readonly IOrderRepository _orderRepo;
+        private readonly IUnitOfWork _unitOfWork;
+
+        public PlaceOrderHandler(IOrderRepository orderRepo, IUnitOfWork unitOfWork)
+        {
+            _orderRepo = orderRepo;
+            _unitOfWork = unitOfWork;
+        }
+
+        public async Task Handle(PlaceOrderCommand command)
+        {
+            var order = await _orderRepo.GetById(command.OrderId)
+                ?? throw new NotFoundException("Order not found.");
+
+            order.Place(); // 業務邏輯在 Entity 裡
+
+            await _unitOfWork.SaveChanges();
+        }
+    }
+}
+```
+
+### TypeScript 版本
+
+```typescript
+// === Domain 層：定義介面 ===
+interface OrderRepository {
+  getById(id: string): Promise<Order | null>;
+  add(order: Order): Promise<void>;
+  remove(order: Order): Promise<void>;
+}
+
+// === Infrastructure 層：實作 ===
+class PrismaOrderRepository implements OrderRepository {
+  constructor(private prisma: PrismaClient) {}
+
+  async getById(id: string): Promise<Order | null> {
+    const data = await this.prisma.order.findUnique({
+      where: { id },
+      include: { lineItems: true },
+    });
+    if (!data) return null;
+    return OrderMapper.toDomain(data);
+  }
+
+  async add(order: Order): Promise<void> {
+    const data = OrderMapper.toPersistence(order);
+    await this.prisma.order.create({ data });
+  }
+
+  async remove(order: Order): Promise<void> {
+    await this.prisma.order.delete({ where: { id: order.id } });
+  }
+}
+
+// === Application 層：使用 ===
+class PlaceOrderHandler {
+  constructor(private orderRepo: OrderRepository) {}
+
+  async handle(command: PlaceOrderCommand): Promise<void> {
+    const order = await this.orderRepo.getById(command.orderId);
+    if (!order) throw new Error("Order not found.");
+    order.place();
+    await this.orderRepo.add(order); // 或用 UoW
+  }
+}
+```
+
+### Python 版本
+
+```python
+from abc import ABC, abstractmethod
+from typing import Optional
+from uuid import UUID
+
+# === Domain 層：定義介面 ===
+class OrderRepository(ABC):
+    @abstractmethod
+    async def get_by_id(self, id: UUID) -> Optional["Order"]:
+        pass
+
+    @abstractmethod
+    async def add(self, order: "Order") -> None:
+        pass
+
+    @abstractmethod
+    async def remove(self, order: "Order") -> None:
+        pass
+
+# === Infrastructure 層：實作 ===
+class SqlAlchemyOrderRepository(OrderRepository):
+    def __init__(self, session: AsyncSession):
+        self._session = session
+
+    async def get_by_id(self, id: UUID) -> Optional["Order"]:
+        result = await self._session.execute(
+            select(OrderModel)
+            .options(selectinload(OrderModel.line_items))
+            .where(OrderModel.id == id)
+        )
+        row = result.scalar_one_or_none()
+        return OrderMapper.to_domain(row) if row else None
+
+    async def add(self, order: "Order") -> None:
+        model = OrderMapper.to_persistence(order)
+        self._session.add(model)
+
+    async def remove(self, order: "Order") -> None:
+        model = await self._session.get(OrderModel, order.id)
+        if model:
+            await self._session.delete(model)
+
+# === Application 層：使用 ===
+class PlaceOrderHandler:
+    def __init__(self, order_repo: OrderRepository, uow: UnitOfWork):
+        self._order_repo = order_repo
+        self._uow = uow
+
+    async def handle(self, command: PlaceOrderCommand) -> None:
+        order = await self._order_repo.get_by_id(command.order_id)
+        if not order:
+            raise ValueError("Order not found.")
+        order.place()
+        await self._uow.commit()
+```
+
+## 概念圖
+
+<Diagram data='{"nodes":[{"id":"app","label":"Application Service","type":"muted"},{"id":"interface","label":"IOrderRepository (Domain)","type":"highlight"},{"id":"impl","label":"OrderRepository (Infrastructure)","type":"default"},{"id":"db","label":"Database","type":"muted"},{"id":"domain","label":"Order (Aggregate Root)","type":"default"},{"id":"uow","label":"Unit of Work","type":"default"}],"edges":[{"from":"app","to":"interface","label":"依賴介面"},{"from":"impl","to":"interface","label":"實作"},{"from":"impl","to":"db","label":"存取"},{"from":"interface","to":"domain","label":"回傳"},{"from":"app","to":"uow","label":"提交交易"}]}' />
+
+## 實戰補充
+
+<Callout type="tip" title="資深開發者筆記">
+在 EF Core 專案中，`DbContext` 本身就是 Unit of Work，`DbSet<T>` 就是 Repository。有些團隊會爭論「還需要再包一層 Repository 嗎？」答案是：如果你的 Domain 層不想依賴 EF Core，就需要。如果是小專案且不打算換 ORM，直接用 DbContext 也行。
+
+Repository 只處理寫入端的資料存取。讀取端（查詢列表、報表、搜尋）建議用專門的 Query Service 或 Read Model，直接用 Dapper 或 Raw SQL 查詢，不經過 Domain Model。這和 CQRS 的理念一致。
+
+Specification Pattern 可以和 Repository 結合：把查詢條件封裝成 Specification 物件，Repository 接受 Specification 來過濾資料。這樣查詢邏輯可以在 Domain 層表達，又不汙染 Repository 介面。
+</Callout>
+
+## 理解測驗
+
+<Quiz data='{"question":"為什麼 Repository 介面要定義在 Domain 層？","options":["因為放哪裡都一樣","因為這實現了依賴反轉（DIP）：Domain 定義需求，Infrastructure 實現","因為 Domain 層需要知道資料庫細節","因為 Infrastructure 層不能有介面"],"answer":1,"explanation":"把介面放在 Domain 層，實作放在 Infrastructure 層，讓 Domain 不依賴任何基礎設施。這是依賴反轉原則（DIP）的經典應用。"}' />
+
+<Quiz data='{"question":"哪些物件應該有自己的 Repository？","options":["所有 Entity","所有 Value Object","只有 Aggregate Root","只有最重要的 Entity"],"answer":2,"explanation":"只有 Aggregate Root 才有 Repository。內部 Entity 和 Value Object 作為 Aggregate 的一部分，透過 Root 的 Repository 一起載入和儲存。"}' />
+
+<Quiz data='{"question":"Repository 的方法應該長什麼樣子？","options":["像 SQL 查詢：ExecuteSql(\"SELECT...\")","像集合操作：Add、GetById、Remove","像 ORM 操作：Attach、Detach、SaveChanges","像 REST API：Get、Post、Put、Delete"],"answer":1,"explanation":"Repository 提供集合（Collection）語意的介面，隱藏底層的資料存取細節。用 Add 而非 INSERT，用 GetById 而非 SELECT。"}' />
+
+## 重點整理
+
+<Callout type="tip" title="一句話記住">
+**Repository = 領域物件的圖書館櫃檯，你只管借還，不管書放哪裡。**
+</Callout>
+
+| 概念 | 說明 |
+|------|------|
+| **介面在 Domain** | 定義存取需求，不依賴基礎設施 |
+| **實作在 Infrastructure** | 用 EF Core/Dapper/Prisma 等實現 |
+| **只為 Aggregate Root** | 內部物件透過 Root 存取 |
+| **Collection 語意** | Add、GetById、Remove |
+| **搭配 Unit of Work** | 一個交易的變更一次提交 |

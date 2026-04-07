@@ -1,0 +1,92 @@
+---
+title: "136. Single Number"
+order: 68
+description: "XOR 的自消性質，所有成對數字互消後剩下的就是唯一的單獨數字"
+---
+
+# Single Number
+
+<ELI5>
+想像一個教室裡每個學生都有一個雙胞胎，除了一個人是獨生子。你要找出那個獨生子。
+
+最簡單的方法：讓所有人排隊，每對雙胞胎碰在一起就消失（像泡泡一樣 pop！），最後剩下的就是獨生子。
+
+XOR（互斥或）就像這個魔法：
+- 相同的數字 XOR = 0（消失了）
+- 0 XOR 任何數字 = 那個數字（沒影響）
+- XOR 的順序不重要（想怎麼配對都行）
+
+所以把所有數字 XOR 在一起，成對的全部消掉，剩下的就是答案。
+</ELI5>
+
+## 題目描述
+
+給定一個非空整數陣列，除了某個元素只出現一次外，其餘每個元素都出現兩次。找出那個只出現一次的元素。要求 O(1) 空間。
+
+```
+輸入：nums = [2,2,1]
+輸出：1
+
+輸入：nums = [4,1,2,1,2]
+輸出：4
+```
+
+## 解題思路
+
+<StepDiagram data='[{"title":"初始化","description":"result = 0","icon":"1"},{"title":"逐一 XOR","description":"result ^= nums[i]","icon":"2"},{"title":"成對消除","description":"相同數字 XOR 為 0，自動消除","icon":"3"},{"title":"剩餘即答案","description":"最後 result 就是只出現一次的數字","icon":"4"}]' />
+
+## 程式碼
+
+### C#
+```csharp
+public class Solution {
+    public int SingleNumber(int[] nums) {
+        int result = 0;
+        foreach (int num in nums) {
+            result ^= num; // XOR：相同的數字會互相消除
+        }
+        return result;
+    }
+}
+```
+
+### TypeScript
+```typescript
+function singleNumber(nums: number[]): number {
+    return nums.reduce((result, num) => result ^ num, 0);
+}
+```
+
+### Python
+```python
+from functools import reduce
+from operator import xor
+
+def singleNumber(nums: list[int]) -> int:
+    return reduce(xor, nums)
+```
+
+## 複雜度分析
+
+| | Time | Space |
+|--|------|-------|
+| 本解法 | O(n) | O(1) |
+
+## 圖解
+
+<Diagram data='{"nodes":[{"id":"input","label":"[4, 1, 2, 1, 2]","type":"default"},{"id":"step1","label":"0 ^ 4 = 4","type":"muted"},{"id":"step2","label":"4 ^ 1 = 5","type":"muted"},{"id":"step3","label":"5 ^ 2 = 7","type":"muted"},{"id":"step4","label":"7 ^ 1 = 6","type":"muted"},{"id":"step5","label":"6 ^ 2 = 4","type":"highlight"}],"edges":[{"from":"input","to":"step1","label":"XOR"},{"from":"step1","to":"step2","label":"XOR"},{"from":"step2","to":"step3","label":"XOR"},{"from":"step3","to":"step4","label":"1消除"},{"from":"step4","to":"step5","label":"2消除"}]}' />
+
+## 進階觀點
+
+<Callout type="tip" title="面試追問">
+- **137. Single Number II**：其他數字出現三次，用「逐位元統計」或「有限狀態機」解。
+- **260. Single Number III**：有兩個數字各出現一次，先全部 XOR 得到 a^b，再用 lowbit 分組。
+- XOR 的三大性質：交換律 `a^b = b^a`、結合律 `(a^b)^c = a^(b^c)`、自反性 `a^a = 0`。
+- 為什麼不用 HashSet？HashSet 需要 O(n) 額外空間，XOR 只要 O(1)。
+</Callout>
+
+## 理解測驗
+
+<Quiz data='{"question":"為什麼 XOR 所有元素後成對的數字會消失？","options":["因為 XOR 會排序數字","因為 a ^ a = 0，任何數字和自己 XOR 等於 0，而 0 ^ b = b 不影響其他數字","因為 XOR 只保留奇數","因為 XOR 會刪除重複值"],"answer":1,"explanation":"XOR 的自反性：a ^ a = 0。成對出現的數字互相 XOR 後消失（變成 0），而 0 與剩餘數字 XOR 不影響結果。"}' />
+
+<Quiz data='{"question":"如果陣列中有兩個數字各出現一次（其餘都出現兩次），全部 XOR 後得到什麼？","options":["0","兩個數字的和","兩個數字的 XOR 值","無法確定"],"answer":2,"explanation":"成對的數字消除後，剩下 a ^ b（兩個唯一數字的 XOR）。這是 Single Number III 的第一步。"}' />

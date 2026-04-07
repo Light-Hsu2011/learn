@@ -1,0 +1,147 @@
+---
+title: "437. Path Sum III"
+order: 36
+description: "用前綴和 + HashMap 在 DFS 中高效計算路徑和等於目標值的數量"
+---
+
+# Path Sum III
+
+<ELI5>
+想像你在一棵樹上每個節點都放了一些硬幣（可能是負數，代表欠債）。你要找出有多少條「連續往下的路徑」，路徑上的硬幣總和剛好等於目標值。
+
+暴力方法是從每個節點都往下試，太慢了。聰明的方法借用了「前綴和」的技巧 — 就像你記帳時，不用每次從頭加總，只要用「目前的總額」減去「之前某個時間點的總額」，就知道這段期間花了多少錢。
+
+HashMap 記錄了「之前每個總額出現過幾次」，讓你瞬間找到配對。
+</ELI5>
+
+## 題目描述
+
+給定一棵二元樹和一個整數 targetSum。回傳路徑和等於 targetSum 的路徑數量。路徑方向必須向下（從父到子），但不需要從根開始或在葉結束。
+
+```
+輸入: root = [10,5,-3,3,2,null,11,3,-2,null,1], targetSum = 8
+輸出: 3
+解釋: 路徑 5→3, 5→2→1, -3→11 的和都等於 8
+```
+
+## 解題思路
+
+<StepDiagram data='[{"title":"初始化前綴和 Map","description":"map = {0: 1}，表示前綴和為 0 出現 1 次","icon":"1"},{"title":"DFS 遍歷","description":"每到一個節點，累加當前前綴和 currSum","icon":"2"},{"title":"查找配對","description":"在 map 中查找 currSum - targetSum 出現幾次","icon":"3"},{"title":"更新 Map","description":"把 currSum 加入 map","icon":"4"},{"title":"回溯","description":"離開節點時從 map 移除 currSum（避免影響其他分支）","icon":"5"}]' />
+
+## 程式碼
+
+### C#
+
+```csharp
+public class Solution {
+    public int PathSum(TreeNode root, int targetSum) {
+        var prefixMap = new Dictionary<long, int> { { 0, 1 } };
+        return Dfs(root, 0, targetSum, prefixMap);
+    }
+
+    private int Dfs(TreeNode node, long currSum, int target, Dictionary<long, int> map) {
+        if (node == null) return 0;
+
+        currSum += node.val;
+        // 有多少前綴和等於 currSum - target
+        int count = map.GetValueOrDefault(currSum - target, 0);
+
+        // 記錄當前前綴和
+        map[currSum] = map.GetValueOrDefault(currSum, 0) + 1;
+
+        count += Dfs(node.left, currSum, target, map);
+        count += Dfs(node.right, currSum, target, map);
+
+        // 回溯：離開此節點，移除此前綴和
+        map[currSum]--;
+        return count;
+    }
+}
+```
+
+### TypeScript
+
+```typescript
+function pathSum(root: TreeNode | null, targetSum: number): number {
+    const prefixMap = new Map<number, number>([[0, 1]]);
+
+    function dfs(node: TreeNode | null, currSum: number): number {
+        if (!node) return 0;
+
+        currSum += node.val;
+        // 有多少前綴和等於 currSum - target
+        let count = prefixMap.get(currSum - targetSum) ?? 0;
+
+        // 記錄當前前綴和
+        prefixMap.set(currSum, (prefixMap.get(currSum) ?? 0) + 1);
+
+        count += dfs(node.left, currSum);
+        count += dfs(node.right, currSum);
+
+        // 回溯：離開此節點，移除此前綴和
+        prefixMap.set(currSum, prefixMap.get(currSum)! - 1);
+        return count;
+    }
+
+    return dfs(root, 0);
+}
+```
+
+### Python
+
+```python
+from collections import defaultdict
+
+def pathSum(root: Optional[TreeNode], targetSum: int) -> int:
+    prefix_map = defaultdict(int)
+    prefix_map[0] = 1
+
+    def dfs(node, curr_sum):
+        if not node:
+            return 0
+
+        curr_sum += node.val
+        # 有多少前綴和等於 curr_sum - target
+        count = prefix_map[curr_sum - targetSum]
+
+        # 記錄當前前綴和
+        prefix_map[curr_sum] += 1
+
+        count += dfs(node.left, curr_sum)
+        count += dfs(node.right, curr_sum)
+
+        # 回溯：離開此節點，移除此前綴和
+        prefix_map[curr_sum] -= 1
+        return count
+
+    return dfs(root, 0)
+```
+
+## 複雜度分析
+
+| | Time | Space |
+|--|------|-------|
+| 前綴和解法 | O(n) | O(h) |
+| 暴力解法 | O(n²) | O(h) |
+
+前綴和方法把每個節點的查找從 O(n) 降到 O(1)。
+
+## 圖解
+
+<Diagram data='{"nodes":[{"id":"n10","label":"10 (sum=10)","type":"default"},{"id":"n5","label":"5 (sum=15)","type":"default"},{"id":"n3a","label":"3 (sum=18)","type":"highlight"},{"id":"n2","label":"2 (sum=17)","type":"default"},{"id":"n1","label":"1 (sum=18)","type":"highlight"},{"id":"nm3","label":"-3 (sum=7)","type":"default"},{"id":"n11","label":"11 (sum=18)","type":"highlight"}],"edges":[{"from":"n10","to":"n5","label":"左"},{"from":"n10","to":"nm3","label":"右"},{"from":"n5","to":"n3a","label":"左"},{"from":"n5","to":"n2","label":"右"},{"from":"n2","to":"n1","label":"右"},{"from":"nm3","to":"n11","label":"右"}]}' />
+
+## 進階觀點
+
+<Callout type="tip" title="面試追問">
+**為什麼初始化 `{0: 1}`？** 如果從根到某節點的前綴和剛好等於 target，那 `currSum - target = 0`，需要在 map 中找到這個 0。
+
+**為什麼要回溯？** 不同分支的前綴和互不影響。離開一個節點時必須移除它的前綴和，否則左子樹的前綴和會「汙染」右子樹的計算。
+
+**變體題**：LC 560 Subarray Sum Equals K（一維陣列版，不需回溯）、LC 113 Path Sum II（收集路徑而非計數）。
+</Callout>
+
+## 理解測驗
+
+<Quiz data='{"question":"為什麼 DFS 離開節點時要把 prefixMap[currSum] 減 1？","options":["為了節省記憶體","因為不同分支的路徑不能混用前綴和","為了讓程式跑得更快","因為 HashMap 有大小限制"],"answer":1,"explanation":"前綴和只在「根到當前節點的路徑上」有效。離開節點時必須回溯，避免不同分支互相干擾。"}' />
+
+<Quiz data='{"question":"相比暴力解法，前綴和方法的優勢是什麼？","options":["程式碼更短","時間從 O(n²) 降到 O(n)","不需要遞迴","空間更少"],"answer":1,"explanation":"暴力法對每個節點都要往下遍歷一次 O(n)，共 O(n²)。前綴和用 HashMap 將每個節點的查找降為 O(1)。"}' />

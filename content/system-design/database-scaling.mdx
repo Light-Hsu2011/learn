@@ -1,0 +1,157 @@
+---
+title: "資料庫擴展"
+order: 3
+description: "Replication、Sharding、分庫分表，讓資料庫撐住大流量"
+---
+
+# 資料庫擴展（Database Scaling）
+
+<ELI5>
+想像你是一間圖書館的館長，書越來越多、借書的人越來越多：
+
+- **Replication（複製）**：把熱門書多印幾本放在不同櫃台，多個人可以同時借閱同一本書
+- **Sharding（分片）**：把書按字母分到不同樓層 — A-H 在一樓、I-P 在二樓、Q-Z 在三樓。每層只管自己的書，查找更快
+
+Replication 解決「太多人要讀同一筆資料」的問題，Sharding 解決「資料量太大一台放不下」的問題。大型系統通常兩個都用。
+</ELI5>
+
+## 是什麼？
+
+當單一資料庫撐不住流量或資料量時，需要透過 Replication 和 Sharding 來擴展。這是 System Design 中最關鍵也最複雜的環節。
+
+<Callout type="info" title="兩種擴展方向">
+**Replication** = 同一份資料複製多份，提高讀取能力和可用性。
+**Sharding** = 把資料切分到多台機器，提高寫入能力和儲存容量。
+</Callout>
+
+## 核心觀念
+
+### Replication（複製）
+
+- **Master-Slave（主從複製）**：寫入只走 Master，讀取可以走多個 Slave。讀寫分離的基礎
+- **Master-Master**：多台都能寫入，但衝突解決複雜。常用於跨地域部署
+- **同步 vs 非同步複製**：同步保證一致性但慢，非同步快但有資料延遲（Replication Lag）
+- **Failover**：Master 掛掉時，自動將 Slave 提升為新 Master
+
+### Sharding（分片）
+
+- **水平分片**：按行切分（如用戶 1-1000 在 Shard A，1001-2000 在 Shard B）
+- **垂直分片**：按欄位切分（用戶基本資料在 DB1，訂單在 DB2）
+- **分片鍵（Shard Key）**：決定資料落在哪個分片的欄位，選錯會導致熱點問題
+- **Consistent Hashing**：環形 Hash 空間，新增或移除節點時只需搬移少量資料
+
+### 分片策略比較
+
+- **Range-based**：按範圍分（如日期、ID 區間），查詢連續資料快，但容易熱點
+- **Hash-based**：對 Shard Key 做 Hash，分布均勻，但範圍查詢需要查所有分片
+- **Directory-based**：用查找表記錄資料在哪個分片，靈活但多一次查詢
+
+## 常見誤區
+
+<Callout type="warning" title="Sharding 是最後手段">
+Sharding 帶來巨大的複雜度：跨分片 JOIN 困難、事務處理複雜、資料搬移痛苦。在 Sharding 之前，先嘗試：讀寫分離（Replication）、加 Cache、優化查詢、垂直分片。只有這些都不夠時才做水平 Sharding。
+</Callout>
+
+## 設計流程
+
+<StepDiagram data='[{"title":"評估瓶頸","description":"讀取慢？寫入慢？資料量太大？先確定問題","icon":"1"},{"title":"讀寫分離","description":"加 Slave 節點，讀取走 Slave、寫入走 Master","icon":"2"},{"title":"加 Cache 層","description":"熱點資料用 Redis 快取，減少資料庫讀取壓力","icon":"3"},{"title":"垂直分片","description":"把不同業務的表拆分到不同資料庫","icon":"4"},{"title":"水平 Sharding","description":"選擇 Shard Key，用 Consistent Hashing 分配資料","icon":"5"},{"title":"跨分片方案","description":"處理跨分片查詢、分散式事務、資料遷移","icon":"6"}]' />
+
+## 程式碼範例
+
+### Consistent Hashing（Python 簡化版）
+
+```python
+import hashlib
+from bisect import bisect_right
+
+class ConsistentHash:
+    def __init__(self, nodes: list[str], virtual_nodes: int = 150):
+        self.ring: list[int] = []
+        self.node_map: dict[int, str] = {}
+
+        for node in nodes:
+            for i in range(virtual_nodes):
+                key = f"{node}:v{i}"
+                h = self._hash(key)
+                self.ring.append(h)
+                self.node_map[h] = node
+
+        self.ring.sort()
+
+    def _hash(self, key: str) -> int:
+        return int(hashlib.md5(key.encode()).hexdigest(), 16)
+
+    def get_node(self, data_key: str) -> str:
+        h = self._hash(data_key)
+        idx = bisect_right(self.ring, h) % len(self.ring)
+        return self.node_map[self.ring[idx]]
+
+# 使用
+ch = ConsistentHash(["db-shard-1", "db-shard-2", "db-shard-3"])
+print(ch.get_node("user:1001"))  # -> db-shard-2
+print(ch.get_node("user:1002"))  # -> db-shard-1
+```
+
+### 讀寫分離設定（C#）
+
+```csharp
+public class DbContextFactory
+{
+    private readonly string _masterConn;
+    private readonly string[] _slaveConns;
+    private int _roundRobin = 0;
+
+    public DbContextFactory(string master, string[] slaves)
+    {
+        _masterConn = master;
+        _slaveConns = slaves;
+    }
+
+    // 寫入用 Master
+    public AppDbContext CreateWriteContext()
+        => new AppDbContext(_masterConn);
+
+    // 讀取用 Slave（Round Robin 分配）
+    public AppDbContext CreateReadContext()
+    {
+        var conn = _slaveConns[Interlocked.Increment(ref _roundRobin)
+                               % _slaveConns.Length];
+        return new AppDbContext(conn);
+    }
+}
+```
+
+## 架構圖
+
+<Diagram data='{"nodes":[{"id":"app","label":"Application","type":"muted"},{"id":"master","label":"Master DB (Write)","type":"highlight"},{"id":"slave1","label":"Slave 1 (Read)","type":"default"},{"id":"slave2","label":"Slave 2 (Read)","type":"default"},{"id":"shard1","label":"Shard A (User 1-1M)","type":"highlight"},{"id":"shard2","label":"Shard B (User 1M-2M)","type":"highlight"},{"id":"shard3","label":"Shard C (User 2M+)","type":"highlight"}],"edges":[{"from":"app","to":"master","label":"write"},{"from":"app","to":"slave1","label":"read"},{"from":"app","to":"slave2","label":"read"},{"from":"master","to":"slave1","label":"replication"},{"from":"master","to":"slave2","label":"replication"},{"from":"app","to":"shard1","label":"hash routing"},{"from":"app","to":"shard2","label":"hash routing"},{"from":"app","to":"shard3","label":"hash routing"}]}' />
+
+## 實戰補充
+
+<Callout type="tip" title="Replication Lag 的實務處理">
+非同步複製一定有延遲（通常毫秒級，高負載時可達秒級）。實務上的處理方式：
+1. **Read-your-own-writes**：用戶剛寫入的資料，短時間內從 Master 讀取
+2. **Monotonic reads**：同一用戶的連續讀取固定走同一個 Slave
+3. **Critical reads**：對一致性要求高的查詢（如餘額）永遠走 Master
+</Callout>
+
+## 理解測驗
+
+<Quiz data='{"question":"一個社群平台有 1 億用戶，讀取 QPS 是寫入的 100 倍。第一步應該怎麼擴展資料庫？","options":["直接做水平 Sharding","加 Master-Slave 讀寫分離","換成 NoSQL 資料庫","把所有資料放到 Redis"],"answer":1,"explanation":"讀多寫少的場景，優先做讀寫分離。寫入走 Master，讀取分散到多個 Slave。這是最簡單且效果最好的第一步。Sharding 是更後面的手段。"}' />
+
+<Quiz data='{"question":"為什麼 Consistent Hashing 在 Sharding 中很重要？","options":["它讓查詢速度更快","新增或移除節點時，只需要搬移少量資料","它不需要 Hash 函數","它可以避免資料庫當機"],"answer":1,"explanation":"傳統 Hash（key % N）在節點數改變時，幾乎所有資料都要重新分配。Consistent Hashing 用環形空間，新增或移除節點只影響相鄰節點的資料，大幅減少資料搬移量。"}' />
+
+<Quiz data='{"question":"以下哪個不適合作為 Shard Key？","options":["用戶 ID（均勻分佈的 UUID）","訂單建立日期","商品分類 ID（只有 5 個分類）","地理區域代碼（數百個區域）"],"answer":2,"explanation":"商品分類 ID 只有 5 個值，會導致資料極度不均勻（某些熱門分類的分片壓力遠大於其他）。好的 Shard Key 應該有高基數（Cardinality）且分佈均勻。"}' />
+
+## 重點整理
+
+<Callout type="tip" title="一句話記住">
+**Replication 解決讀取瓶頸，Sharding 解決容量瓶頸 — 先讀寫分離，再加 Cache，最後才 Sharding。**
+</Callout>
+
+| 概念 | 說明 |
+|------|------|
+| **Master-Slave** | 寫入走 Master，讀取走 Slave，最基本的讀寫分離 |
+| **Consistent Hashing** | 環形 Hash 空間，節點增減時只搬移少量資料 |
+| **Shard Key** | 決定資料落點的欄位，選擇要高基數且均勻分佈 |
+| **Replication Lag** | 非同步複製的延遲，需要針對不同場景做處理 |
+| **垂直 vs 水平分片** | 垂直按欄位拆，水平按行拆，水平擴展性更好 |

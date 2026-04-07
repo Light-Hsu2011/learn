@@ -1,0 +1,263 @@
+---
+title: "Aggregate（聚合）"
+order: 4
+description: "一致性邊界與聚合根，定義交易邊界確保資料一致性"
+---
+
+# Aggregate（聚合）
+
+<ELI5>
+想像你在網路上購物，你的**購物車**裡面有好幾個商品。你想修改某個商品的數量，你不會直接跑去倉庫改，而是透過購物車的介面來操作。
+
+購物車就是一個 Aggregate，它是一個「管理者」，裡面的商品不能被外界直接碰，所有修改都必須**透過購物車**來進行。這樣購物車才能確保「總金額」和「商品明細」永遠一致。
+
+就像一個家庭的財務由一個人統一管理 — 其他人要花錢都要經過這個人，才不會入不敷出。
+</ELI5>
+
+## 是什麼？
+
+Aggregate 是一組相關物件（Entity 和 Value Object）的集合，定義了一個**一致性邊界（Consistency Boundary）**。外部只能透過 **Aggregate Root（聚合根）** 來存取和修改內部物件，確保業務規則和資料一致性。
+
+<Callout type="info" title="DDD 交易邊界">
+Aggregate 是 DDD 中定義交易邊界的核心概念。一個 Aggregate 內的所有變更在同一個交易中完成，跨 Aggregate 的一致性則透過 Domain Events 實現最終一致性。
+</Callout>
+
+## 核心觀念
+
+- **Aggregate Root**：Aggregate 的入口點，外部只持有 Root 的參考，透過 Root 操作內部物件
+- **一致性邊界**：Aggregate 內部的所有不變量（Invariants）在每次操作後都必須成立
+- **交易邊界**：一個交易只修改一個 Aggregate，不跨 Aggregate 做交易
+- **不要跨 Aggregate 直接修改**：Aggregate 之間只能透過 ID 參考，不能持有物件參考
+- **小而精**：Aggregate 越小越好，只包含必須一起保持一致的物件
+
+## 常見誤區
+
+<Callout type="warning" title="常見誤區">
+**誤區一**：把整個系統塞進一個巨大的 Aggregate。Aggregate 越大，併發衝突越嚴重，效能越差。只把「必須一致」的東西放在一起。
+
+**誤區二**：Aggregate 之間直接持有物件參考。正確做法是只存 ID，需要時透過 Repository 載入。
+
+**誤區三**：在一個交易中同時修改多個 Aggregate。這會造成鎖定範圍過大。跨 Aggregate 的一致性應該用 Domain Events 和最終一致性來處理。
+</Callout>
+
+## 設計流程
+
+<StepDiagram data='[{"title":"識別不變量","description":"找出哪些業務規則必須在任何時刻都成立（如訂單總額 = 各明細小計之和）","icon":"1"},{"title":"劃定邊界","description":"把必須一起滿足不變量的物件放進同一個 Aggregate","icon":"2"},{"title":"選定 Aggregate Root","description":"選出一個 Entity 作為入口，所有外部操作都透過它","icon":"3"},{"title":"限制外部存取","description":"內部 Entity 不對外暴露，外部只能透過 Root 的方法操作","icon":"4"},{"title":"跨 Aggregate 用事件","description":"需要跨 Aggregate 同步的邏輯用 Domain Events 實現","icon":"5"}]' />
+
+## 程式碼範例
+
+### C# 版本
+
+```csharp
+// Aggregate Root：訂單
+public class Order : Entity<Guid>
+{
+    public CustomerId CustomerId { get; }
+    public OrderStatus Status { get; private set; }
+    public Money TotalAmount { get; private set; }
+
+    private readonly List<OrderLineItem> _lineItems = new();
+    public IReadOnlyList<OrderLineItem> LineItems => _lineItems.AsReadOnly();
+
+    public Order(Guid id, CustomerId customerId) : base(id)
+    {
+        CustomerId = customerId;
+        Status = OrderStatus.Created;
+        TotalAmount = Money.Zero();
+    }
+
+    // 所有修改都透過 Aggregate Root 的方法
+    public void AddLineItem(ProductId productId, string productName, Money unitPrice, int quantity)
+    {
+        if (Status != OrderStatus.Created)
+            throw new InvalidOperationException("Cannot modify a placed order.");
+
+        var existing = _lineItems.FirstOrDefault(li => li.ProductId == productId);
+        if (existing != null)
+        {
+            existing.IncreaseQuantity(quantity);
+        }
+        else
+        {
+            _lineItems.Add(new OrderLineItem(productId, productName, unitPrice, quantity));
+        }
+
+        RecalculateTotal(); // 確保不變量：總額 = 各明細之和
+    }
+
+    public void RemoveLineItem(ProductId productId)
+    {
+        var item = _lineItems.FirstOrDefault(li => li.ProductId == productId)
+            ?? throw new InvalidOperationException("Line item not found.");
+        _lineItems.Remove(item);
+        RecalculateTotal();
+    }
+
+    public void Place()
+    {
+        if (!_lineItems.Any())
+            throw new InvalidOperationException("Cannot place an empty order.");
+        Status = OrderStatus.Placed;
+        // 可以在這裡發出 Domain Event: OrderPlaced
+    }
+
+    private void RecalculateTotal()
+    {
+        TotalAmount = _lineItems.Aggregate(
+            Money.Zero(),
+            (sum, item) => sum.Add(item.Subtotal));
+    }
+}
+
+// 內部 Entity：訂單明細（不對外暴露修改方法）
+public class OrderLineItem
+{
+    public ProductId ProductId { get; }
+    public string ProductName { get; }
+    public Money UnitPrice { get; }
+    public int Quantity { get; private set; }
+    public Money Subtotal => UnitPrice.Multiply(Quantity);
+
+    internal OrderLineItem(ProductId productId, string productName, Money unitPrice, int quantity)
+    {
+        ProductId = productId;
+        ProductName = productName;
+        UnitPrice = unitPrice;
+        Quantity = quantity;
+    }
+
+    internal void IncreaseQuantity(int amount)
+    {
+        Quantity += amount;
+    }
+}
+
+// 使用 — 外部只能透過 Order（Root）操作
+var order = new Order(Guid.NewGuid(), customerId);
+order.AddLineItem(productId, "鍵盤", new Money(2500, "TWD"), 1);
+order.Place();
+// ❌ 錯誤：不能直接操作 LineItem
+// order.LineItems[0].IncreaseQuantity(5); // internal 方法，外部無法呼叫
+```
+
+### TypeScript 版本
+
+```typescript
+class Order {
+  private lineItems: OrderLineItem[] = [];
+  private status: OrderStatus = OrderStatus.Created;
+  private _totalAmount: Money = Money.zero();
+
+  constructor(
+    public readonly id: string,
+    public readonly customerId: string,
+  ) {}
+
+  addLineItem(productId: string, name: string, unitPrice: Money, quantity: number): void {
+    if (this.status !== OrderStatus.Created) {
+      throw new Error("Cannot modify a placed order.");
+    }
+    const existing = this.lineItems.find(li => li.productId === productId);
+    if (existing) {
+      existing.increaseQuantity(quantity);
+    } else {
+      this.lineItems.push(new OrderLineItem(productId, name, unitPrice, quantity));
+    }
+    this.recalculateTotal();
+  }
+
+  place(): void {
+    if (this.lineItems.length === 0) {
+      throw new Error("Cannot place an empty order.");
+    }
+    this.status = OrderStatus.Placed;
+  }
+
+  get totalAmount(): Money { return this._totalAmount; }
+
+  private recalculateTotal(): void {
+    this._totalAmount = this.lineItems.reduce(
+      (sum, item) => sum.add(item.subtotal),
+      Money.zero(),
+    );
+  }
+}
+```
+
+### Python 版本
+
+```python
+from dataclasses import dataclass, field
+from typing import List, Optional
+from uuid import UUID
+
+class Order:
+    def __init__(self, id: UUID, customer_id: UUID):
+        self.id = id
+        self.customer_id = customer_id
+        self._status = OrderStatus.CREATED
+        self._line_items: List[OrderLineItem] = []
+        self._total_amount = Money.zero()
+
+    def add_line_item(self, product_id: UUID, name: str, unit_price: "Money", quantity: int) -> None:
+        if self._status != OrderStatus.CREATED:
+            raise ValueError("Cannot modify a placed order.")
+
+        existing = next((li for li in self._line_items if li.product_id == product_id), None)
+        if existing:
+            existing._increase_quantity(quantity)
+        else:
+            self._line_items.append(OrderLineItem(product_id, name, unit_price, quantity))
+        self._recalculate_total()
+
+    def place(self) -> None:
+        if not self._line_items:
+            raise ValueError("Cannot place an empty order.")
+        self._status = OrderStatus.PLACED
+
+    @property
+    def total_amount(self) -> "Money":
+        return self._total_amount
+
+    def _recalculate_total(self) -> None:
+        self._total_amount = sum(
+            (item.subtotal for item in self._line_items),
+            Money.zero()
+        )
+```
+
+## 概念圖
+
+<Diagram data='{"nodes":[{"id":"aggregate","label":"Aggregate（聚合）","type":"highlight"},{"id":"root","label":"Aggregate Root","type":"default"},{"id":"entity","label":"內部 Entity","type":"default"},{"id":"vo","label":"Value Object","type":"default"},{"id":"invariant","label":"不變量 (Invariants)","type":"muted"},{"id":"repo","label":"Repository","type":"muted"}],"edges":[{"from":"aggregate","to":"root","label":"入口點"},{"from":"aggregate","to":"entity","label":"包含"},{"from":"aggregate","to":"vo","label":"包含"},{"from":"root","to":"invariant","label":"維護"},{"from":"repo","to":"root","label":"只存取 Root"}]}' />
+
+## 實戰補充
+
+<Callout type="tip" title="資深開發者筆記">
+設計 Aggregate 最常犯的錯是**邊界太大**。一個經典的判斷法則：如果兩個東西不需要在同一個交易中保持一致，就不要放在同一個 Aggregate。
+
+例如：`Order` 和 `Product` 不需要在同一個 Aggregate。訂單只需要存 ProductId 和下單時的商品名稱和價格（快照），不需要持有 Product 物件的參考。
+
+EF Core 的實作技巧：Aggregate Root 對應一個 `DbSet<T>`，內部 Entity 用 `OwnsMany` 或 Navigation Property 配置，不給獨立的 `DbSet`。這自然就限制了外部直接存取內部 Entity。
+</Callout>
+
+## 理解測驗
+
+<Quiz data='{"question":"為什麼外部不能直接修改 Aggregate 內部的 Entity？","options":["因為程式語言不允許","因為直接修改會繞過不變量檢查，可能破壞資料一致性","因為內部 Entity 沒有方法","因為這樣比較省記憶體"],"answer":1,"explanation":"所有修改都必須透過 Aggregate Root，Root 在每次操作中負責檢查和維護不變量（如重新計算總金額），確保資料一致性。"}' />
+
+<Quiz data='{"question":"Aggregate 之間應該用什麼方式互相參考？","options":["直接持有物件參考","透過 ID 參考","透過全域變數","不能互相參考"],"answer":1,"explanation":"Aggregate 之間只能透過 ID 參考，不能持有物件參考。這避免了跨 Aggregate 的直接修改，並降低耦合度。"}' />
+
+<Quiz data='{"question":"一個交易應該修改幾個 Aggregate？","options":["越多越好","只修改一個","至少兩個","沒有限制"],"answer":1,"explanation":"DDD 的原則是一個交易只修改一個 Aggregate。跨 Aggregate 的一致性用 Domain Events 和最終一致性來處理，避免鎖定範圍過大。"}' />
+
+## 重點整理
+
+<Callout type="tip" title="一句話記住">
+**Aggregate = 一致性邊界，所有修改都透過 Root 進出，確保內部規則永遠成立。**
+</Callout>
+
+| 概念 | 說明 |
+|------|------|
+| **Aggregate Root** | 聚合的入口點，外部唯一的操作對象 |
+| **一致性邊界** | 不變量必須在每次操作後成立 |
+| **交易邊界** | 一個交易只修改一個 Aggregate |
+| **ID 參考** | Aggregate 之間只存 ID，不存物件參考 |
+| **越小越好** | 只把必須一致的物件放在一起 |

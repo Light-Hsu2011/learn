@@ -1,0 +1,118 @@
+---
+title: "345. Reverse Vowels of a String"
+order: 5
+description: "用左右雙指針找到母音後交換位置"
+---
+
+# Reverse Vowels of a String
+
+<ELI5>
+想像一排人站成一列，其中有些人穿紅衣服（母音），有些穿藍衣服（子音）。你要做的是：讓穿紅衣服的人左右對調位置，但穿藍衣服的人不動。
+
+做法是派兩個人分別從隊伍的最左邊和最右邊出發，各自往中間走，只在遇到紅衣服的人時停下來，然後讓這兩個紅衣服的人交換位置。
+</ELI5>
+
+## 題目描述
+
+給定字串 `s`，只反轉其中的母音字母（a, e, i, o, u，含大小寫），其餘字元位置不變。
+
+```
+輸入：s = "hello"
+輸出："holle"
+
+輸入：s = "leetcode"
+輸出："leotcede"
+```
+
+## 解題思路
+
+<StepDiagram data='[{"title":"轉為陣列","description":"字串不可變，先轉為字元陣列","icon":"1"},{"title":"雙指針初始化","description":"left = 0, right = len-1","icon":"2"},{"title":"向內移動","description":"left 往右找母音，right 往左找母音","icon":"3"},{"title":"交換","description":"兩端都找到母音時交換，然後繼續","icon":"4"},{"title":"回傳","description":"陣列轉回字串","icon":"5"}]' />
+
+## 程式碼
+
+### C#
+
+```csharp
+public class Solution {
+    public string ReverseVowels(string s) {
+        var arr = s.ToCharArray();
+        var vowels = new HashSet<char>("aeiouAEIOU");
+        int left = 0, right = arr.Length - 1;
+        while (left < right) {
+            while (left < right && !vowels.Contains(arr[left])) left++;
+            while (left < right && !vowels.Contains(arr[right])) right--;
+            if (left < right) {
+                (arr[left], arr[right]) = (arr[right], arr[left]);
+                left++;
+                right--;
+            }
+        }
+        return new string(arr);
+    }
+}
+```
+
+### TypeScript
+
+```typescript
+function reverseVowels(s: string): string {
+    const arr = s.split("");
+    const vowels = new Set("aeiouAEIOU");
+    let left = 0, right = arr.length - 1;
+    while (left < right) {
+        while (left < right && !vowels.has(arr[left])) left++;
+        while (left < right && !vowels.has(arr[right])) right--;
+        if (left < right) {
+            [arr[left], arr[right]] = [arr[right], arr[left]];
+            left++;
+            right--;
+        }
+    }
+    return arr.join("");
+}
+```
+
+### Python
+
+```python
+def reverseVowels(s: str) -> str:
+    arr = list(s)
+    vowels = set("aeiouAEIOU")
+    left, right = 0, len(arr) - 1
+    while left < right:
+        while left < right and arr[left] not in vowels:
+            left += 1
+        while left < right and arr[right] not in vowels:
+            right -= 1
+        if left < right:
+            arr[left], arr[right] = arr[right], arr[left]
+            left += 1
+            right -= 1
+    return "".join(arr)
+```
+
+## 複雜度分析
+
+| | Time | Space |
+|--|------|-------|
+| 本解法 | O(n) | O(n) |
+
+雙指針各走一遍 O(n)，字元陣列 O(n)。
+
+## 圖解
+
+<Diagram data='{"nodes":[{"id":"input","label":"h e l l o","type":"default"},{"id":"find","label":"left→e, right→o","type":"highlight"},{"id":"swap","label":"交換 e ↔ o","type":"highlight"},{"id":"result","label":"h o l l e","type":"muted"}],"edges":[{"from":"input","to":"find","label":"雙指針搜尋母音"},{"from":"find","to":"swap","label":"找到配對"},{"from":"swap","to":"result","label":"完成"}]}' />
+
+## 進階觀點
+
+<Callout type="tip" title="面試追問">
+- **為什麼用 HashSet 而不是 if 判斷？** 查找效率都是 O(1)，但 HashSet 程式碼更簡潔。
+- **如果要反轉子音呢？** 一樣的邏輯，只是判斷條件取反。
+- **跟「反轉字串」的關係？** 反轉字串是全部交換，這題是「有條件交換」的變體。
+</Callout>
+
+## 理解測驗
+
+<Quiz data='{"question":"雙指針在這題中為什麼有效？","options":["因為字串已排序","因為我們只需要把母音的順序反轉，雙指針從兩端向中間配對交換即可","因為需要遞迴","因為母音數量固定"],"answer":1,"explanation":"雙指針從兩端出發，每次找到一對母音就交換，自然達成反轉效果。"}' />
+
+<Quiz data='{"question":"s = \"aA\" 的輸出是什麼？","options":["aA","Aa","aa","AA"],"answer":1,"explanation":"a 和 A 都是母音，交換後變成 Aa。大小寫保持原字元不變。"}' />

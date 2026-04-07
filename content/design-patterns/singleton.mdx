@@ -1,0 +1,197 @@
+---
+title: "Singleton Pattern"
+order: 2
+description: "確保一個類別只有一個實例，並提供全域存取點"
+---
+
+# Singleton Pattern（單例模式）
+
+<ELI5>
+想像一個國家只能有**一個總統**。不管你從哪個政府機關去問「現在的總統是誰？」，答案永遠是同一個人。你不能自己再「new 一個總統」出來，只能透過官方管道取得那唯一的一位。
+
+同樣的概念也適用於公司的 CEO — 整間公司只有一個 CEO，所有部門都共用同一個決策者。如果每個部門都自己任命一個 CEO，公司馬上就亂了。
+
+Singleton 就是這個概念：**整個程式中只能有一個實例，大家都共用它。**
+</ELI5>
+
+## 是什麼？
+
+Singleton Pattern 確保一個類別**只有一個實例**存在，並提供一個全域的存取點讓所有人都能取得這個實例。它透過將建構子設為私有，並由類別自己管理唯一實例的生命週期。
+
+<Callout type="info" title="GoF 分類">
+Singleton 屬於**建立型模式（Creational Pattern）**，重點在於控制物件的建立過程，確保實例的唯一性。
+</Callout>
+
+## 什麼時候用？
+
+- 你需要全域共用的資源（例如設定檔管理器、連線池、日誌記錄器）
+- 物件的建立成本很高，且整個應用程式只需要一份
+- 你需要一個集中的協調點（例如執行緒池管理器）
+
+## 什麼時候不該用？
+
+<Callout type="warning" title="過度設計警告">
+Singleton 常被濫用為「全域變數的包裝」。如果你的物件不需要嚴格限制為一個實例，使用 DI 容器的 Singleton Scope 是更好的選擇。Singleton 會讓單元測試變困難，因為它引入了隱藏的全域狀態。
+</Callout>
+
+## 執行流程
+
+<StepDiagram data='[{"title":"私有建構子","description":"將 constructor 設為 private，防止外部直接 new","icon":"1"},{"title":"靜態實例欄位","description":"類別內部持有自己的唯一實例","icon":"2"},{"title":"提供存取方法","description":"透過靜態方法（如 GetInstance）回傳唯一實例","icon":"3"},{"title":"延遲初始化","description":"第一次被呼叫時才建立實例（Lazy Initialization）","icon":"4"},{"title":"全域共用","description":"所有呼叫者取得的都是同一個實例","icon":"5"}]' />
+
+## 程式碼範例
+
+### C# 版本
+
+```csharp
+// 執行緒安全的 Singleton（使用 Lazy<T>）
+public sealed class AppConfig
+{
+    private static readonly Lazy<AppConfig> _instance =
+        new Lazy<AppConfig>(() => new AppConfig());
+
+    public static AppConfig Instance => _instance.Value;
+
+    public string DatabaseConnection { get; private set; }
+    public int MaxRetryCount { get; private set; }
+
+    private AppConfig()
+    {
+        // 模擬從設定檔讀取
+        DatabaseConnection = "Server=localhost;Database=MyApp";
+        MaxRetryCount = 3;
+    }
+}
+
+// 使用
+var config1 = AppConfig.Instance;
+var config2 = AppConfig.Instance;
+Console.WriteLine(config1 == config2); // True — 同一個實例
+Console.WriteLine(config1.DatabaseConnection);
+```
+
+### TypeScript 版本
+
+```typescript
+class AppConfig {
+  private static instance: AppConfig;
+
+  public readonly databaseConnection: string;
+  public readonly maxRetryCount: number;
+
+  private constructor() {
+    this.databaseConnection = "Server=localhost;Database=MyApp";
+    this.maxRetryCount = 3;
+  }
+
+  static getInstance(): AppConfig {
+    if (!AppConfig.instance) {
+      AppConfig.instance = new AppConfig();
+    }
+    return AppConfig.instance;
+  }
+}
+
+// 使用
+const config1 = AppConfig.getInstance();
+const config2 = AppConfig.getInstance();
+console.log(config1 === config2); // true
+console.log(config1.databaseConnection);
+```
+
+### Python 版本
+
+```python
+class AppConfig:
+    _instance = None
+
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+            cls._instance._initialized = False
+        return cls._instance
+
+    def __init__(self):
+        if self._initialized:
+            return
+        self.database_connection = "Server=localhost;Database=MyApp"
+        self.max_retry_count = 3
+        self._initialized = True
+
+# 使用
+config1 = AppConfig()
+config2 = AppConfig()
+print(config1 is config2)  # True — 同一個實例
+print(config1.database_connection)
+```
+
+### Java 版本
+
+```java
+public final class AppConfig {
+    private static volatile AppConfig instance;
+
+    private final String databaseConnection;
+    private final int maxRetryCount;
+
+    private AppConfig() {
+        this.databaseConnection = "Server=localhost;Database=MyApp";
+        this.maxRetryCount = 3;
+    }
+
+    public static AppConfig getInstance() {
+        if (instance == null) {
+            synchronized (AppConfig.class) {
+                if (instance == null) {
+                    instance = new AppConfig();
+                }
+            }
+        }
+        return instance;
+    }
+
+    public String getDatabaseConnection() { return databaseConnection; }
+    public int getMaxRetryCount() { return maxRetryCount; }
+}
+
+// 使用
+AppConfig config1 = AppConfig.getInstance();
+AppConfig config2 = AppConfig.getInstance();
+System.out.println(config1 == config2); // true
+System.out.println(config1.getDatabaseConnection());
+```
+
+## 結構圖
+
+<Diagram data='{"nodes":[{"id":"client","label":"Client","type":"muted"},{"id":"singleton","label":"Singleton (AppConfig)","type":"highlight"},{"id":"instance","label":"static instance","type":"default"}],"edges":[{"from":"client","to":"singleton","label":"getInstance()"},{"from":"singleton","to":"instance","label":"creates / returns"}]}' />
+
+## 實戰補充
+
+<Callout type="tip" title="資深開發者經驗">
+**執行緒安全**：在多執行緒環境，務必確保 Singleton 初始化是安全的。C# 用 `Lazy<T>`、Java 用 Double-Checked Locking 或 enum。
+
+**DI 容器優先**：現代開發中，與其自己寫 Singleton，不如在 DI 容器中註冊為 Singleton Scope（如 .NET 的 `services.AddSingleton<T>()`）。這樣既保有單一實例的好處，又能輕鬆替換為 mock 做單元測試。
+
+**避免 Singleton 地獄**：如果你的專案到處都是 Singleton，這通常是架構問題的信號。Singleton 應該只用於真正需要全域唯一的資源。
+</Callout>
+
+## 理解測驗
+
+<Quiz data='{"question":"Singleton Pattern 如何防止外部建立多個實例？","options":["使用 abstract class","將建構子設為 private","使用 interface 限制","將類別設為 static"],"answer":1,"explanation":"Singleton 的核心機制是將建構子設為 private，外部無法直接 new，只能透過類別提供的靜態方法取得唯一實例。"}' />
+
+<Quiz data='{"question":"在 C# 中，以下哪種方式能確保 Singleton 的執行緒安全？","options":["使用 public constructor","使用 Lazy<T>","使用 abstract method","使用 partial class"],"answer":1,"explanation":"Lazy<T> 內建執行緒安全機制，確保即使多個執行緒同時存取，也只會建立一次實例。"}' />
+
+<Quiz data='{"question":"為什麼現代開發建議用 DI 容器的 Singleton Scope 取代手寫 Singleton？","options":["因為 DI 容器跑得比較快","因為手寫 Singleton 不能用 private constructor","因為 DI 容器讓測試時可以輕鬆替換為 mock","因為 DI 容器不需要寫任何程式碼"],"answer":2,"explanation":"手寫 Singleton 讓單元測試很難替換依賴。DI 容器管理的 Singleton 可以在測試時輕鬆注入 mock 物件，保持可測試性。"}' />
+
+## 重點整理
+
+<Callout type="tip" title="一句話記住">
+**Singleton Pattern = 確保全世界只有一個實例，大家都共用它。**
+</Callout>
+
+| 概念 | 說明 |
+|------|------|
+| **Singleton（單例類別）** | 管理自己的唯一實例，提供全域存取點 |
+| **Private Constructor** | 防止外部直接建立新實例 |
+| **Static Instance** | 類別內部持有的唯一實例 |
+| **核心好處** | 全域唯一 + 延遲初始化 + 集中管理 |
+| **代價** | 隱藏的全域狀態、難以單元測試、可能造成緊耦合 |

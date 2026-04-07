@@ -1,0 +1,109 @@
+---
+title: "1137. N-th Tribonacci Number"
+order: 59
+description: "基礎 DP 或滾動變數計算 Tribonacci 數列第 N 項"
+---
+
+# N-th Tribonacci Number
+
+<ELI5>
+你知道 Fibonacci 數列嗎？每一項是前兩項的和（0, 1, 1, 2, 3, 5...）。Tribonacci 就是它的升級版——每一項是前**三**項的和！
+
+T(0) = 0, T(1) = 1, T(2) = 1
+T(3) = 0+1+1 = 2
+T(4) = 1+1+2 = 4
+T(5) = 1+2+4 = 7
+
+就像接力賽：每個選手的速度等於前面三個選手速度的總和。你只需要記住最近三個選手的速度就夠了，不用記住所有人。
+</ELI5>
+
+## 題目描述
+
+Tribonacci 數列定義：T(0)=0, T(1)=1, T(2)=1，T(n) = T(n-1) + T(n-2) + T(n-3)（`n ≥ 3`）。給定 n，回傳 T(n)。
+
+```
+輸入：n = 4
+輸出：4
+解釋：T(4) = T(3) + T(2) + T(1) = 2 + 1 + 1 = 4
+
+輸入：n = 25
+輸出：1389537
+```
+
+## 解題思路
+
+<StepDiagram data='[{"title":"初始化","description":"t0=0, t1=1, t2=1","icon":"1"},{"title":"滾動計算","description":"從 i=3 到 n，計算 next = t0 + t1 + t2","icon":"2"},{"title":"更新變數","description":"t0 = t1, t1 = t2, t2 = next","icon":"3"},{"title":"回傳結果","description":"根據 n 的值回傳對應的變數","icon":"4"}]' />
+
+## 程式碼
+
+### C#
+```csharp
+public class Solution {
+    public int Tribonacci(int n) {
+        if (n == 0) return 0;
+        if (n <= 2) return 1;
+        
+        int t0 = 0, t1 = 1, t2 = 1;
+        for (int i = 3; i <= n; i++) {
+            int next = t0 + t1 + t2;
+            t0 = t1;
+            t1 = t2;
+            t2 = next;
+        }
+        return t2;
+    }
+}
+```
+
+### TypeScript
+```typescript
+function tribonacci(n: number): number {
+    if (n === 0) return 0;
+    if (n <= 2) return 1;
+    
+    let [t0, t1, t2] = [0, 1, 1];
+    for (let i = 3; i <= n; i++) {
+        const next = t0 + t1 + t2;
+        [t0, t1, t2] = [t1, t2, next];
+    }
+    return t2;
+}
+```
+
+### Python
+```python
+def tribonacci(n: int) -> int:
+    if n == 0:
+        return 0
+    if n <= 2:
+        return 1
+    
+    t0, t1, t2 = 0, 1, 1
+    for _ in range(3, n + 1):
+        t0, t1, t2 = t1, t2, t0 + t1 + t2
+    return t2
+```
+
+## 複雜度分析
+
+| | Time | Space |
+|--|------|-------|
+| 本解法 | O(n) | O(1) |
+
+## 圖解
+
+<Diagram data='{"nodes":[{"id":"t0","label":"t0 = 0","type":"muted"},{"id":"t1","label":"t1 = 1","type":"muted"},{"id":"t2","label":"t2 = 1","type":"highlight"},{"id":"next","label":"next = t0+t1+t2","type":"highlight"},{"id":"shift","label":"滾動：t0←t1←t2←next","type":"default"}],"edges":[{"from":"t0","to":"next","label":"+"},{"from":"t1","to":"next","label":"+"},{"from":"t2","to":"next","label":"+"},{"from":"next","to":"shift","label":"更新"}]}' />
+
+## 進階觀點
+
+<Callout type="tip" title="面試追問">
+- 滾動變數是 DP 空間優化的經典技巧：原本需要 O(n) 的陣列，只用三個變數就能解決。
+- 如果 n 非常大（如 10^18），可以用矩陣快速冪將時間降到 O(log n)。
+- Fibonacci / Tribonacci 是理解 DP 的最佳入門題，核心概念：「當前狀態只依賴有限的前幾個狀態」。
+</Callout>
+
+## 理解測驗
+
+<Quiz data='{"question":"為什麼只需要三個變數而不是一個陣列？","options":["因為題目限制不能用陣列","因為 T(n) 只依賴前三個值，更早的值不再需要","為了讓程式碼更短","三個變數比陣列快"],"answer":1,"explanation":"T(n) = T(n-1) + T(n-2) + T(n-3)，只依賴前三項。計算完 T(n) 後，T(n-3) 就不再需要了，所以用三個變數滾動即可。"}' />
+
+<Quiz data='{"question":"如果改用遞迴（不加 memoization）計算 T(n)，時間複雜度是多少？","options":["O(n)","O(n^2)","O(3^n)","O(log n)"],"answer":2,"explanation":"不加記憶化的遞迴會重複計算大量子問題，每一層分裂成三個子問題，時間複雜度接近 O(3^n)，指數級爆炸。"}' />

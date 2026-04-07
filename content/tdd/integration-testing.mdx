@@ -1,0 +1,217 @@
+---
+title: "整合測試"
+order: 5
+description: "測試元件之間的互動，資料庫與 API 整合測試實戰"
+---
+
+# 整合測試（Integration Testing）
+
+<ELI5>
+想像你在組裝一台腳踏車。你先分別檢查了輪子能轉、煞車能夾、鏈條能拉——這些是「單元測試」。但把它們裝在一起後，煞車線會不會太短？鏈條和齒輪咬得上嗎？這就是**整合測試**。
+
+單元測試確認每個零件單獨沒問題，整合測試確認零件**組合在一起**也沒問題。
+
+很多 Bug 不是出在單一零件上，而是出在零件之間的**接口**——資料格式不對、呼叫順序錯誤、時區轉換遺漏。整合測試就是專門抓這些「接縫處」的問題。
+</ELI5>
+
+## 是什麼？
+
+整合測試（Integration Testing）驗證多個元件、模組或服務之間的互動是否正確。它比單元測試涵蓋更多的真實依賴，但比 E2E 測試範圍更小、速度更快。
+
+<Callout type="info" title="測試金字塔中的中層">
+整合測試位於測試金字塔的中間層，是**投資報酬率最高**的測試類型之一。它能捕捉到單元測試漏掉的互動問題，又比 E2E 快得多。
+</Callout>
+
+## 核心觀念
+
+- **測試真實互動**：讓元件使用真實（或接近真實）的依賴，而不是全部 Mock
+- **邊界測試**：專注於元件之間的接口——API 契約、資料庫查詢、訊息格式
+- **Testcontainers**：用 Docker 容器啟動真實的資料庫、Redis、Kafka 來跑測試
+- **In-Memory DB**：用 SQLite In-Memory 替代真實資料庫，速度快但行為接近
+- **WebApplicationFactory**：ASP.NET Core 內建的整合測試工具，啟動真實的 HTTP pipeline
+
+## 常見誤區
+
+<Callout type="warning" title="整合測試的陷阱">
+- **整合測試不是「大型單元測試」**：不要把所有依賴都 Mock 掉，那就只是偽裝成整合測試的單元測試
+- **測試資料互相汙染**：每個測試必須有獨立的資料，用 transaction rollback 或重建資料庫確保隔離
+- **環境依賴**：不要依賴外部服務的實際狀態，用 Testcontainers 或 Docker Compose 自帶環境
+- **太慢就不跑**：整合測試如果跑超過 5 分鐘，團隊就不會常跑，失去價值
+</Callout>
+
+## 實作流程
+
+<StepDiagram data='[{"title":"選擇測試範圍","description":"決定要測哪些元件之間的互動（如 API → Service → DB）","icon":"1"},{"title":"準備測試環境","description":"用 Testcontainers 或 In-Memory DB 啟動依賴","icon":"2"},{"title":"準備測試資料","description":"Seed 必要的初始資料，確保每個測試獨立","icon":"3"},{"title":"執行整合操作","description":"透過 API 或 Service 層發起真實的操作","icon":"4"},{"title":"驗證跨元件結果","description":"檢查資料庫狀態、回應內容、事件是否正確發送","icon":"5"},{"title":"清理環境","description":"還原資料庫或銷毀容器，為下一個測試做準備","icon":"6"}]' />
+
+## 程式碼範例
+
+### C#（xUnit + WebApplicationFactory）
+
+```csharp
+// 使用 WebApplicationFactory 啟動真實的 HTTP pipeline
+public class OrderApiIntegrationTests
+    : IClassFixture<WebApplicationFactory<Program>>
+{
+    private readonly HttpClient _client;
+    private readonly WebApplicationFactory<Program> _factory;
+
+    public OrderApiIntegrationTests(WebApplicationFactory<Program> factory)
+    {
+        _factory = factory.WithWebHostBuilder(builder =>
+        {
+            builder.ConfigureServices(services =>
+            {
+                // 替換真實 DB 為 In-Memory DB
+                services.RemoveAll<DbContextOptions<AppDbContext>>();
+                services.AddDbContext<AppDbContext>(options =>
+                    options.UseInMemoryDatabase("TestDb"));
+            });
+        });
+        _client = _factory.CreateClient();
+    }
+
+    [Fact]
+    public async Task CreateOrder_ValidProduct_ReturnsCreatedWithOrderId()
+    {
+        // Arrange: Seed 商品資料
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        db.Products.Add(new Product { Id = 1, Name = "Book", Price = 299 });
+        await db.SaveChangesAsync();
+
+        // Act: 透過 API 建立訂單
+        var response = await _client.PostAsJsonAsync("/api/orders", new
+        {
+            ProductId = 1,
+            Quantity = 2
+        });
+
+        // Assert: 驗證 HTTP 回應和資料庫狀態
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        var order = await response.Content.ReadFromJsonAsync<OrderDto>();
+        Assert.Equal(598, order!.Total);
+    }
+}
+```
+
+### TypeScript（Jest + Supertest）
+
+```typescript
+import request from "supertest";
+import { app } from "../src/app";
+import { prisma } from "../src/db";
+
+describe("POST /api/orders", () => {
+  // 每個測試前清空資料
+  beforeEach(async () => {
+    await prisma.order.deleteMany();
+    await prisma.product.deleteMany();
+  });
+
+  it("creates order for valid product", async () => {
+    // Arrange: Seed 商品
+    await prisma.product.create({
+      data: { id: 1, name: "Book", price: 299 },
+    });
+
+    // Act
+    const response = await request(app)
+      .post("/api/orders")
+      .send({ productId: 1, quantity: 2 });
+
+    // Assert
+    expect(response.status).toBe(201);
+    expect(response.body.total).toBe(598);
+
+    // 驗證資料庫狀態
+    const orderCount = await prisma.order.count();
+    expect(orderCount).toBe(1);
+  });
+
+  it("returns 404 for non-existent product", async () => {
+    const response = await request(app)
+      .post("/api/orders")
+      .send({ productId: 999, quantity: 1 });
+
+    expect(response.status).toBe(404);
+  });
+});
+```
+
+### Python（pytest + FastAPI TestClient）
+
+```python
+import pytest
+from fastapi.testclient import TestClient
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+
+# 使用 SQLite In-Memory 做整合測試
+engine = create_engine("sqlite:///:memory:")
+TestSession = sessionmaker(bind=engine)
+
+@pytest.fixture
+def client(db_session):
+    app.dependency_overrides[get_db] = lambda: db_session
+    return TestClient(app)
+
+@pytest.fixture
+def db_session():
+    Base.metadata.create_all(bind=engine)
+    session = TestSession()
+    yield session
+    session.close()
+    Base.metadata.drop_all(bind=engine)
+
+def test_create_order_valid_product(client, db_session):
+    # Arrange
+    db_session.add(Product(id=1, name="Book", price=299))
+    db_session.commit()
+
+    # Act
+    response = client.post("/api/orders", json={
+        "product_id": 1,
+        "quantity": 2
+    })
+
+    # Assert
+    assert response.status_code == 201
+    assert response.json()["total"] == 598
+    assert db_session.query(Order).count() == 1
+```
+
+## 概念圖
+
+<Diagram data='{"nodes":[{"id":"integration","label":"整合測試","type":"highlight"},{"id":"api","label":"API 層","type":"default"},{"id":"service","label":"Service 層","type":"default"},{"id":"db","label":"資料庫","type":"default"},{"id":"testcontainers","label":"Testcontainers","type":"muted"},{"id":"inmemory","label":"In-Memory DB","type":"muted"},{"id":"waf","label":"WebApplicationFactory","type":"muted"}],"edges":[{"from":"integration","to":"api","label":"測試 HTTP 端點"},{"from":"api","to":"service","label":"呼叫商業邏輯"},{"from":"service","to":"db","label":"讀寫資料"},{"from":"testcontainers","to":"db","label":"提供真實容器"},{"from":"inmemory","to":"db","label":"快速替代方案"},{"from":"waf","to":"api","label":"啟動完整 pipeline"}]}' />
+
+## 實戰補充
+
+<Callout type="tip" title="資深開發者的經驗">
+- **Testcontainers 是最佳實踐**：用 Docker 容器跑真實的 PostgreSQL、Redis，行為最接近生產環境。C# 用 `Testcontainers.MsSql`，JS 用 `testcontainers`，Python 用 `testcontainers-python`。
+- **Transaction Rollback 模式**：每個測試用 transaction 包住，結束時 rollback，比每次重建 DB 快很多。
+- **CI/CD 中的整合測試**：放在 Unit Test 之後、E2E 之前。用 Docker Compose 在 CI 啟動依賴服務。
+- **Contract Testing 是整合測試的進階版**：用 Pact 等工具驗證 API 契約，不需要啟動所有服務。
+</Callout>
+
+## 理解測驗
+
+<Quiz data='{"question":"整合測試和單元測試的主要差異是什麼？","options":["整合測試不需要 Assert","整合測試驗證多個元件之間的互動，而非單一單元","整合測試只能手動執行","整合測試不需要測試資料"],"answer":1,"explanation":"整合測試的重點是驗證元件之間的互動是否正確——包括 API 呼叫、資料庫讀寫、服務之間的通訊。"}' />
+
+<Quiz data='{"question":"為什麼整合測試需要獨立的測試資料？","options":["因為測試資料很貴","因為避免測試之間互相汙染，確保每個測試獨立且可重複","因為生產資料庫不能用","因為法規要求"],"answer":1,"explanation":"測試之間共用資料會導致執行順序依賴和隨機失敗。每個測試必須有獨立的測試資料，確保 Isolated 和 Repeatable。"}' />
+
+<Quiz data='{"question":"Testcontainers 的主要優勢是什麼？","options":["它比 Mock 更快","它可以用 Docker 容器啟動真實的依賴服務，行為最接近生產環境","它不需要 Docker","它只支援 Java"],"answer":1,"explanation":"Testcontainers 用 Docker 容器啟動真實的資料庫、Redis 等依賴，讓整合測試的行為最接近生產環境，同時保持自動化和可重複性。"}' />
+
+## 重點整理
+
+<Callout type="tip" title="一句話記住">
+**整合測試 = 測試元件之間的「接縫」，用真實（或接近真實）的依賴驗證互動是否正確。**
+</Callout>
+
+| 概念 | 說明 |
+|------|------|
+| **測試範圍** | 多個元件的互動（API → Service → DB） |
+| **Testcontainers** | 用 Docker 容器提供真實的依賴服務 |
+| **In-Memory DB** | 快速但行為可能與真實 DB 有差異 |
+| **WebApplicationFactory** | ASP.NET Core 內建的整合測試基礎設施 |
+| **核心好處** | 捕捉元件間的接口問題，投資報酬率高 |
+| **代價** | 比 Unit Test 慢，需要管理測試環境和資料 |

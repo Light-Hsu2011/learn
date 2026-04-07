@@ -1,0 +1,319 @@
+---
+title: "Chain of Responsibility Pattern"
+order: 20
+description: "讓多個物件都有機會處理請求，將處理者串成一條鏈"
+---
+
+# Chain of Responsibility Pattern（責任鏈模式）
+
+<ELI5>
+想像你在公司要**請假三天**：
+
+- 先交給**組長**：組長只能批一天假，三天超過權限，往上送
+- 再交給**經理**：經理只能批兩天，三天還是超過權限，往上送
+- 最後交給**總監**：總監可以批五天，核准！
+
+每個主管都有機會處理你的請求。如果自己能處理就處理，不能處理就往下一個傳。這條審批鏈就是「責任鏈（Chain of Responsibility）」。
+
+就像客服系統一樣——一線客服解決不了的問題轉二線，二線解決不了轉技術專員。
+</ELI5>
+
+## 是什麼？
+
+Chain of Responsibility Pattern 把多個處理者（Handler）串成一條鏈。請求沿著鏈傳遞，**每個處理者要嘛處理請求，要嘛把請求傳給下一個處理者**。發送者不需要知道誰會處理請求。
+
+<Callout type="info" title="GoF 分類">
+Chain of Responsibility 屬於**行為型模式（Behavioral Pattern）**，重點在於解耦請求的發送者和處理者。
+</Callout>
+
+## 什麼時候用？
+
+- 多個物件都可能處理請求，但具體由誰處理在執行時才確定
+- 你想讓請求沿著一條鏈逐級傳遞
+- 處理者可以動態增減或重新排序
+- 你需要 Middleware Pipeline 架構
+
+## 什麼時候不該用？
+
+<Callout type="warning" title="過度設計警告">
+如果處理者固定且數量少，直接用 if-else 判斷就夠了。責任鏈的缺點是請求可能沒有任何處理者處理（走到鏈尾都沒人接），且偵錯時需要追蹤整條鏈才能找到是誰處理的。
+</Callout>
+
+## 執行流程
+
+<StepDiagram data='[{"title":"定義 Handler 介面","description":"宣告 Handle 方法和設定下一個 Handler 的方法","icon":"1"},{"title":"實作具體 Handler","description":"每個 Handler 判斷自己能否處理請求","icon":"2"},{"title":"串連 Handler 鏈","description":"把各 Handler 依序連接起來","icon":"3"},{"title":"Client 發送請求","description":"把請求交給鏈的第一個 Handler","icon":"4"},{"title":"逐級傳遞","description":"能處理就處理，不能處理就傳給下一個","icon":"5"}]' />
+
+## 程式碼範例
+
+### C# 版本
+
+```csharp
+// 1. Handler 抽象類別
+public abstract class ApprovalHandler
+{
+    private ApprovalHandler? _next;
+
+    public ApprovalHandler SetNext(ApprovalHandler next)
+    {
+        _next = next;
+        return next; // 支援鏈式呼叫
+    }
+
+    public virtual string Handle(int leaveDays)
+    {
+        if (_next != null)
+            return _next.Handle(leaveDays);
+        return "沒有人有權限批准這個請假天數";
+    }
+}
+
+// 2. 具體 Handler
+public class TeamLead : ApprovalHandler
+{
+    public override string Handle(int leaveDays)
+    {
+        if (leaveDays <= 1)
+            return $"組長批准了 {leaveDays} 天假";
+        Console.WriteLine($"  組長：{leaveDays} 天超過我的權限，往上送");
+        return base.Handle(leaveDays);
+    }
+}
+
+public class Manager : ApprovalHandler
+{
+    public override string Handle(int leaveDays)
+    {
+        if (leaveDays <= 3)
+            return $"經理批准了 {leaveDays} 天假";
+        Console.WriteLine($"  經理：{leaveDays} 天超過我的權限，往上送");
+        return base.Handle(leaveDays);
+    }
+}
+
+public class Director : ApprovalHandler
+{
+    public override string Handle(int leaveDays)
+    {
+        if (leaveDays <= 7)
+            return $"總監批准了 {leaveDays} 天假";
+        Console.WriteLine($"  總監：{leaveDays} 天超過我的權限，往上送");
+        return base.Handle(leaveDays);
+    }
+}
+
+// 3. 使用
+var teamLead = new TeamLead();
+var manager = new Manager();
+var director = new Director();
+
+teamLead.SetNext(manager).SetNext(director);
+
+Console.WriteLine(teamLead.Handle(1));  // 組長批准了 1 天假
+Console.WriteLine(teamLead.Handle(3));  // 經理批准了 3 天假
+Console.WriteLine(teamLead.Handle(5));  // 總監批准了 5 天假
+Console.WriteLine(teamLead.Handle(10)); // 沒有人有權限批准
+```
+
+### TypeScript 版本
+
+```typescript
+// 1. Handler 抽象類別
+abstract class ApprovalHandler {
+  private next?: ApprovalHandler;
+
+  setNext(next: ApprovalHandler): ApprovalHandler {
+    this.next = next;
+    return next;
+  }
+
+  handle(leaveDays: number): string {
+    if (this.next) return this.next.handle(leaveDays);
+    return "沒有人有權限批准這個請假天數";
+  }
+}
+
+// 2. 具體 Handler
+class TeamLead extends ApprovalHandler {
+  handle(leaveDays: number): string {
+    if (leaveDays <= 1) return `組長批准了 ${leaveDays} 天假`;
+    console.log(`  組長：${leaveDays} 天超過我的權限，往上送`);
+    return super.handle(leaveDays);
+  }
+}
+
+class Manager extends ApprovalHandler {
+  handle(leaveDays: number): string {
+    if (leaveDays <= 3) return `經理批准了 ${leaveDays} 天假`;
+    console.log(`  經理：${leaveDays} 天超過我的權限，往上送`);
+    return super.handle(leaveDays);
+  }
+}
+
+class Director extends ApprovalHandler {
+  handle(leaveDays: number): string {
+    if (leaveDays <= 7) return `總監批准了 ${leaveDays} 天假`;
+    console.log(`  總監：${leaveDays} 天超過我的權限，往上送`);
+    return super.handle(leaveDays);
+  }
+}
+
+// 3. 使用
+const teamLead = new TeamLead();
+const manager = new Manager();
+const director = new Director();
+
+teamLead.setNext(manager).setNext(director);
+
+console.log(teamLead.handle(1));  // 組長批准了 1 天假
+console.log(teamLead.handle(3));  // 經理批准了 3 天假
+console.log(teamLead.handle(5));  // 總監批准了 5 天假
+console.log(teamLead.handle(10)); // 沒有人有權限批准
+```
+
+### Python 版本
+
+```python
+from abc import ABC
+
+# 1. Handler 抽象類別
+class ApprovalHandler(ABC):
+    def __init__(self):
+        self._next: ApprovalHandler | None = None
+
+    def set_next(self, next_handler: "ApprovalHandler") -> "ApprovalHandler":
+        self._next = next_handler
+        return next_handler
+
+    def handle(self, leave_days: int) -> str:
+        if self._next:
+            return self._next.handle(leave_days)
+        return "沒有人有權限批准這個請假天數"
+
+# 2. 具體 Handler
+class TeamLead(ApprovalHandler):
+    def handle(self, leave_days: int) -> str:
+        if leave_days <= 1:
+            return f"組長批准了 {leave_days} 天假"
+        print(f"  組長：{leave_days} 天超過我的權限，往上送")
+        return super().handle(leave_days)
+
+class Manager(ApprovalHandler):
+    def handle(self, leave_days: int) -> str:
+        if leave_days <= 3:
+            return f"經理批准了 {leave_days} 天假"
+        print(f"  經理：{leave_days} 天超過我的權限，往上送")
+        return super().handle(leave_days)
+
+class Director(ApprovalHandler):
+    def handle(self, leave_days: int) -> str:
+        if leave_days <= 7:
+            return f"總監批准了 {leave_days} 天假"
+        print(f"  總監：{leave_days} 天超過我的權限，往上送")
+        return super().handle(leave_days)
+
+# 3. 使用
+team_lead = TeamLead()
+manager = Manager()
+director = Director()
+
+team_lead.set_next(manager).set_next(director)
+
+print(team_lead.handle(1))   # 組長批准了 1 天假
+print(team_lead.handle(3))   # 經理批准了 3 天假
+print(team_lead.handle(5))   # 總監批准了 5 天假
+print(team_lead.handle(10))  # 沒有人有權限批准
+```
+
+### Java 版本
+
+```java
+// 1. Handler 抽象類別
+public abstract class ApprovalHandler {
+    private ApprovalHandler next;
+
+    public ApprovalHandler setNext(ApprovalHandler next) {
+        this.next = next;
+        return next;
+    }
+
+    public String handle(int leaveDays) {
+        if (next != null) return next.handle(leaveDays);
+        return "沒有人有權限批准這個請假天數";
+    }
+}
+
+// 2. 具體 Handler
+public class TeamLead extends ApprovalHandler {
+    public String handle(int leaveDays) {
+        if (leaveDays <= 1) return "組長批准了 " + leaveDays + " 天假";
+        System.out.println("  組長：" + leaveDays + " 天超過我的權限，往上送");
+        return super.handle(leaveDays);
+    }
+}
+
+public class Manager extends ApprovalHandler {
+    public String handle(int leaveDays) {
+        if (leaveDays <= 3) return "經理批准了 " + leaveDays + " 天假";
+        System.out.println("  經理：" + leaveDays + " 天超過我的權限，往上送");
+        return super.handle(leaveDays);
+    }
+}
+
+public class Director extends ApprovalHandler {
+    public String handle(int leaveDays) {
+        if (leaveDays <= 7) return "總監批准了 " + leaveDays + " 天假";
+        System.out.println("  總監：" + leaveDays + " 天超過我的權限，往上送");
+        return super.handle(leaveDays);
+    }
+}
+
+// 3. 使用
+ApprovalHandler teamLead = new TeamLead();
+ApprovalHandler manager = new Manager();
+ApprovalHandler director = new Director();
+
+teamLead.setNext(manager).setNext(director);
+
+System.out.println(teamLead.handle(1));  // 組長批准了 1 天假
+System.out.println(teamLead.handle(3));  // 經理批准了 3 天假
+System.out.println(teamLead.handle(5));  // 總監批准了 5 天假
+System.out.println(teamLead.handle(10)); // 沒有人有權限批准
+```
+
+## 結構圖
+
+<Diagram data='{"nodes":[{"id":"client","label":"Client","type":"muted"},{"id":"handler","label":"Handler (ApprovalHandler)","type":"highlight"},{"id":"handler_a","label":"Handler A (TeamLead)","type":"default"},{"id":"handler_b","label":"Handler B (Manager)","type":"default"},{"id":"handler_c","label":"Handler C (Director)","type":"default"}],"edges":[{"from":"client","to":"handler","label":"sends request"},{"from":"handler_a","to":"handler","label":"extends"},{"from":"handler_b","to":"handler","label":"extends"},{"from":"handler_c","to":"handler","label":"extends"},{"from":"handler_a","to":"handler_b","label":"next"},{"from":"handler_b","to":"handler_c","label":"next"}]}' />
+
+## 實戰補充
+
+<Callout type="tip" title="資深開發者經驗">
+**Middleware Pipeline**：ASP.NET Core 的 Middleware、Express.js 的 `app.use()`、Django 的 Middleware 都是責任鏈的變體。每個 Middleware 可以處理請求、修改請求、或把請求傳給下一個。
+
+**Exception Handler Chain**：多層 try-catch 其實就是責任鏈。內層 catch 不到的例外會往外層拋，直到有人處理或程式崩潰。
+
+**Log Filter**：日誌系統常用責任鏈——DEBUG → INFO → WARN → ERROR。每一層只處理自己等級的日誌，其餘往上傳。
+
+**兩種變體**：GoF 的原版是「只有一個處理者會處理」，但實際應用中常見「每個處理者都處理一部分然後往下傳」（Pipeline 風格），例如 Middleware 對請求做驗證、記錄、壓縮等。
+</Callout>
+
+## 理解測驗
+
+<Quiz data='{"question":"Chain of Responsibility 和直接用 if-else 相比，最大的優勢是什麼？","options":["執行速度更快","處理者可以動態增減和重新排序","程式碼行數更少","不需要介面"],"answer":1,"explanation":"責任鏈的處理者是獨立物件，可以在執行時動態增減或改變順序。if-else 的判斷邏輯是寫死的，要改就得改原始碼。"}' />
+
+<Quiz data='{"question":"如果請求沿著責任鏈走到最後都沒有人處理，會發生什麼？","options":["自動重試","程式崩潰","取決於鏈尾的預設處理邏輯","什麼都不會發生"],"answer":2,"explanation":"這取決於設計。可以在鏈尾放一個 Default Handler，或在 base class 中拋出例外，或返回「無人處理」的訊息。這是設計責任鏈時必須考慮的。"}' />
+
+<Quiz data='{"question":"以下哪個是 Chain of Responsibility 在現代框架中的實際應用？","options":["資料庫的 JOIN 查詢","ASP.NET Core 的 Middleware Pipeline","CSS 的選擇器","HTML 的標籤巢套"],"answer":1,"explanation":"ASP.NET Core 的 Middleware 就是責任鏈。每個 Middleware 可以處理請求、修改請求，或呼叫 next() 把請求傳給下一個 Middleware。"}' />
+
+## 重點整理
+
+<Callout type="tip" title="一句話記住">
+**Chain of Responsibility = 逐級審批：能處理就處理，不能處理就往下傳。**
+</Callout>
+
+| 概念 | 說明 |
+|------|------|
+| **Handler（處理者介面）** | 定義 Handle 方法和鏈接下一個 Handler 的方法 |
+| **ConcreteHandler** | 判斷自己能否處理，不能就傳給下一個 |
+| **Client** | 把請求交給鏈的第一個 Handler |
+| **核心好處** | 解耦發送者和處理者，處理者可動態增減 |
+| **代價** | 請求可能沒人處理，偵錯需追蹤整條鏈 |

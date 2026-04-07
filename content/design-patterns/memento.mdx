@@ -1,0 +1,359 @@
+---
+title: "Memento Pattern"
+order: 22
+description: "在不破壞封裝的前提下，捕獲並外部化物件的內部狀態以便之後恢復"
+---
+
+# Memento Pattern（備忘錄模式）
+
+<ELI5>
+想像你在玩**電動遊戲**：
+
+- 打到 Boss 之前，你按了**存檔**
+- 打輸了？沒關係，**讀取存檔**回到剛才的狀態
+- 你可以有很多個存檔，隨時回到任何一個時間點
+
+存檔就是「備忘錄（Memento）」。遊戲的所有狀態（HP、MP、位置、道具）都被拍了一張快照，存在一個你打不開的黑盒子裡。你不需要知道存檔裡面長什麼樣，只要能讀檔就好。
+
+就像手機的「回復上一步」功能——你在畫圖 App 裡畫錯了，按一下就回到上一步，不用知道 App 內部是怎麼記住的。
+</ELI5>
+
+## 是什麼？
+
+Memento Pattern 讓你在**不破壞封裝性**的前提下，捕獲物件的內部狀態並存放在外部，之後可以恢復到該狀態。狀態的儲存和恢復不會暴露物件的內部實作細節。
+
+<Callout type="info" title="GoF 分類">
+Memento 屬於**行為型模式（Behavioral Pattern）**，重點在於安全地保存和恢復物件狀態。
+</Callout>
+
+## 什麼時候用？
+
+- 你需要 Undo/Redo 功能，且要保存完整的物件狀態快照
+- 你需要實作交易回滾（Transaction Rollback）
+- 你想在不暴露物件內部結構的情況下保存狀態
+- 你需要版本控制或狀態歷史紀錄
+
+## 什麼時候不該用？
+
+<Callout type="warning" title="過度設計警告">
+如果物件的狀態很大（例如包含大量資料或檔案參考），頻繁建立 Memento 會消耗大量記憶體。此時考慮只儲存差異（Delta）而非完整快照。如果狀態只有一兩個欄位，直接存變數就好，不需要 Memento。
+</Callout>
+
+## 執行流程
+
+<StepDiagram data='[{"title":"定義 Memento","description":"封裝 Originator 的內部狀態快照","icon":"1"},{"title":"定義 Originator","description":"建立 Memento 和從 Memento 恢復狀態","icon":"2"},{"title":"定義 Caretaker","description":"負責保管 Memento，但不能查看或修改其內容","icon":"3"},{"title":"保存狀態","description":"Originator 建立 Memento，Caretaker 存起來","icon":"4"},{"title":"恢復狀態","description":"Caretaker 取出 Memento，Originator 從中恢復","icon":"5"}]' />
+
+## 程式碼範例
+
+### C# 版本
+
+```csharp
+// 1. Memento：狀態快照（不可變）
+public record GameMemento(int Hp, int Mp, string Location, DateTime SavedAt);
+
+// 2. Originator：遊戲角色
+public class GameCharacter
+{
+    public int Hp { get; private set; }
+    public int Mp { get; private set; }
+    public string Location { get; private set; }
+
+    public GameCharacter(int hp, int mp, string location)
+    {
+        Hp = hp; Mp = mp; Location = location;
+    }
+
+    public GameMemento Save()
+    {
+        Console.WriteLine($"  [存檔] HP:{Hp} MP:{Mp} 位置:{Location}");
+        return new GameMemento(Hp, Mp, Location, DateTime.Now);
+    }
+
+    public void Restore(GameMemento memento)
+    {
+        Hp = memento.Hp;
+        Mp = memento.Mp;
+        Location = memento.Location;
+        Console.WriteLine($"  [讀檔] HP:{Hp} MP:{Mp} 位置:{Location}");
+    }
+
+    public void TakeDamage(int damage)
+    {
+        Hp = Math.Max(0, Hp - damage);
+        Console.WriteLine($"  受到 {damage} 傷害，HP 剩餘 {Hp}");
+    }
+
+    public void MoveTo(string location)
+    {
+        Location = location;
+        Console.WriteLine($"  移動到 {location}");
+    }
+}
+
+// 3. Caretaker：存檔管理器
+public class SaveManager
+{
+    private readonly Stack<GameMemento> _saves = new();
+
+    public void Save(GameMemento memento) => _saves.Push(memento);
+
+    public GameMemento? Load()
+    {
+        return _saves.Count > 0 ? _saves.Pop() : null;
+    }
+
+    public int SaveCount => _saves.Count;
+}
+
+// 4. 使用
+var hero = new GameCharacter(100, 50, "村莊");
+var saveManager = new SaveManager();
+
+saveManager.Save(hero.Save());       // 存檔 1
+hero.MoveTo("Boss 房間");
+saveManager.Save(hero.Save());       // 存檔 2
+hero.TakeDamage(80);                 // HP 剩 20
+hero.TakeDamage(30);                 // HP 歸零
+
+Console.WriteLine("\n打輸了！讀取上一個存檔...");
+var lastSave = saveManager.Load();
+if (lastSave != null) hero.Restore(lastSave); // 回到 Boss 房間，HP 100
+```
+
+### TypeScript 版本
+
+```typescript
+// 1. Memento
+class GameMemento {
+  constructor(
+    public readonly hp: number,
+    public readonly mp: number,
+    public readonly location: string,
+    public readonly savedAt: Date = new Date()
+  ) {}
+}
+
+// 2. Originator
+class GameCharacter {
+  constructor(
+    public hp: number,
+    public mp: number,
+    public location: string
+  ) {}
+
+  save(): GameMemento {
+    console.log(`  [存檔] HP:${this.hp} MP:${this.mp} 位置:${this.location}`);
+    return new GameMemento(this.hp, this.mp, this.location);
+  }
+
+  restore(memento: GameMemento) {
+    this.hp = memento.hp;
+    this.mp = memento.mp;
+    this.location = memento.location;
+    console.log(`  [讀檔] HP:${this.hp} MP:${this.mp} 位置:${this.location}`);
+  }
+
+  takeDamage(damage: number) {
+    this.hp = Math.max(0, this.hp - damage);
+    console.log(`  受到 ${damage} 傷害，HP 剩餘 ${this.hp}`);
+  }
+
+  moveTo(location: string) {
+    this.location = location;
+    console.log(`  移動到 ${location}`);
+  }
+}
+
+// 3. Caretaker
+class SaveManager {
+  private saves: GameMemento[] = [];
+
+  save(memento: GameMemento) { this.saves.push(memento); }
+  load(): GameMemento | undefined { return this.saves.pop(); }
+}
+
+// 4. 使用
+const hero = new GameCharacter(100, 50, "村莊");
+const saveManager = new SaveManager();
+
+saveManager.save(hero.save());
+hero.moveTo("Boss 房間");
+saveManager.save(hero.save());
+hero.takeDamage(80);
+hero.takeDamage(30);
+
+console.log("\n打輸了！讀取上一個存檔...");
+const lastSave = saveManager.load();
+if (lastSave) hero.restore(lastSave);
+```
+
+### Python 版本
+
+```python
+from dataclasses import dataclass
+from datetime import datetime
+
+# 1. Memento
+@dataclass(frozen=True)
+class GameMemento:
+    hp: int
+    mp: int
+    location: str
+    saved_at: datetime = datetime.now()
+
+# 2. Originator
+class GameCharacter:
+    def __init__(self, hp: int, mp: int, location: str):
+        self.hp = hp
+        self.mp = mp
+        self.location = location
+
+    def save(self) -> GameMemento:
+        print(f"  [存檔] HP:{self.hp} MP:{self.mp} 位置:{self.location}")
+        return GameMemento(self.hp, self.mp, self.location)
+
+    def restore(self, memento: GameMemento) -> None:
+        self.hp = memento.hp
+        self.mp = memento.mp
+        self.location = memento.location
+        print(f"  [讀檔] HP:{self.hp} MP:{self.mp} 位置:{self.location}")
+
+    def take_damage(self, damage: int) -> None:
+        self.hp = max(0, self.hp - damage)
+        print(f"  受到 {damage} 傷害，HP 剩餘 {self.hp}")
+
+    def move_to(self, location: str) -> None:
+        self.location = location
+        print(f"  移動到 {location}")
+
+# 3. Caretaker
+class SaveManager:
+    def __init__(self):
+        self._saves: list[GameMemento] = []
+
+    def save(self, memento: GameMemento) -> None:
+        self._saves.append(memento)
+
+    def load(self) -> GameMemento | None:
+        return self._saves.pop() if self._saves else None
+
+# 4. 使用
+hero = GameCharacter(100, 50, "村莊")
+save_manager = SaveManager()
+
+save_manager.save(hero.save())
+hero.move_to("Boss 房間")
+save_manager.save(hero.save())
+hero.take_damage(80)
+hero.take_damage(30)
+
+print("\n打輸了！讀取上一個存檔...")
+last_save = save_manager.load()
+if last_save:
+    hero.restore(last_save)
+```
+
+### Java 版本
+
+```java
+import java.time.LocalDateTime;
+import java.util.Stack;
+
+// 1. Memento（不可變）
+public record GameMemento(int hp, int mp, String location, LocalDateTime savedAt) {
+    public GameMemento(int hp, int mp, String location) {
+        this(hp, mp, location, LocalDateTime.now());
+    }
+}
+
+// 2. Originator
+public class GameCharacter {
+    private int hp;
+    private int mp;
+    private String location;
+
+    public GameCharacter(int hp, int mp, String location) {
+        this.hp = hp; this.mp = mp; this.location = location;
+    }
+
+    public GameMemento save() {
+        System.out.printf("  [存檔] HP:%d MP:%d 位置:%s%n", hp, mp, location);
+        return new GameMemento(hp, mp, location);
+    }
+
+    public void restore(GameMemento m) {
+        hp = m.hp(); mp = m.mp(); location = m.location();
+        System.out.printf("  [讀檔] HP:%d MP:%d 位置:%s%n", hp, mp, location);
+    }
+
+    public void takeDamage(int damage) {
+        hp = Math.max(0, hp - damage);
+        System.out.println("  受到 " + damage + " 傷害，HP 剩餘 " + hp);
+    }
+
+    public void moveTo(String loc) {
+        location = loc;
+        System.out.println("  移動到 " + loc);
+    }
+}
+
+// 3. Caretaker
+public class SaveManager {
+    private final Stack<GameMemento> saves = new Stack<>();
+
+    public void save(GameMemento m) { saves.push(m); }
+    public GameMemento load() { return saves.isEmpty() ? null : saves.pop(); }
+}
+
+// 4. 使用
+GameCharacter hero = new GameCharacter(100, 50, "村莊");
+SaveManager saveManager = new SaveManager();
+
+saveManager.save(hero.save());
+hero.moveTo("Boss 房間");
+saveManager.save(hero.save());
+hero.takeDamage(80);
+hero.takeDamage(30);
+
+System.out.println("\n打輸了！讀取上一個存檔...");
+GameMemento lastSave = saveManager.load();
+if (lastSave != null) hero.restore(lastSave);
+```
+
+## 結構圖
+
+<Diagram data='{"nodes":[{"id":"client","label":"Client","type":"muted"},{"id":"caretaker","label":"Caretaker (SaveManager)","type":"default"},{"id":"originator","label":"Originator (GameCharacter)","type":"highlight"},{"id":"memento","label":"Memento (GameMemento)","type":"default"}],"edges":[{"from":"client","to":"caretaker","label":"requests save/load"},{"from":"caretaker","to":"memento","label":"stores"},{"from":"originator","to":"memento","label":"creates / restores from"}]}' />
+
+## 實戰補充
+
+<Callout type="tip" title="資深開發者經驗">
+**Undo 系統**：文字編輯器、繪圖軟體的 Undo 通常是 Command Pattern + Memento Pattern 的組合。Command 記錄「做了什麼」，Memento 記錄「之前是什麼狀態」。
+
+**交易回滾**：資料庫的 Transaction 就是 Memento 的概念——ROLLBACK 讓資料回到 BEGIN TRANSACTION 時的狀態。應用層也可以用 Memento 實作類似的機制。
+
+**記憶體管理**：大型物件頻繁存快照會吃掉大量記憶體。實務上常用以下策略：限制 Memento 數量（只保留最近 N 個）、只儲存變更的部分（Delta Encoding）、或將 Memento 序列化到磁碟。
+
+**不可變 Memento**：Memento 必須是不可變的（Immutable）。如果 Memento 被外部修改，恢復時就會得到錯誤的狀態。C# 的 `record`、Java 的 `record`、Python 的 `frozen dataclass` 都很適合。
+</Callout>
+
+## 理解測驗
+
+<Quiz data='{"question":"Memento Pattern 中，誰有權存取 Memento 的內部資料？","options":["Caretaker","Client","只有 Originator","所有人都可以"],"answer":2,"explanation":"Memento 的核心是保護封裝性。只有 Originator 知道怎麼建立和讀取 Memento 的內容，Caretaker 只負責保管但不能查看內部。"}' />
+
+<Quiz data='{"question":"使用 Memento Pattern 最常見的問題是什麼？","options":["無法序列化","頻繁建立完整快照導致記憶體消耗過大","Originator 太複雜","Caretaker 太多"],"answer":1,"explanation":"每次存檔都是完整的狀態快照。如果物件狀態很大且存檔頻繁，記憶體會快速增長。需要用限制數量或差異儲存來緩解。"}' />
+
+<Quiz data='{"question":"Memento Pattern 和 Command Pattern 的 Undo 機制有什麼差異？","options":["完全一樣","Memento 保存完整狀態快照，Command 透過反向操作來撤銷","Memento 更快","Command 不能做 Undo"],"answer":1,"explanation":"Command 的 Undo 是執行反向操作（例如 Insert 的 Undo 是 Delete），Memento 是直接回復到之前保存的完整狀態。兩者可以搭配使用。"}' />
+
+## 重點整理
+
+<Callout type="tip" title="一句話記住">
+**Memento Pattern = 遊戲存檔：拍下物件狀態的快照，隨時可以讀檔回到過去。**
+</Callout>
+
+| 概念 | 說明 |
+|------|------|
+| **Memento（備忘錄）** | 儲存 Originator 某一時刻的狀態快照 |
+| **Originator（原始者）** | 建立 Memento 和從 Memento 恢復狀態 |
+| **Caretaker（管理者）** | 保管 Memento，但不能查看或修改其內容 |
+| **核心好處** | 不破壞封裝的前提下保存和恢復狀態 |
+| **代價** | 完整快照消耗記憶體，需要管理快照數量 |

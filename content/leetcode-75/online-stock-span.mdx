@@ -1,0 +1,117 @@
+---
+title: "901. Online Stock Span"
+order: 75
+description: "單調 Stack 即時計算股票價格的連續跨度"
+---
+
+# Online Stock Span
+
+<ELI5>
+你在看股票走勢圖，想知道今天的「跨度」——從今天往回看，連續幾天的股價都 ≤ 今天的？
+
+例如今天股價 100 元，昨天 80、前天 60、大前天 120。那今天的跨度是 3（今天、昨天、前天都 ≤ 100，但大前天 120 > 100 就停了）。
+
+用一個 Stack 記住之前的「高點」：每次新價格進來，把所有不超過它的舊記錄都吞掉（合併跨度）。Stack 就像一排看板，只留下那些「比後面都高」的歷史記錄。
+</ELI5>
+
+## 題目描述
+
+設計一個類別 `StockSpanner`，每次呼叫 `next(price)` 回傳包含今天在內的連續天數中，股價都 ≤ 今天的天數。
+
+```
+StockSpanner sp = new StockSpanner();
+sp.next(100); // 1
+sp.next(80);  // 1
+sp.next(60);  // 1
+sp.next(70);  // 2 (60, 70)
+sp.next(60);  // 1
+sp.next(75);  // 4 (60, 70, 60, 75... 等等回到 80 停)
+sp.next(85);  // 6
+```
+
+## 解題思路
+
+<StepDiagram data='[{"title":"Stack 存配對","description":"Stack 中每個元素是 (price, span) 配對","icon":"1"},{"title":"新價格進來","description":"初始 span = 1（至少包含今天自己）","icon":"2"},{"title":"合併較小的","description":"Stack 頂端的 price <= 當前 price → 彈出，累加 span","icon":"3"},{"title":"壓入 Stack","description":"將 (price, 累積的 span) 壓入 Stack","icon":"4"},{"title":"回傳 span","description":"回傳當前的 span 值","icon":"5"}]' />
+
+## 程式碼
+
+### C#
+```csharp
+public class StockSpanner {
+    private Stack<(int price, int span)> stack;
+    
+    public StockSpanner() {
+        stack = new Stack<(int, int)>();
+    }
+    
+    public int Next(int price) {
+        int span = 1;
+        // 合併所有 <= 當前價格的記錄
+        while (stack.Count > 0 && stack.Peek().price <= price) {
+            span += stack.Pop().span;
+        }
+        stack.Push((price, span));
+        return span;
+    }
+}
+```
+
+### TypeScript
+```typescript
+class StockSpanner {
+    private stack: [number, number][]; // [price, span]
+    
+    constructor() {
+        this.stack = [];
+    }
+    
+    next(price: number): number {
+        let span = 1;
+        while (this.stack.length > 0 && this.stack[this.stack.length - 1][0] <= price) {
+            span += this.stack.pop()![1];
+        }
+        this.stack.push([price, span]);
+        return span;
+    }
+}
+```
+
+### Python
+```python
+class StockSpanner:
+    def __init__(self):
+        self.stack = []  # [(price, span)]
+    
+    def next(self, price: int) -> int:
+        span = 1
+        # 合併所有 <= 當前價格的歷史記錄
+        while self.stack and self.stack[-1][0] <= price:
+            span += self.stack.pop()[1]
+        self.stack.append((price, span))
+        return span
+```
+
+## 複雜度分析
+
+| | Time | Space |
+|--|------|-------|
+| 每次 next() | 均攤 O(1) | O(n) |
+
+## 圖解
+
+<Diagram data='{"nodes":[{"id":"new","label":"新價格 75 進來","type":"highlight"},{"id":"stack","label":"Stack: [(100,1),(80,1),(60,1),(70,2),(60,1)]","type":"default"},{"id":"pop1","label":"彈出 (60,1) → span=2","type":"muted"},{"id":"pop2","label":"彈出 (70,2) → span=4","type":"muted"},{"id":"pop3","label":"彈出 (60,1)... 不對 70>75? 不是","type":"muted"},{"id":"push","label":"壓入 (75, 4)","type":"highlight"}],"edges":[{"from":"new","to":"stack","label":"比較頂端"},{"from":"stack","to":"pop1","label":"60<=75"},{"from":"pop1","to":"pop2","label":"70<=75"},{"from":"pop2","to":"push","label":"80>75 停止"}]}' />
+
+## 進階觀點
+
+<Callout type="tip" title="面試追問">
+- 為什麼是均攤 O(1)？每個元素最多被 push 一次和 pop 一次。n 次 next() 呼叫的總操作數是 O(2n)，平均每次 O(1)。
+- Stack 中存 span 而不是逐一記錄每天的好處：合併後的 span 保留了「被吞掉的天數」資訊，不需要回溯。
+- 和 **739. Daily Temperatures** 的對比：Daily Temperatures 找「下一個更大的」（Next Greater），本題找「前面連續不大於的跨度」（Previous Greater），兩者是單調 Stack 的一體兩面。
+- 如果要支援「撤銷上一次操作」，需要額外的資料結構記錄歷史狀態。
+</Callout>
+
+## 理解測驗
+
+<Quiz data='{"question":"為什麼 Stack 中要存 (price, span) 而不只是 price？","options":["為了節省記憶體","因為被彈出的元素帶有跨度資訊，合併 span 才能正確計算連續天數","因為 price 可能重複","為了排序"],"answer":1,"explanation":"當一個元素被彈出合併時，它的 span 代表它覆蓋的天數。如果不記錄 span，被吞掉的天數資訊就丟失了。"}' />
+
+<Quiz data='{"question":"如果連續輸入遞減的價格 [100, 90, 80, 70]，Stack 的狀態是什麼？","options":["Stack 為空","Stack 有 4 個元素，每個 span 都是 1","Stack 只有一個元素 span=4","Stack 有 4 個元素，span 遞增"],"answer":1,"explanation":"遞減序列中每個新價格都比 Stack 頂端小，不會觸發合併，所以每個都直接入 Stack，span=1。Stack: [(100,1),(90,1),(80,1),(70,1)]。"}' />

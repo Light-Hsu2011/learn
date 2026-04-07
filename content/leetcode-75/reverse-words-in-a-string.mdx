@@ -1,0 +1,93 @@
+---
+title: "151. Reverse Words in a String"
+order: 6
+description: "分割字串去除多餘空格後反轉單字順序"
+---
+
+# Reverse Words in a String
+
+<ELI5>
+想像你在讀一行英文句子「the sky is blue」，現在要你從最後一個字開始往回讀：「blue is sky the」。
+
+但有個小麻煩 — 句子前後可能有空格，字與字之間也可能有好幾個空格。所以第一步是「清理」，第二步才是「反轉」。就像整理書架：先把書一本本拿下來（分割），再從最後一本開始放回去（反轉）。
+</ELI5>
+
+## 題目描述
+
+給定字串 `s`，反轉其中所有單字的順序。單字之間用單一空格分隔，去除前後多餘空格。
+
+```
+輸入：s = "the sky is blue"
+輸出："blue is sky the"
+
+輸入：s = "  hello world  "
+輸出："world hello"
+
+輸入：s = "a good   example"
+輸出："example good a"
+```
+
+## 解題思路
+
+<StepDiagram data='[{"title":"去除前後空格","description":"trim 掉首尾空白","icon":"1"},{"title":"分割單字","description":"用正則或 split 按空格分割，過濾空字串","icon":"2"},{"title":"反轉陣列","description":"將單字陣列反轉","icon":"3"},{"title":"重新拼接","description":"用單一空格 join 回字串","icon":"4"}]' />
+
+## 程式碼
+
+### C#
+
+```csharp
+public class Solution {
+    public string ReverseWords(string s) {
+        // 分割 + 過濾空字串 + 反轉 + 拼接
+        var words = s.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        Array.Reverse(words);
+        return string.Join(" ", words);
+    }
+}
+```
+
+### TypeScript
+
+```typescript
+function reverseWords(s: string): string {
+    return s
+        .trim()
+        .split(/\s+/)  // 正則處理多個空格
+        .reverse()
+        .join(" ");
+}
+```
+
+### Python
+
+```python
+def reverseWords(s: str) -> str:
+    # split() 不帶參數會自動處理多個空格和首尾空格
+    return " ".join(s.split()[::-1])
+```
+
+## 複雜度分析
+
+| | Time | Space |
+|--|------|-------|
+| 本解法 | O(n) | O(n) |
+
+分割和拼接都是 O(n)。
+
+## 圖解
+
+<Diagram data='{"nodes":[{"id":"input","label":"\"  hello world  \"","type":"default"},{"id":"split","label":"[\"hello\", \"world\"]","type":"highlight"},{"id":"reverse","label":"[\"world\", \"hello\"]","type":"highlight"},{"id":"join","label":"\"world hello\"","type":"muted"}],"edges":[{"from":"input","to":"split","label":"split + trim"},{"from":"split","to":"reverse","label":"反轉"},{"from":"reverse","to":"join","label":"join"}]}' />
+
+## 進階觀點
+
+<Callout type="tip" title="面試追問">
+- **O(1) 額外空間怎麼做？** 先反轉整個字串，再反轉每個單字。這是經典的「兩次反轉」技巧，但在字串 immutable 的語言中無法實現。
+- **如果要保留原始空格數量？** 那就不能用 split，需要手動解析。
+- **跟 stack 的關係？** 可以用 stack 先推入所有單字再彈出，效果等同反轉。
+</Callout>
+
+## 理解測驗
+
+<Quiz data='{"question":"為什麼 Python 的 split() 不帶參數就能處理多個空格？","options":["因為 Python 的 split 預設用正則","因為不帶參數時 split 會將連續空白視為單一分隔符並忽略首尾空白","因為 Python 自動 trim","因為 Python 會忽略空字串"],"answer":1,"explanation":"Python 的 str.split() 不帶參數會以任意連續空白為分隔符，並自動去除首尾空白。"}' />
+
+<Quiz data='{"question":"「先反轉整個字串，再反轉每個單字」為什麼能達到反轉單字順序的效果？","options":["因為反轉兩次等於沒反轉","因為整體反轉讓字序倒過來但字母也倒了，再反轉每個單字把字母順序修正回來","因為這是排序演算法","因為只有在 ASCII 編碼下才成立"],"answer":1,"explanation":"整體反轉後單字順序對了但每個單字的字母是倒的，再各自反轉每個單字即可。"}' />

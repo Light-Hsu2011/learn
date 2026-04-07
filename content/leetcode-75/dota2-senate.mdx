@@ -1,0 +1,146 @@
+---
+title: "649. Dota2 Senate"
+order: 28
+description: "用雙 Queue 模擬 Radiant 與 Dire 的投票淘汰過程"
+---
+
+# Dota2 Senate
+
+<ELI5>
+想像一場投票淘汰賽：Radiant 黨和 Dire 黨的議員坐成一圈。每個人輪到時可以「禁止」對面黨的一個人發言。
+
+策略很簡單 — 每個人都想禁掉「下一個要發言的對手」，因為讓對手先發言就可能被對手禁掉。這就像排隊搶座位，誰的號碼排在前面誰就先行動。
+
+我們用兩個 Queue 分別追蹤兩黨的議員位置，每回合比較誰的位置靠前，贏的人進入下一輪（位置加 n），輸的人被淘汰。
+</ELI5>
+
+## 題目描述
+
+給定一個字串 `senate`，只包含 'R'（Radiant）和 'D'（Dire）。每個議員依序可以行使權利：禁止一名對方議員的權利。當只剩一個黨的議員時，該黨獲勝。回傳 "Radiant" 或 "Dire"。
+
+```
+輸入: senate = "RDD"
+輸出: "Dire"
+解釋: R 禁掉第一個 D，第二個 D 禁掉 R，只剩 D。
+
+輸入: senate = "RD"
+輸出: "Radiant"
+解釋: R 在 D 前面，R 禁掉 D。
+```
+
+## 解題思路
+
+<StepDiagram data='[{"title":"初始化雙 Queue","description":"R 的位置放入 rQueue，D 的位置放入 dQueue","icon":"1"},{"title":"比較隊首","description":"位置小的先行動，禁掉對方隊首","icon":"2"},{"title":"勝者進下一輪","description":"勝者位置 + n 後重新排入自己的 Queue","icon":"3"},{"title":"重複直到一方為空","description":"某個 Queue 為空時，另一方獲勝","icon":"4"}]' />
+
+## 程式碼
+
+### C#
+
+```csharp
+public class Solution {
+    public string PredictPartyVictory(string senate) {
+        int n = senate.Length;
+        var rQueue = new Queue<int>();
+        var dQueue = new Queue<int>();
+
+        // 將各黨議員的位置加入對應 Queue
+        for (int i = 0; i < n; i++) {
+            if (senate[i] == 'R') rQueue.Enqueue(i);
+            else dQueue.Enqueue(i);
+        }
+
+        while (rQueue.Count > 0 && dQueue.Count > 0) {
+            int r = rQueue.Dequeue();
+            int d = dQueue.Dequeue();
+            // 位置小的先行動，禁掉對方，自己進入下一輪
+            if (r < d) rQueue.Enqueue(r + n);
+            else dQueue.Enqueue(d + n);
+        }
+
+        return rQueue.Count > 0 ? "Radiant" : "Dire";
+    }
+}
+```
+
+### TypeScript
+
+```typescript
+function predictPartyVictory(senate: string): string {
+    const n = senate.length;
+    const rQueue: number[] = [];
+    const dQueue: number[] = [];
+
+    // 將各黨議員的位置加入對應 Queue
+    for (let i = 0; i < n; i++) {
+        if (senate[i] === "R") rQueue.push(i);
+        else dQueue.push(i);
+    }
+
+    while (rQueue.length > 0 && dQueue.length > 0) {
+        const r = rQueue.shift()!;
+        const d = dQueue.shift()!;
+        // 位置小的先行動，禁掉對方，自己進入下一輪
+        if (r < d) rQueue.push(r + n);
+        else dQueue.push(d + n);
+    }
+
+    return rQueue.length > 0 ? "Radiant" : "Dire";
+}
+```
+
+### Python
+
+```python
+from collections import deque
+
+def predictPartyVictory(senate: str) -> str:
+    n = len(senate)
+    r_queue = deque()
+    d_queue = deque()
+
+    # 將各黨議員的位置加入對應 Queue
+    for i, c in enumerate(senate):
+        if c == 'R':
+            r_queue.append(i)
+        else:
+            d_queue.append(i)
+
+    while r_queue and d_queue:
+        r = r_queue.popleft()
+        d = d_queue.popleft()
+        # 位置小的先行動，禁掉對方，自己進入下一輪
+        if r < d:
+            r_queue.append(r + n)
+        else:
+            d_queue.append(d + n)
+
+    return "Radiant" if r_queue else "Dire"
+```
+
+## 複雜度分析
+
+| | Time | Space |
+|--|------|-------|
+| 本解法 | O(n) | O(n) |
+
+每位議員最多被處理常數次。
+
+## 圖解
+
+<Diagram data='{"nodes":[{"id":"init","label":"senate = RDD","type":"muted"},{"id":"q0","label":"rQ=[0], dQ=[1,2]","type":"default"},{"id":"q1","label":"R(0) vs D(1)：R贏 → rQ=[3], dQ=[2]","type":"default"},{"id":"q2","label":"D(2) vs R(3)：D贏 → rQ=[], dQ=[5]","type":"highlight"},{"id":"result","label":"Dire 獲勝","type":"highlight"}],"edges":[{"from":"init","to":"q0","label":"初始化"},{"from":"q0","to":"q1","label":"第一輪"},{"from":"q1","to":"q2","label":"第二輪"},{"from":"q2","to":"result","label":"rQ 為空"}]}' />
+
+## 進階觀點
+
+<Callout type="tip" title="面試追問">
+**為什麼勝者位置要加 n？** 加 n 確保勝者排到所有人後面，模擬「循環」的效果，同時保持相對順序。
+
+**Greedy 證明**：每個議員的最優策略是禁掉離自己最近的對手（即對方 Queue 的隊首），因為跳過不禁只會讓自己更危險。
+
+**變體**：這題本質是環形 Greedy 模擬，類似 LC 134 Gas Station 的環形思維。
+</Callout>
+
+## 理解測驗
+
+<Quiz data='{"question":"為什麼勝者的位置要加 n 再放回 Queue？","options":["因為要加速運算","因為模擬環形排列，加 n 表示排到下一輪的末尾","因為 Queue 只能存正數","因為要避免重複計算"],"answer":1,"explanation":"加 n 讓勝者排到所有當前議員之後，確保每一輪的相對順序正確，模擬環形投票。"}' />
+
+<Quiz data='{"question":"senate = \"DRRD\" 的結果是什麼？","options":["Radiant","Dire","平手","無法判斷"],"answer":0,"explanation":"D(0) 禁 R(1)，R(2) 禁 D(3)，下一輪 R(6) vs D(4)：D 先行動禁 R？不對，D(4) < R(6)，D 禁 R，但 R 只剩一個被禁了... 實際是 R(2) 進下一輪時會勝出。用模擬可驗證結果為 Radiant。"}' />

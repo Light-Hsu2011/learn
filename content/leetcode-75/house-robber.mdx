@@ -1,0 +1,107 @@
+---
+title: "198. House Robber"
+order: 61
+description: "不相鄰子序列最大和，經典 1D DP 取或不取的決策"
+---
+
+# House Robber
+
+<ELI5>
+你是一個小偷，沿著一條街偷東西。每棟房子裡有不同金額的財寶，但有一個限制：不能偷相鄰的兩棟房子（因為會觸發警報）。
+
+你站在每棟房子前面要做一個決定：偷還是不偷？
+- 偷的話：拿到這棟的錢，但前一棟不能偷（所以加上「前前棟為止的最大收益」）
+- 不偷的話：你的收益跟站在前一棟時一樣
+
+每棟房子都做最聰明的選擇，最後的總收益就是最大值。
+</ELI5>
+
+## 題目描述
+
+給定一個非負整數陣列 `nums`，代表每棟房子的金額。不能偷相鄰兩棟，回傳能偷到的最大金額。
+
+```
+輸入：nums = [1,2,3,1]
+輸出：4
+解釋：偷第 0 棟(1) + 第 2 棟(3) = 4
+
+輸入：nums = [2,7,9,3,1]
+輸出：12
+解釋：偷第 0 棟(2) + 第 2 棟(9) + 第 4 棟(1) = 12
+```
+
+## 解題思路
+
+<StepDiagram data='[{"title":"定義狀態","description":"dp[i] = 考慮前 i 棟房子能偷到的最大金額","icon":"1"},{"title":"轉移方程","description":"dp[i] = max(dp[i-1], dp[i-2] + nums[i])","icon":"2"},{"title":"偷 or 不偷","description":"不偷第 i 棟 → dp[i-1]；偷第 i 棟 → dp[i-2] + nums[i]","icon":"3"},{"title":"空間優化","description":"只需前兩個值，用兩個變數滾動","icon":"4"}]' />
+
+## 程式碼
+
+### C#
+```csharp
+public class Solution {
+    public int Rob(int[] nums) {
+        if (nums.Length == 1) return nums[0];
+        
+        int prev2 = 0; // dp[i-2]
+        int prev1 = 0; // dp[i-1]
+        
+        foreach (int num in nums) {
+            int curr = Math.Max(prev1, prev2 + num);
+            prev2 = prev1;
+            prev1 = curr;
+        }
+        return prev1;
+    }
+}
+```
+
+### TypeScript
+```typescript
+function rob(nums: number[]): number {
+    let prev2 = 0; // 前前棟的最大收益
+    let prev1 = 0; // 前一棟的最大收益
+    
+    for (const num of nums) {
+        const curr = Math.max(prev1, prev2 + num);
+        prev2 = prev1;
+        prev1 = curr;
+    }
+    return prev1;
+}
+```
+
+### Python
+```python
+def rob(nums: list[int]) -> int:
+    prev2, prev1 = 0, 0  # dp[i-2], dp[i-1]
+    
+    for num in nums:
+        curr = max(prev1, prev2 + num)
+        prev2, prev1 = prev1, curr
+    
+    return prev1
+```
+
+## 複雜度分析
+
+| | Time | Space |
+|--|------|-------|
+| 本解法 | O(n) | O(1) |
+
+## 圖解
+
+<Diagram data='{"nodes":[{"id":"h0","label":"房子0: $2","type":"highlight"},{"id":"h1","label":"房子1: $7","type":"default"},{"id":"h2","label":"房子2: $9","type":"highlight"},{"id":"h3","label":"房子3: $3","type":"default"},{"id":"h4","label":"房子4: $1","type":"highlight"},{"id":"total","label":"最大: 2+9+1=12","type":"highlight"}],"edges":[{"from":"h0","to":"h2","label":"跳過 h1"},{"from":"h2","to":"h4","label":"跳過 h3"},{"from":"h4","to":"total","label":"加總"}]}' />
+
+## 進階觀點
+
+<Callout type="tip" title="面試追問">
+- **213. House Robber II**：房子排成環形，第一棟和最後一棟也相鄰。解法：跑兩次，分別排除第一棟和最後一棟，取較大值。
+- **337. House Robber III**：房子排成樹形結構，需要樹形 DP。
+- 本題的轉移方程 `dp[i] = max(dp[i-1], dp[i-2] + nums[i])` 是「取或不取」決策的經典範本，適用於所有「不相鄰選擇」的問題。
+</Callout>
+
+## 理解測驗
+
+<Quiz data='{"question":"dp[i] = max(dp[i-1], dp[i-2] + nums[i]) 中，dp[i-1] 代表什麼？","options":["偷第 i-1 棟的收益","不偷第 i 棟時的最大收益（等於前 i-1 棟的最佳結果）","偷第 i 棟的收益","所有房子的總和"],"answer":1,"explanation":"dp[i-1] 是考慮前 i-1 棟的最大收益，如果我們選擇不偷第 i 棟，那麼最大收益就是 dp[i-1]。"}' />
+
+<Quiz data='{"question":"為什麼偷第 i 棟時要加 dp[i-2] 而不是 dp[i-1]？","options":["因為 dp[i-2] 一定比 dp[i-1] 大","因為偷了第 i 棟就不能偷第 i-1 棟，所以從 i-2 的最佳結果接續","因為 i-1 還沒有被計算","這是隨機選的"],"answer":1,"explanation":"不能偷相鄰房子，偷了第 i 棟就不能偷第 i-1 棟。所以偷第 i 棟的最大收益是 dp[i-2]（跳過第 i-1 棟）加上 nums[i]。"}' />

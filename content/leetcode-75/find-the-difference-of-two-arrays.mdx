@@ -1,0 +1,95 @@
+---
+title: "2215. Find the Difference of Two Arrays"
+order: 20
+description: "用 Set 差集找出兩個陣列各自獨有的元素"
+---
+
+# Find the Difference of Two Arrays
+
+<ELI5>
+想像兩個班級各有一份學生名單。你要找出：哪些學生只在 A 班（不在 B 班），以及哪些學生只在 B 班（不在 A 班）。
+
+最快的方法：把兩份名單各做成一個「花名冊」（Set），然後看 A 花名冊中有哪些名字不在 B 花名冊裡，反過來也一樣。
+</ELI5>
+
+## 題目描述
+
+給定兩個整數陣列 `nums1` 和 `nums2`，回傳一個長度 2 的列表：
+- `answer[0]` 是 `nums1` 中不在 `nums2` 的不重複元素
+- `answer[1]` 是 `nums2` 中不在 `nums1` 的不重複元素
+
+```
+輸入：nums1 = [1,2,3], nums2 = [2,4,6]
+輸出：[[1,3],[4,6]]
+
+輸入：nums1 = [1,2,3,3], nums2 = [1,1,2,2]
+輸出：[[3],[]]
+```
+
+## 解題思路
+
+<StepDiagram data='[{"title":"建 Set","description":"set1 = Set(nums1), set2 = Set(nums2)","icon":"1"},{"title":"差集 1","description":"找 set1 中不在 set2 的元素","icon":"2"},{"title":"差集 2","description":"找 set2 中不在 set1 的元素","icon":"3"},{"title":"回傳","description":"組成答案列表","icon":"4"}]' />
+
+## 程式碼
+
+### C#
+
+```csharp
+public class Solution {
+    public IList<IList<int>> FindDifference(int[] nums1, int[] nums2) {
+        var set1 = new HashSet<int>(nums1);
+        var set2 = new HashSet<int>(nums2);
+        return new List<IList<int>> {
+            set1.Where(x => !set2.Contains(x)).ToList(),
+            set2.Where(x => !set1.Contains(x)).ToList()
+        };
+    }
+}
+```
+
+### TypeScript
+
+```typescript
+function findDifference(nums1: number[], nums2: number[]): number[][] {
+    const set1 = new Set(nums1);
+    const set2 = new Set(nums2);
+    return [
+        [...set1].filter(x => !set2.has(x)),
+        [...set2].filter(x => !set1.has(x))
+    ];
+}
+```
+
+### Python
+
+```python
+def findDifference(nums1: list[int], nums2: list[int]) -> list[list[int]]:
+    set1, set2 = set(nums1), set(nums2)
+    return [list(set1 - set2), list(set2 - set1)]
+```
+
+## 複雜度分析
+
+| | Time | Space |
+|--|------|-------|
+| 本解法 | O(n + m) | O(n + m) |
+
+建 Set 和遍歷各 O(n) 和 O(m)。
+
+## 圖解
+
+<Diagram data='{"nodes":[{"id":"n1","label":"nums1: {1,2,3}","type":"default"},{"id":"n2","label":"nums2: {2,4,6}","type":"default"},{"id":"diff1","label":"set1 - set2 = {1,3}","type":"highlight"},{"id":"diff2","label":"set2 - set1 = {4,6}","type":"highlight"},{"id":"result","label":"[[1,3],[4,6]]","type":"muted"}],"edges":[{"from":"n1","to":"diff1","label":"不在 set2 的"},{"from":"n2","to":"diff2","label":"不在 set1 的"},{"from":"diff1","to":"result","label":""},{"from":"diff2","to":"result","label":""}]}' />
+
+## 進階觀點
+
+<Callout type="tip" title="面試追問">
+- **為什麼用 Set 而不是排序？** Set 查找 O(1)，總時間 O(n+m)。排序需要 O(n log n + m log m)。
+- **Python 的 set 差集運算子 `-` 做了什麼？** 等同於 `set1.difference(set2)`，回傳在 set1 但不在 set2 的元素。
+- **如果要保留重複元素（不去重）？** 那就不能用 Set 做差集，要用 Counter 或逐一檢查。
+</Callout>
+
+## 理解測驗
+
+<Quiz data='{"question":"為什麼要先轉 Set 再做差集？","options":["為了排序","為了去重並讓查找從 O(n) 降為 O(1)","為了節省記憶體","因為題目要求"],"answer":1,"explanation":"Set 自動去重，且 contains/has 操作為 O(1)，使整體效率從 O(nm) 降為 O(n+m)。"}' />
+
+<Quiz data='{"question":"nums1 = [1,1,1], nums2 = [1,1,1] 的結果是什麼？","options":["[[1],[1]]","[[],[]]","[[1,1,1],[1,1,1]]","error"],"answer":1,"explanation":"兩個 Set 都是 {1}，差集都是空集。"}' />

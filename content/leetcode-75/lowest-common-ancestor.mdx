@@ -1,0 +1,111 @@
+---
+title: "236. Lowest Common Ancestor of a Binary Tree"
+order: 38
+description: "用後序遍歷從底部向上尋找兩個節點的最低公共祖先"
+---
+
+# Lowest Common Ancestor of a Binary Tree
+
+<ELI5>
+想像一個家族聚會，你要找兩個親戚（p 和 q）的「最近共同祖先」— 就是在家族樹上，第一個同時是 p 和 q 祖先的人。
+
+你派兩支搜索隊從樹葉往上找。如果某個人的左邊後代找到了 p、右邊後代找到了 q，那這個人就是 LCA。如果只有一邊找到，就把結果往上傳。
+
+後序遍歷（先處理子樹再處理自己）天然適合這個「從下往上匯報」的模式。
+</ELI5>
+
+## 題目描述
+
+給定一棵二元樹的根節點 root 和兩個節點 p、q，回傳 p 和 q 的最低公共祖先（LCA）。LCA 定義為：在樹中同時是 p 和 q 祖先的最深節點。
+
+```
+輸入: root = [3,5,1,6,2,0,8,null,null,7,4], p = 5, q = 1
+輸出: 3
+
+輸入: root = [3,5,1,6,2,0,8,null,null,7,4], p = 5, q = 4
+輸出: 5
+解釋: 5 是 4 的祖先，且 5 也是自己的祖先
+```
+
+## 解題思路
+
+<StepDiagram data='[{"title":"Base Case","description":"null 回傳 null；遇到 p 或 q 就回傳自己","icon":"1"},{"title":"遞迴左子樹","description":"在左子樹找 p 或 q","icon":"2"},{"title":"遞迴右子樹","description":"在右子樹找 p 或 q","icon":"3"},{"title":"判斷結果","description":"左右都找到 → 自己就是 LCA；只有一邊 → 往上傳遞該邊的結果","icon":"4"}]' />
+
+## 程式碼
+
+### C#
+
+```csharp
+public class Solution {
+    public TreeNode LowestCommonAncestor(TreeNode root, TreeNode p, TreeNode q) {
+        // Base case: null 或找到 p/q
+        if (root == null || root == p || root == q) return root;
+
+        var left = LowestCommonAncestor(root.left, p, q);
+        var right = LowestCommonAncestor(root.right, p, q);
+
+        // 左右都找到 → 當前節點就是 LCA
+        if (left != null && right != null) return root;
+
+        // 只有一邊找到 → 往上傳
+        return left ?? right;
+    }
+}
+```
+
+### TypeScript
+
+```typescript
+function lowestCommonAncestor(
+    root: TreeNode | null, p: TreeNode, q: TreeNode
+): TreeNode | null {
+    if (!root || root === p || root === q) return root;
+
+    const left = lowestCommonAncestor(root.left, p, q);
+    const right = lowestCommonAncestor(root.right, p, q);
+
+    if (left && right) return root;  // 左右都找到
+    return left ?? right;            // 只有一邊
+}
+```
+
+### Python
+
+```python
+def lowestCommonAncestor(root: TreeNode, p: TreeNode, q: TreeNode) -> TreeNode:
+    if not root or root == p or root == q:
+        return root
+
+    left = lowestCommonAncestor(root.left, p, q)
+    right = lowestCommonAncestor(root.right, p, q)
+
+    if left and right:  # 左右都找到
+        return root
+    return left or right  # 只有一邊
+```
+
+## 複雜度分析
+
+| | Time | Space |
+|--|------|-------|
+| 本解法 | O(n) | O(h) |
+
+## 圖解
+
+<Diagram data='{"nodes":[{"id":"n3","label":"3 ← LCA","type":"highlight"},{"id":"n5","label":"5 (找到 p)","type":"highlight"},{"id":"n1","label":"1 (找到 q)","type":"highlight"},{"id":"n6","label":"6","type":"muted"},{"id":"n2","label":"2","type":"muted"},{"id":"n0","label":"0","type":"muted"},{"id":"n8","label":"8","type":"muted"}],"edges":[{"from":"n3","to":"n5","label":"左: 找到 p"},{"from":"n3","to":"n1","label":"右: 找到 q"},{"from":"n5","to":"n6","label":""},{"from":"n5","to":"n2","label":""},{"from":"n1","to":"n0","label":""},{"from":"n1","to":"n8","label":""}]}' />
+
+## 進階觀點
+
+<Callout type="tip" title="面試追問">
+**如果 p 或 q 不在樹中怎麼辦？** 這個解法假設 p 和 q 都存在。如果不確定，需要額外用 boolean flag 確認兩個都找到了。
+
+**BST 版本（LC 235）**：如果是 BST，可以利用 BST 性質 — 若 p.val 和 q.val 都小於 root，往左走；都大於 root，往右走；分岔時 root 就是 LCA。O(h) 時間。
+
+**變體題**：LC 1644 LCA II（節點可能不存在）、LC 1676 LCA IV（多個節點的 LCA）。
+</Callout>
+
+## 理解測驗
+
+<Quiz data='{"question":"為什麼遇到 p 或 q 就直接回傳，不繼續往下找？","options":["因為 p 和 q 一定是葉節點","因為如果 p 是 q 的祖先，p 本身就是 LCA，不需要再往下","因為遞迴不能太深","因為要節省時間"],"answer":1,"explanation":"如果 p 是 q 的祖先，LCA 就是 p 本身。找到 p 後直接回傳，另一邊找到 q 後也會回傳，上層會正確處理。"}' />
+
+<Quiz data='{"question":"左子樹回傳 null、右子樹回傳非 null，這代表什麼？","options":["p 和 q 都在右子樹","p 和 q 都不在樹中","只有 p 在右子樹","左子樹是空的"],"answer":0,"explanation":"左邊沒找到任何目標節點（回傳 null），右邊找到了（回傳非 null），代表 p 和 q 都在右子樹中，LCA 在右邊。"}' />

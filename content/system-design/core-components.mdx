@@ -1,0 +1,179 @@
+---
+title: "核心元件"
+order: 2
+description: "Load Balancer、Cache、Message Queue、CDN 的角色與選擇"
+---
+
+# 核心元件（Core Components）
+
+<ELI5>
+想像你經營一家超大型遊樂園：
+
+- **Load Balancer（負載均衡器）**：門口的引導員，把遊客分散到不同入口，不讓某個入口排到天荒地老
+- **Cache（快取）**：遊樂園地圖小冊子，遊客不用每次都跑到服務台問路，手上就有答案
+- **Message Queue（訊息佇列）**：遊樂設施前的排隊系統，你拿號碼牌去玩別的，輪到你再通知你
+- **CDN（內容分發網路）**：在每個城市都設遊樂園紀念品分店，遊客不用千里迢迢跑回總店買
+
+每個元件解決一個特定的瓶頸，組合起來就是一個能撐住百萬用戶的系統。
+</ELI5>
+
+## 是什麼？
+
+分散式系統的四大核心元件，各自解決不同的效能和可靠性問題。理解它們的職責和適用場景，是 System Design 的基本功。
+
+<Callout type="info" title="記住這個口訣">
+**LCMQ**：**L**oad Balancer 分流量、**C**ache 省查詢、**M**essage Queue 解耦合、CD**N** 近用戶。每個元件對應一種瓶頸。
+</Callout>
+
+## 核心觀念
+
+### Load Balancer
+
+- **解決問題**：單一伺服器無法處理所有請求，需要把流量分散到多台伺服器
+- **常見演算法**：Round Robin、Weighted Round Robin、Least Connections、IP Hash
+- **L4 vs L7**：L4 在 TCP 層分流（快但粗糙），L7 在 HTTP 層分流（慢但可以根據 URL/Header 路由）
+- **常見選型**：Nginx、HAProxy、AWS ALB/NLB、Envoy
+
+### Cache
+
+- **解決問題**：資料庫查詢太慢或太頻繁，用記憶體快取熱點資料
+- **策略**：Cache Aside（最常見）、Write Through、Write Behind、Read Through
+- **淘汰策略**：LRU（最近最少使用）、LFU（最少頻率使用）、TTL（存活時間）
+- **常見選型**：Redis、Memcached；Redis 功能更豐富，Memcached 更輕量
+
+### Message Queue
+
+- **解決問題**：服務之間直接呼叫會造成耦合，且無法應對流量尖峰
+- **核心價值**：解耦、削峰填谷、非同步處理
+- **模式**：Point-to-Point（一對一）、Pub/Sub（一對多）
+- **常見選型**：RabbitMQ（輕量靈活）、Kafka（高吞吐量、日誌型）、AWS SQS（託管服務）
+
+### CDN
+
+- **解決問題**：用戶離伺服器太遠，靜態資源載入慢
+- **運作方式**：把靜態檔案快取到全球邊緣節點，用戶從最近的節點取資料
+- **Pull vs Push**：Pull CDN 第一次請求時從 Origin 拉取；Push CDN 主動推送到邊緣節點
+- **常見選型**：CloudFront、Cloudflare、Akamai、Fastly
+
+## 常見誤區
+
+<Callout type="warning" title="Cache 不是銀彈">
+Cache Invalidation 是電腦科學最難的問題之一。快取資料和資料庫不一致會造成嚴重 bug。永遠設定 TTL，並在資料更新時主動清除快取。別把所有東西都快取 — 只快取「讀多寫少」的熱點資料。
+</Callout>
+
+## 設計流程
+
+<StepDiagram data='[{"title":"分析流量模式","description":"讀多寫少？需要即時？有流量尖峰？","icon":"1"},{"title":"加入 Load Balancer","description":"多台伺服器前面放 LB，選擇 L4 或 L7","icon":"2"},{"title":"加入 Cache 層","description":"熱點資料放 Redis，減少資料庫壓力","icon":"3"},{"title":"加入 Message Queue","description":"非同步任務放入 Queue，削峰填谷","icon":"4"},{"title":"加入 CDN","description":"靜態資源上 CDN，減少 Origin 負載和延遲","icon":"5"}]' />
+
+## 程式碼範例
+
+### Cache Aside Pattern（C#）
+
+```csharp
+public class ProductService
+{
+    private readonly IDistributedCache _cache;
+    private readonly ProductRepository _repo;
+
+    public async Task<Product?> GetProduct(int id)
+    {
+        // 1. 先查快取
+        var cached = await _cache.GetAsync<Product>($"product:{id}");
+        if (cached != null) return cached;
+
+        // 2. 快取沒有，查資料庫
+        var product = await _repo.FindByIdAsync(id);
+        if (product == null) return null;
+
+        // 3. 寫入快取，設定 TTL
+        await _cache.SetAsync($"product:{id}", product, TimeSpan.FromMinutes(10));
+        return product;
+    }
+
+    public async Task UpdateProduct(Product product)
+    {
+        await _repo.UpdateAsync(product);
+        // 4. 更新時清除快取，下次讀取會重新載入
+        await _cache.RemoveAsync($"product:{product.Id}");
+    }
+}
+```
+
+### Message Queue 消費者（TypeScript）
+
+```typescript
+import amqplib from "amqplib";
+
+// Producer：發送訂單事件
+async function publishOrder(order: Order) {
+  const conn = await amqplib.connect("amqp://localhost");
+  const channel = await conn.createChannel();
+  await channel.assertQueue("orders");
+  channel.sendToQueue("orders", Buffer.from(JSON.stringify(order)));
+}
+
+// Consumer：非同步處理訂單
+async function consumeOrders() {
+  const conn = await amqplib.connect("amqp://localhost");
+  const channel = await conn.createChannel();
+  await channel.assertQueue("orders");
+  channel.consume("orders", async (msg) => {
+    if (!msg) return;
+    const order: Order = JSON.parse(msg.content.toString());
+    await processOrder(order); // 寄信、扣庫存、記帳...
+    channel.ack(msg);
+  });
+}
+```
+
+### Load Balancer 設定（Nginx）
+
+```nginx
+upstream backend {
+    least_conn;  # 最少連線數演算法
+    server 10.0.0.1:8080 weight=3;
+    server 10.0.0.2:8080 weight=1;
+    server 10.0.0.3:8080 backup;  # 備援伺服器
+}
+
+server {
+    listen 80;
+    location / {
+        proxy_pass http://backend;
+    }
+}
+```
+
+## 架構圖
+
+<Diagram data='{"nodes":[{"id":"user","label":"Users","type":"muted"},{"id":"cdn","label":"CDN (CloudFront)","type":"default"},{"id":"lb","label":"Load Balancer (Nginx)","type":"highlight"},{"id":"app1","label":"App Server 1","type":"default"},{"id":"app2","label":"App Server 2","type":"default"},{"id":"cache","label":"Cache (Redis)","type":"highlight"},{"id":"mq","label":"Message Queue (RabbitMQ)","type":"highlight"},{"id":"db","label":"Database","type":"default"},{"id":"worker","label":"Worker Service","type":"default"}],"edges":[{"from":"user","to":"cdn","label":"static assets"},{"from":"user","to":"lb","label":"API requests"},{"from":"lb","to":"app1","label":"distribute"},{"from":"lb","to":"app2","label":"distribute"},{"from":"app1","to":"cache","label":"read/write"},{"from":"app2","to":"cache","label":"read/write"},{"from":"app1","to":"db","label":"query"},{"from":"app2","to":"db","label":"query"},{"from":"app1","to":"mq","label":"publish"},{"from":"mq","to":"worker","label":"consume"}]}' />
+
+## 實戰補充
+
+<Callout type="tip" title="選型決策樹">
+- **Cache**：需要 Pub/Sub 或複雜資料結構 → Redis；純 key-value 高速快取 → Memcached
+- **Message Queue**：需要高吞吐量日誌流 → Kafka；需要靈活路由 → RabbitMQ；想省事 → AWS SQS
+- **CDN**：已在 AWS 生態 → CloudFront；需要 WAF + CDN 一體化 → Cloudflare
+- **Load Balancer**：需要高度自定義 → Nginx/HAProxy；雲端環境 → AWS ALB/NLB
+</Callout>
+
+## 理解測驗
+
+<Quiz data='{"question":"一個電商網站的商品頁面每秒被瀏覽 10,000 次，但商品資料每小時才更新一次。最適合加入哪個元件來優化？","options":["Message Queue","Load Balancer","Cache（如 Redis）","CDN"],"answer":2,"explanation":"讀多寫少（每秒萬次讀、每小時一次寫）是 Cache 的經典場景。把商品資料快取在 Redis，設定 TTL 為 1 小時，可以大幅減少資料庫查詢壓力。"}' />
+
+<Quiz data='{"question":"用戶註冊後需要：寄歡迎信、建立預設設定、通知推薦系統。這些步驟不需要在註冊 API 回應前完成。最適合用哪個元件？","options":["CDN","Cache","Load Balancer","Message Queue"],"answer":3,"explanation":"這些後續步驟是非同步任務，不需要阻塞用戶的註冊回應。把事件放入 Message Queue，由 Worker 非同步處理，可以讓註冊 API 快速回應，同時確保後續任務不會遺失。"}' />
+
+<Quiz data='{"question":"L4 和 L7 Load Balancer 的主要差異是什麼？","options":["L4 比 L7 貴","L4 在傳輸層（TCP）分流，L7 在應用層（HTTP）分流","L4 只能用於 HTTP，L7 可以用於任何協定","L4 比 L7 功能更多"],"answer":1,"explanation":"L4 LB 在 TCP 層工作，只看 IP 和 Port 來分流，速度快但無法根據 URL 或 Header 路由。L7 LB 在 HTTP 層工作，可以根據路徑、Header、Cookie 做智慧路由，但開銷較大。"}' />
+
+## 重點整理
+
+<Callout type="tip" title="一句話記住">
+**LB 分流量、Cache 省查詢、MQ 解耦合、CDN 近用戶 — 四大元件各司其職，組合起來撐住百萬級系統。**
+</Callout>
+
+| 元件 | 解決的問題 | 常見選型 | 使用時機 |
+|------|-----------|---------|---------|
+| **Load Balancer** | 流量集中在單一伺服器 | Nginx、ALB | 多台伺服器需要分流 |
+| **Cache** | 資料庫查詢太頻繁 | Redis、Memcached | 讀多寫少的熱點資料 |
+| **Message Queue** | 服務耦合、流量尖峰 | RabbitMQ、Kafka | 非同步處理、削峰填谷 |
+| **CDN** | 用戶離伺服器太遠 | CloudFront、Cloudflare | 靜態資源全球分發 |

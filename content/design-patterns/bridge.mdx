@@ -1,0 +1,313 @@
+---
+title: "Bridge Pattern"
+order: 8
+description: "將抽象與實作分離，讓兩者可以獨立變化"
+---
+
+# Bridge Pattern（橋接模式）
+
+<ELI5>
+想像你有一個**遙控器**和一台**電視機**。遙控器有「開關」、「音量」、「選台」按鈕，電視機有螢幕和喇叭。
+
+現在重點來了：你換了一台新電視（從 Sony 換成 Samsung），遙控器的按鈕邏輯**完全不用改**，只要能連上新電視就好。反過來，你想升級成進階遙控器（多了錄影功能），電視也**完全不用改**。
+
+Bridge Pattern 就是在遙控器和電視之間建一座「橋」，讓兩邊可以**各自升級、各自擴充**，互不干擾。
+</ELI5>
+
+## 是什麼？
+
+Bridge Pattern 將**抽象部分**與它的**實作部分**分離，使它們都可以獨立地變化。它用組合取代繼承，避免類別數量因為多維度變化而爆炸性增長。
+
+<Callout type="info" title="GoF 分類">
+Bridge 屬於**結構型模式（Structural Pattern）**，重點在於如何組合類別和物件以形成更大的結構。
+</Callout>
+
+## 什麼時候用？
+
+- 你的類別同時有**兩個以上的變化維度**（例如形狀 x 顏色、平台 x 功能）
+- 你想避免繼承層次爆炸（例如 RedCircle、BlueCircle、RedSquare、BlueSquare...）
+- 你想在執行時切換實作（例如從 MySQL 切到 PostgreSQL）
+
+## 什麼時候不該用？
+
+<Callout type="warning" title="過度設計警告">
+如果你的類別只有單一維度的變化（例如只有不同的資料庫），用 Strategy Pattern 或簡單的介面抽換就夠了。Bridge 是為了解決**多維度同時變化**的問題，只有一個維度時不需要這麼複雜的結構。
+</Callout>
+
+## 執行流程
+
+<StepDiagram data='[{"title":"辨識多維度變化","description":"發現類別有兩個以上獨立變化的維度","icon":"1"},{"title":"分離抽象與實作","description":"將一個維度定義為抽象層，另一個定義為實作層","icon":"2"},{"title":"定義實作介面","description":"宣告實作層的方法簽名（Implementor）","icon":"3"},{"title":"建立橋接","description":"抽象層持有實作層的參考，透過組合連接","icon":"4"},{"title":"獨立擴充","description":"兩邊各自新增子類別，互不影響","icon":"5"}]' />
+
+## 程式碼範例
+
+### C# 版本
+
+```csharp
+// 實作層介面（Implementor）
+public interface IRenderer
+{
+    string RenderShape(string shapeName, double area);
+}
+
+// 具體實作
+public class HtmlRenderer : IRenderer
+{
+    public string RenderShape(string shapeName, double area)
+        => $"<div class='{shapeName}'>Area: {area:F1}</div>";
+}
+
+public class SvgRenderer : IRenderer
+{
+    public string RenderShape(string shapeName, double area)
+        => $"<svg><text>{shapeName} - Area: {area:F1}</text></svg>";
+}
+
+// 抽象層
+public abstract class Shape
+{
+    protected IRenderer Renderer;
+
+    protected Shape(IRenderer renderer) { Renderer = renderer; }
+
+    public abstract string Draw();
+}
+
+// 擴充抽象
+public class Circle : Shape
+{
+    private readonly double _radius;
+
+    public Circle(double radius, IRenderer renderer) : base(renderer)
+    {
+        _radius = radius;
+    }
+
+    public override string Draw()
+        => Renderer.RenderShape("circle", Math.PI * _radius * _radius);
+}
+
+public class Square : Shape
+{
+    private readonly double _side;
+
+    public Square(double side, IRenderer renderer) : base(renderer)
+    {
+        _side = side;
+    }
+
+    public override string Draw()
+        => Renderer.RenderShape("square", _side * _side);
+}
+
+// 使用：形狀和渲染方式可以自由組合
+var htmlCircle = new Circle(5, new HtmlRenderer());
+var svgSquare = new Square(4, new SvgRenderer());
+Console.WriteLine(htmlCircle.Draw());  // <div class='circle'>Area: 78.5</div>
+Console.WriteLine(svgSquare.Draw());   // <svg><text>square - Area: 16.0</text></svg>
+```
+
+### TypeScript 版本
+
+```typescript
+// 實作層介面
+interface Renderer {
+  renderShape(shapeName: string, area: number): string;
+}
+
+// 具體實作
+class HtmlRenderer implements Renderer {
+  renderShape(shapeName: string, area: number): string {
+    return `<div class='${shapeName}'>Area: ${area.toFixed(1)}</div>`;
+  }
+}
+
+class SvgRenderer implements Renderer {
+  renderShape(shapeName: string, area: number): string {
+    return `<svg><text>${shapeName} - Area: ${area.toFixed(1)}</text></svg>`;
+  }
+}
+
+// 抽象層
+abstract class Shape {
+  constructor(protected renderer: Renderer) {}
+  abstract draw(): string;
+}
+
+// 擴充抽象
+class Circle extends Shape {
+  constructor(private radius: number, renderer: Renderer) {
+    super(renderer);
+  }
+
+  draw(): string {
+    return this.renderer.renderShape("circle", Math.PI * this.radius ** 2);
+  }
+}
+
+class Square extends Shape {
+  constructor(private side: number, renderer: Renderer) {
+    super(renderer);
+  }
+
+  draw(): string {
+    return this.renderer.renderShape("square", this.side ** 2);
+  }
+}
+
+// 使用
+const htmlCircle = new Circle(5, new HtmlRenderer());
+const svgSquare = new Square(4, new SvgRenderer());
+console.log(htmlCircle.draw());
+console.log(svgSquare.draw());
+```
+
+### Python 版本
+
+```python
+from abc import ABC, abstractmethod
+import math
+
+# 實作層介面
+class Renderer(ABC):
+    @abstractmethod
+    def render_shape(self, shape_name: str, area: float) -> str:
+        pass
+
+# 具體實作
+class HtmlRenderer(Renderer):
+    def render_shape(self, shape_name: str, area: float) -> str:
+        return f"<div class='{shape_name}'>Area: {area:.1f}</div>"
+
+class SvgRenderer(Renderer):
+    def render_shape(self, shape_name: str, area: float) -> str:
+        return f"<svg><text>{shape_name} - Area: {area:.1f}</text></svg>"
+
+# 抽象層
+class Shape(ABC):
+    def __init__(self, renderer: Renderer):
+        self._renderer = renderer
+
+    @abstractmethod
+    def draw(self) -> str:
+        pass
+
+# 擴充抽象
+class Circle(Shape):
+    def __init__(self, radius: float, renderer: Renderer):
+        super().__init__(renderer)
+        self._radius = radius
+
+    def draw(self) -> str:
+        return self._renderer.render_shape("circle", math.pi * self._radius ** 2)
+
+class Square(Shape):
+    def __init__(self, side: float, renderer: Renderer):
+        super().__init__(renderer)
+        self._side = side
+
+    def draw(self) -> str:
+        return self._renderer.render_shape("square", self._side ** 2)
+
+# 使用
+html_circle = Circle(5, HtmlRenderer())
+svg_square = Square(4, SvgRenderer())
+print(html_circle.draw())
+print(svg_square.draw())
+```
+
+### Java 版本
+
+```java
+// 實作層介面
+public interface Renderer {
+    String renderShape(String shapeName, double area);
+}
+
+// 具體實作
+public class HtmlRenderer implements Renderer {
+    public String renderShape(String shapeName, double area) {
+        return String.format("<div class='%s'>Area: %.1f</div>", shapeName, area);
+    }
+}
+
+public class SvgRenderer implements Renderer {
+    public String renderShape(String shapeName, double area) {
+        return String.format("<svg><text>%s - Area: %.1f</text></svg>", shapeName, area);
+    }
+}
+
+// 抽象層
+public abstract class Shape {
+    protected Renderer renderer;
+
+    public Shape(Renderer renderer) { this.renderer = renderer; }
+
+    public abstract String draw();
+}
+
+// 擴充抽象
+public class Circle extends Shape {
+    private double radius;
+
+    public Circle(double radius, Renderer renderer) {
+        super(renderer);
+        this.radius = radius;
+    }
+
+    public String draw() {
+        return renderer.renderShape("circle", Math.PI * radius * radius);
+    }
+}
+
+public class Square extends Shape {
+    private double side;
+
+    public Square(double side, Renderer renderer) {
+        super(renderer);
+        this.side = side;
+    }
+
+    public String draw() {
+        return renderer.renderShape("square", side * side);
+    }
+}
+
+// 使用
+Shape htmlCircle = new Circle(5, new HtmlRenderer());
+Shape svgSquare = new Square(4, new SvgRenderer());
+System.out.println(htmlCircle.draw());
+System.out.println(svgSquare.draw());
+```
+
+## 結構圖
+
+<Diagram data='{"nodes":[{"id":"client","label":"Client","type":"muted"},{"id":"abstraction","label":"Abstraction (Shape)","type":"highlight"},{"id":"refined","label":"RefinedAbstraction (Circle/Square)","type":"default"},{"id":"implementor","label":"Implementor (Renderer)","type":"highlight"},{"id":"concrete","label":"ConcreteImplementor (Html/Svg)","type":"default"}],"edges":[{"from":"client","to":"abstraction","label":"uses"},{"from":"refined","to":"abstraction","label":"extends"},{"from":"abstraction","to":"implementor","label":"delegates to (bridge)"},{"from":"concrete","to":"implementor","label":"implements"}]}' />
+
+## 實戰補充
+
+<Callout type="tip" title="資深開發者經驗">
+Bridge 最常見的實戰場景是**跨平台渲染**。例如一個繪圖框架需要支援 DirectX、OpenGL、Vulkan 三種渲染引擎，同時有 2D 和 3D 兩種繪圖模式。如果用繼承會產生 6 個子類別，每加一個維度就倍增。用 Bridge 把「繪圖模式（抽象）」和「渲染引擎（實作）」分開，各自擴充互不影響。在企業應用中，「資料存取層 x 資料庫類型」也是經典的 Bridge 場景。
+</Callout>
+
+## 理解測驗
+
+<Quiz data='{"question":"Bridge Pattern 主要解決什麼問題？","options":["讓程式跑得更快","避免因為多維度變化而導致類別數量爆炸","減少程式碼行數","讓物件可以動態添加功能"],"answer":1,"explanation":"Bridge 透過組合取代繼承，將多個獨立變化的維度分開，避免類別數量隨維度乘積式增長。"}' />
+
+<Quiz data='{"question":"Bridge Pattern 中的「橋」指的是什麼？","options":["抽象類別和具體類別之間的繼承關係","抽象層和實作層之間的組合關係","兩個具體類別之間的依賴","Client 和 Server 之間的網路連線"],"answer":1,"explanation":"「橋」是指抽象層持有實作層的參考（組合關係），透過這座橋將呼叫委派給實作層。"}' />
+
+<Quiz data='{"question":"如果有 3 種形狀和 4 種渲染方式，用繼承需要幾個類別？用 Bridge 呢？","options":["繼承：7 個，Bridge：7 個","繼承：12 個，Bridge：7 個","繼承：12 個，Bridge：12 個","繼承：7 個，Bridge：12 個"],"answer":1,"explanation":"用繼承需要 3×4=12 個子類別。用 Bridge 只需要 3 + 4 = 7 個類別（3 個形狀 + 4 個渲染器），大幅減少類別數量。"}' />
+
+## 重點整理
+
+<Callout type="tip" title="一句話記住">
+**Bridge Pattern = 把「做什麼」和「怎麼做」分成兩個獨立的層次，用組合而非繼承連接。**
+</Callout>
+
+| 概念 | 說明 |
+|------|------|
+| **Abstraction（抽象層）** | 定義高層操作，持有 Implementor 的參考 |
+| **RefinedAbstraction** | 擴充抽象層的具體子類別 |
+| **Implementor（實作層）** | 定義實作層的介面 |
+| **ConcreteImplementor** | 實作層的具體實作 |
+| **核心好處** | 兩個維度獨立變化，類別數量從乘法變加法 |
+| **代價** | 增加了系統的抽象層次，簡單場景可能過度設計 |

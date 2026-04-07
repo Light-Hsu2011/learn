@@ -1,0 +1,334 @@
+---
+title: "Builder Pattern"
+order: 5
+description: "將複雜物件的建構過程分離，讓相同的建構過程可以建立不同的表示"
+---
+
+# Builder Pattern（建造者模式）
+
+<ELI5>
+想像你在速食店點餐。你不是直接說「給我第 7 號餐」就結束，而是**一步步選**：先選漢堡（大麥克還是雞腿堡）、再選飲料（可樂還是紅茶）、再選配菜（薯條還是沙拉）、最後選大小（小、中、大）。
+
+每一步都是獨立的選擇，最後才組合成你的完整餐點。不同的人走同樣的點餐流程，但最後拿到的餐點完全不同。
+
+Builder 就是這個概念：**把複雜物件的建構拆成一步一步，每步可以自由配置，最後才組裝出完成品。**
+</ELI5>
+
+## 是什麼？
+
+Builder Pattern 將一個複雜物件的**建構過程**和它的**表示**分離。透過同樣的建構步驟，可以產出不同的物件表示。特別適合那種有很多可選參數或需要分步驟組裝的物件。
+
+<Callout type="info" title="GoF 分類">
+Builder 屬於**建立型模式（Creational Pattern）**，重點在於將複雜物件的建構過程標準化，並允許靈活配置。
+</Callout>
+
+## 什麼時候用？
+
+- 建構子參數超過 4-5 個，且很多是可選的
+- 物件的建立需要多個步驟，順序可能不同
+- 你想用同樣的建構流程產出不同的表示（例如 HTML 報表和 PDF 報表）
+
+## 什麼時候不該用？
+
+<Callout type="warning" title="過度設計警告">
+如果物件很簡單（只有 2-3 個必要參數），直接用建構子或工廠方法就好。Builder 會多出 Builder 類別，只有在物件**真的很複雜**或參數**很多且大部分可選**時才值得用。
+</Callout>
+
+## 執行流程
+
+<StepDiagram data='[{"title":"定義產品","description":"決定最終要建立的複雜物件結構","icon":"1"},{"title":"定義 Builder 介面","description":"宣告每個建構步驟的方法","icon":"2"},{"title":"實作具體 Builder","description":"實作每個步驟，內部累積狀態","icon":"3"},{"title":"鏈式呼叫","description":"依需求呼叫各步驟方法（Fluent API）","icon":"4"},{"title":"Build","description":"呼叫 Build() 取得最終產品","icon":"5"}]' />
+
+## 程式碼範例
+
+### C# 版本
+
+```csharp
+// 1. 產品
+public class HttpRequest
+{
+    public string Url { get; set; } = "";
+    public string Method { get; set; } = "GET";
+    public Dictionary<string, string> Headers { get; set; } = new();
+    public string? Body { get; set; }
+    public int TimeoutMs { get; set; } = 30000;
+
+    public override string ToString() =>
+        $"{Method} {Url} | Headers: {Headers.Count} | Timeout: {TimeoutMs}ms";
+}
+
+// 2. Builder（Fluent API）
+public class HttpRequestBuilder
+{
+    private readonly HttpRequest _request = new();
+
+    public HttpRequestBuilder SetUrl(string url)
+    {
+        _request.Url = url;
+        return this;
+    }
+
+    public HttpRequestBuilder SetMethod(string method)
+    {
+        _request.Method = method;
+        return this;
+    }
+
+    public HttpRequestBuilder AddHeader(string key, string value)
+    {
+        _request.Headers[key] = value;
+        return this;
+    }
+
+    public HttpRequestBuilder SetBody(string body)
+    {
+        _request.Body = body;
+        return this;
+    }
+
+    public HttpRequestBuilder SetTimeout(int ms)
+    {
+        _request.TimeoutMs = ms;
+        return this;
+    }
+
+    public HttpRequest Build() => _request;
+}
+
+// 3. 使用
+var request = new HttpRequestBuilder()
+    .SetUrl("https://api.example.com/users")
+    .SetMethod("POST")
+    .AddHeader("Content-Type", "application/json")
+    .AddHeader("Authorization", "Bearer token123")
+    .SetBody("{\"name\": \"Alice\"}")
+    .SetTimeout(5000)
+    .Build();
+
+Console.WriteLine(request); // POST https://api.example.com/users | Headers: 2 | Timeout: 5000ms
+```
+
+### TypeScript 版本
+
+```typescript
+// 1. 產品
+interface HttpRequest {
+  url: string;
+  method: string;
+  headers: Record<string, string>;
+  body?: string;
+  timeoutMs: number;
+}
+
+// 2. Builder
+class HttpRequestBuilder {
+  private url = "";
+  private method = "GET";
+  private headers: Record<string, string> = {};
+  private body?: string;
+  private timeoutMs = 30000;
+
+  setUrl(url: string): this {
+    this.url = url;
+    return this;
+  }
+
+  setMethod(method: string): this {
+    this.method = method;
+    return this;
+  }
+
+  addHeader(key: string, value: string): this {
+    this.headers[key] = value;
+    return this;
+  }
+
+  setBody(body: string): this {
+    this.body = body;
+    return this;
+  }
+
+  setTimeout(ms: number): this {
+    this.timeoutMs = ms;
+    return this;
+  }
+
+  build(): HttpRequest {
+    return {
+      url: this.url,
+      method: this.method,
+      headers: { ...this.headers },
+      body: this.body,
+      timeoutMs: this.timeoutMs,
+    };
+  }
+}
+
+// 3. 使用
+const request = new HttpRequestBuilder()
+  .setUrl("https://api.example.com/users")
+  .setMethod("POST")
+  .addHeader("Content-Type", "application/json")
+  .addHeader("Authorization", "Bearer token123")
+  .setBody('{"name": "Alice"}')
+  .setTimeout(5000)
+  .build();
+
+console.log(request);
+```
+
+### Python 版本
+
+```python
+from dataclasses import dataclass, field
+
+# 1. 產品
+@dataclass
+class HttpRequest:
+    url: str = ""
+    method: str = "GET"
+    headers: dict = field(default_factory=dict)
+    body: str | None = None
+    timeout_ms: int = 30000
+
+    def __str__(self) -> str:
+        return f"{self.method} {self.url} | Headers: {len(self.headers)} | Timeout: {self.timeout_ms}ms"
+
+# 2. Builder
+class HttpRequestBuilder:
+    def __init__(self):
+        self._request = HttpRequest()
+
+    def set_url(self, url: str) -> "HttpRequestBuilder":
+        self._request.url = url
+        return self
+
+    def set_method(self, method: str) -> "HttpRequestBuilder":
+        self._request.method = method
+        return self
+
+    def add_header(self, key: str, value: str) -> "HttpRequestBuilder":
+        self._request.headers[key] = value
+        return self
+
+    def set_body(self, body: str) -> "HttpRequestBuilder":
+        self._request.body = body
+        return self
+
+    def set_timeout(self, ms: int) -> "HttpRequestBuilder":
+        self._request.timeout_ms = ms
+        return self
+
+    def build(self) -> HttpRequest:
+        return self._request
+
+# 3. 使用
+request = (
+    HttpRequestBuilder()
+    .set_url("https://api.example.com/users")
+    .set_method("POST")
+    .add_header("Content-Type", "application/json")
+    .add_header("Authorization", "Bearer token123")
+    .set_body('{"name": "Alice"}')
+    .set_timeout(5000)
+    .build()
+)
+
+print(request)  # POST https://api.example.com/users | Headers: 2 | Timeout: 5000ms
+```
+
+### Java 版本
+
+```java
+import java.util.HashMap;
+import java.util.Map;
+
+// 1. 產品
+public class HttpRequest {
+    private final String url;
+    private final String method;
+    private final Map<String, String> headers;
+    private final String body;
+    private final int timeoutMs;
+
+    private HttpRequest(Builder builder) {
+        this.url = builder.url;
+        this.method = builder.method;
+        this.headers = new HashMap<>(builder.headers);
+        this.body = builder.body;
+        this.timeoutMs = builder.timeoutMs;
+    }
+
+    @Override
+    public String toString() {
+        return method + " " + url + " | Headers: " + headers.size() + " | Timeout: " + timeoutMs + "ms";
+    }
+
+    // 2. 內部靜態 Builder
+    public static class Builder {
+        private String url = "";
+        private String method = "GET";
+        private Map<String, String> headers = new HashMap<>();
+        private String body;
+        private int timeoutMs = 30000;
+
+        public Builder setUrl(String url) { this.url = url; return this; }
+        public Builder setMethod(String method) { this.method = method; return this; }
+        public Builder addHeader(String k, String v) { this.headers.put(k, v); return this; }
+        public Builder setBody(String body) { this.body = body; return this; }
+        public Builder setTimeout(int ms) { this.timeoutMs = ms; return this; }
+
+        public HttpRequest build() { return new HttpRequest(this); }
+    }
+}
+
+// 3. 使用
+HttpRequest request = new HttpRequest.Builder()
+    .setUrl("https://api.example.com/users")
+    .setMethod("POST")
+    .addHeader("Content-Type", "application/json")
+    .addHeader("Authorization", "Bearer token123")
+    .setBody("{\"name\": \"Alice\"}")
+    .setTimeout(5000)
+    .build();
+
+System.out.println(request);
+```
+
+## 結構圖
+
+<Diagram data='{"nodes":[{"id":"client","label":"Client","type":"muted"},{"id":"builder","label":"HttpRequestBuilder","type":"highlight"},{"id":"product","label":"HttpRequest (Product)","type":"default"},{"id":"director","label":"Director (optional)","type":"muted"}],"edges":[{"from":"client","to":"builder","label":"configures step by step"},{"from":"builder","to":"product","label":"build()"},{"from":"director","to":"builder","label":"orchestrates steps"}]}' />
+
+## 實戰補充
+
+<Callout type="tip" title="資深開發者經驗">
+**Fluent API**：現代 Builder 最常見的形式就是 Fluent API — 每個設定方法回傳 `this`，支援鏈式呼叫。C# 的 `IHostBuilder`、`IServiceCollection`、Entity Framework 的 `ModelBuilder` 都是這種風格。
+
+**Configuration Builder**：.NET 的 `ConfigurationBuilder().AddJsonFile().AddEnvironmentVariables().Build()` 就是 Builder Pattern 的完美應用。
+
+**不可變物件**：Builder 搭配不可變物件（Immutable Object）特別好用。Builder 負責收集所有參數，`Build()` 時一次建立不可變的最終產品。Java 的 `StringBuilder` 也是這個概念。
+
+**Director 角色**：GoF 原始定義有個 Director 角色負責編排建構步驟。現代實務中 Director 通常被省略，直接由 Client 呼叫 Builder。
+</Callout>
+
+## 理解測驗
+
+<Quiz data='{"question":"Builder Pattern 最主要解決什麼問題？","options":["讓程式跑得更快","避免建構子參數過多（Telescoping Constructor）的問題","讓物件可以被序列化","減少類別的數量"],"answer":1,"explanation":"當建構子有大量參數（尤其是可選參數）時，Builder 讓你用清晰的步驟逐步配置，避免一長串參數的建構子。"}' />
+
+<Quiz data='{"question":"Fluent API 風格的 Builder 為什麼每個方法都 return this？","options":["為了節省記憶體","為了支援鏈式呼叫（Method Chaining）","為了防止 null reference","為了相容多執行緒"],"answer":1,"explanation":"return this 讓每次呼叫後都回傳 Builder 自身，可以繼續呼叫下一個方法，形成 .SetA().SetB().Build() 的鏈式風格。"}' />
+
+<Quiz data='{"question":"以下哪個場景最適合用 Builder Pattern？","options":["建立一個只有 id 和 name 的簡單物件","建立 HTTP Request，有 URL、方法、多個 Header、Body、Timeout 等多個可選參數","從資料庫讀取一筆資料","把數字加起來"],"answer":1,"explanation":"HTTP Request 有大量可選參數，用 Builder 可以清楚表達每個參數的意圖，避免冗長的建構子。"}' />
+
+## 重點整理
+
+<Callout type="tip" title="一句話記住">
+**Builder Pattern = 一步步配置，最後一次組裝出複雜物件。**
+</Callout>
+
+| 概念 | 說明 |
+|------|------|
+| **Builder（建造者）** | 提供逐步配置的方法 |
+| **Product（產品）** | 最終被建立的複雜物件 |
+| **Director（指揮者）** | 編排建構步驟（現代實務常省略） |
+| **Fluent API** | 每個方法回傳 this，支援鏈式呼叫 |
+| **核心好處** | 清晰的建構過程 + 可選參數不再混亂 |
+| **代價** | 多了 Builder 類別，簡單物件不需要 |

@@ -1,0 +1,126 @@
+---
+title: "328. Odd Even Linked List"
+order: 30
+description: "將奇數位和偶數位節點分離後重新連接"
+---
+
+# Odd Even Linked List
+
+<ELI5>
+想像學校排隊做早操，老師說：「報數！1、2、1、2⋯⋯」然後「報 1 的站左邊，報 2 的站右邊，最後左邊排在右邊前面。」
+
+這就是這題在做的事 — 把奇數位置的節點串在一起，偶數位置的串在一起，最後奇數鏈接上偶數。
+
+注意：這裡的「奇偶」是指位置（第 1、3、5⋯ 個），不是節點的值。
+</ELI5>
+
+## 題目描述
+
+給定一個 Linked List，將所有奇數位置的節點排在偶數位置節點前面。要求 O(1) 空間、O(n) 時間，且保持相對順序。
+
+```
+輸入: [1,2,3,4,5]
+輸出: [1,3,5,2,4]
+
+輸入: [2,1,3,5,6,4,7]
+輸出: [2,3,6,7,1,5,4]
+```
+
+## 解題思路
+
+<StepDiagram data='[{"title":"初始化指針","description":"odd = head, even = head.next, evenHead = even","icon":"1"},{"title":"交替串接","description":"odd.next = even.next (跳到下個奇), even.next = odd.next (跳到下個偶)","icon":"2"},{"title":"移動指針","description":"odd 和 even 各自前進一步","icon":"3"},{"title":"合併","description":"odd.next = evenHead，把偶數鏈接到奇數尾端","icon":"4"}]' />
+
+## 程式碼
+
+### C#
+
+```csharp
+public class Solution {
+    public ListNode OddEvenList(ListNode head) {
+        if (head == null) return null;
+
+        var odd = head;
+        var even = head.next;
+        var evenHead = even; // 記住偶數鏈的開頭
+
+        while (even != null && even.next != null) {
+            odd.next = even.next;   // 奇數指向下一個奇數
+            odd = odd.next;
+            even.next = odd.next;   // 偶數指向下一個偶數
+            even = even.next;
+        }
+
+        odd.next = evenHead; // 奇數尾接偶數頭
+        return head;
+    }
+}
+```
+
+### TypeScript
+
+```typescript
+function oddEvenList(head: ListNode | null): ListNode | null {
+    if (!head) return null;
+
+    let odd = head;
+    let even = head.next;
+    const evenHead = even; // 記住偶數鏈的開頭
+
+    while (even && even.next) {
+        odd.next = even.next;   // 奇數指向下一個奇數
+        odd = odd.next;
+        even.next = odd.next;   // 偶數指向下一個偶數
+        even = even.next;
+    }
+
+    odd.next = evenHead; // 奇數尾接偶數頭
+    return head;
+}
+```
+
+### Python
+
+```python
+def oddEvenList(head: Optional[ListNode]) -> Optional[ListNode]:
+    if not head:
+        return None
+
+    odd = head
+    even = head.next
+    even_head = even  # 記住偶數鏈的開頭
+
+    while even and even.next:
+        odd.next = even.next   # 奇數指向下一個奇數
+        odd = odd.next
+        even.next = odd.next   # 偶數指向下一個偶數
+        even = even.next
+
+    odd.next = even_head  # 奇數尾接偶數頭
+    return head
+```
+
+## 複雜度分析
+
+| | Time | Space |
+|--|------|-------|
+| 本解法 | O(n) | O(1) |
+
+## 圖解
+
+<Diagram data='{"nodes":[{"id":"n1","label":"1 (奇)","type":"highlight"},{"id":"n2","label":"2 (偶)","type":"muted"},{"id":"n3","label":"3 (奇)","type":"highlight"},{"id":"n4","label":"4 (偶)","type":"muted"},{"id":"n5","label":"5 (奇)","type":"highlight"},{"id":"result","label":"1→3→5→2→4","type":"highlight"}],"edges":[{"from":"n1","to":"n3","label":"奇數鏈"},{"from":"n3","to":"n5","label":"奇數鏈"},{"from":"n2","to":"n4","label":"偶數鏈"},{"from":"n5","to":"n2","label":"合併"}]}' />
+
+## 進階觀點
+
+<Callout type="tip" title="面試追問">
+**為什麼迴圈條件是 `even != null && even.next != null`？** 因為 even 永遠在 odd 後面。如果 even 為 null 或 even.next 為 null，表示已經沒有更多節點要處理。
+
+**常見錯誤**：忘記保存 evenHead，導致偶數鏈丟失。面試時先畫圖再寫程式碼。
+
+**變體題**：LC 86 Partition List（按值分割）、LC 725 Split Linked List in Parts。
+</Callout>
+
+## 理解測驗
+
+<Quiz data='{"question":"為什麼要用 evenHead 變數？","options":["為了計算鏈表長度","為了在最後把偶數鏈接到奇數鏈尾端","為了避免記憶體洩漏","為了排序用"],"answer":1,"explanation":"處理過程中 even 指針會不斷前進，我們需要 evenHead 記住偶數鏈的起點，最後才能把它接到奇數鏈的尾端。"}' />
+
+<Quiz data='{"question":"[1,2,3] 經過處理後的結果是？","options":["[1,3,2]","[1,2,3]","[2,1,3]","[3,1,2]"],"answer":0,"explanation":"奇數位：1,3；偶數位：2。合併後：1→3→2。"}' />

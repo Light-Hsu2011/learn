@@ -1,0 +1,243 @@
+---
+title: "Entity（實體）"
+order: 2
+description: "有身份識別的領域物件，即使屬性改變，身份不變"
+---
+
+# Entity（實體）
+
+<ELI5>
+你有一張**身分證**，上面有你的身分證字號。就算你改了名字、搬了家、換了髮型，你的身分證字號永遠不變 — 你還是「你」。
+
+Entity 就像有身分證的物件：它有一個獨一無二的 ID，不管其他屬性怎麼改，只要 ID 一樣，就是同一個東西。
+
+相反地，如果你有兩張一模一樣的百元鈔票，你不會在意哪張是哪張 — 那就不是 Entity（那是 Value Object，下一課會講）。
+</ELI5>
+
+## 是什麼？
+
+Entity 是 DDD 中具有**唯一身份識別（Identity）**的領域物件。兩個 Entity 即使所有屬性都相同，只要 ID 不同，就是不同的物件；反之，即使屬性全都改了，只要 ID 相同，就是同一個物件。
+
+<Callout type="info" title="DDD 戰術模式">
+Entity 是 DDD 戰術設計（Tactical Design）的核心建構塊之一，與 Value Object、Aggregate 並列為最基礎的三個概念。
+</Callout>
+
+## 核心觀念
+
+- **Identity 是靈魂**：Entity 的相等性由 ID 決定，不是由屬性值決定
+- **有生命週期**：Entity 會被建立、修改、最終可能被刪除或封存，狀態會隨時間改變
+- **封裝業務規則**：Entity 不只是資料容器，它內部包含業務邏輯和不變量（Invariants）
+- **Entity 基底類別**：實務上常定義一個抽象基底類別，統一處理 ID 和相等性比較
+
+## 常見誤區
+
+<Callout type="warning" title="常見誤區">
+**誤區一**：把 Entity 當成資料庫的 Row。Entity 是領域概念，不是 ORM 的產物。先思考業務需求，再考慮怎麼存。
+
+**誤區二**：Entity 只有 getter/setter 沒有行為。這叫 Anemic Domain Model（貧血模型），失去了 DDD 的核心價值。Entity 必須封裝業務邏輯。
+
+**誤區三**：用所有屬性來比較兩個 Entity 是否相同。Entity 的相等性只看 ID。
+</Callout>
+
+## 設計流程
+
+<StepDiagram data='[{"title":"識別領域概念","description":"找出業務中需要追蹤身份的物件（如訂單、使用者、帳戶）","icon":"1"},{"title":"定義 Identity","description":"決定用什麼作為唯一識別（GUID、流水號、業務編號）","icon":"2"},{"title":"封裝業務規則","description":"把相關的業務邏輯放進 Entity，而非散落在 Service 裡","icon":"3"},{"title":"實作相等性","description":"覆寫 Equals 和 GetHashCode，只比較 ID","icon":"4"},{"title":"管理生命週期","description":"定義 Entity 的狀態轉換規則（如訂單：建立→付款→出貨→完成）","icon":"5"}]' />
+
+## 程式碼範例
+
+### C# 版本
+
+```csharp
+// Entity 基底類別
+public abstract class Entity<TId> where TId : notnull
+{
+    public TId Id { get; protected set; }
+
+    protected Entity(TId id)
+    {
+        Id = id;
+    }
+
+    public override bool Equals(object? obj)
+    {
+        if (obj is not Entity<TId> other) return false;
+        if (ReferenceEquals(this, other)) return true;
+        return Id.Equals(other.Id);
+    }
+
+    public override int GetHashCode() => Id.GetHashCode();
+
+    public static bool operator ==(Entity<TId>? left, Entity<TId>? right)
+        => Equals(left, right);
+    public static bool operator !=(Entity<TId>? left, Entity<TId>? right)
+        => !Equals(left, right);
+}
+
+// 具體 Entity：訂單
+public class Order : Entity<Guid>
+{
+    public Customer Customer { get; }
+    public OrderStatus Status { get; private set; }
+    private readonly List<OrderLineItem> _lineItems = new();
+    public IReadOnlyList<OrderLineItem> LineItems => _lineItems.AsReadOnly();
+
+    public Order(Guid id, Customer customer) : base(id)
+    {
+        Customer = customer;
+        Status = OrderStatus.Created;
+    }
+
+    public void AddLineItem(Product product, int quantity)
+    {
+        if (Status != OrderStatus.Created)
+            throw new InvalidOperationException("Cannot modify a placed order.");
+        _lineItems.Add(new OrderLineItem(product, quantity));
+    }
+
+    public void Place()
+    {
+        if (!_lineItems.Any())
+            throw new InvalidOperationException("Order must have at least one line item.");
+        Status = OrderStatus.Placed;
+    }
+}
+
+// 使用
+var order1 = new Order(Guid.NewGuid(), customer);
+var order2 = new Order(order1.Id, customer);
+Console.WriteLine(order1 == order2); // true — 同一個 ID 就是同一張訂單
+```
+
+### TypeScript 版本
+
+```typescript
+// Entity 基底類別
+abstract class Entity<TId> {
+  constructor(public readonly id: TId) {}
+
+  equals(other: Entity<TId>): boolean {
+    if (this === other) return true;
+    return this.id === other.id;
+  }
+}
+
+// 具體 Entity：訂單
+class Order extends Entity<string> {
+  private lineItems: OrderLineItem[] = [];
+  private status: OrderStatus = OrderStatus.Created;
+
+  constructor(id: string, public readonly customer: Customer) {
+    super(id);
+  }
+
+  addLineItem(product: Product, quantity: number): void {
+    if (this.status !== OrderStatus.Created) {
+      throw new Error("Cannot modify a placed order.");
+    }
+    this.lineItems.push(new OrderLineItem(product, quantity));
+  }
+
+  place(): void {
+    if (this.lineItems.length === 0) {
+      throw new Error("Order must have at least one line item.");
+    }
+    this.status = OrderStatus.Placed;
+  }
+}
+
+// 使用
+const order1 = new Order("ORD-001", customer);
+const order2 = new Order("ORD-001", customer);
+console.log(order1.equals(order2)); // true
+```
+
+### Python 版本
+
+```python
+from abc import ABC
+from dataclasses import dataclass, field
+from typing import Generic, TypeVar, List
+from uuid import UUID, uuid4
+from enum import Enum
+
+TId = TypeVar("TId")
+
+class Entity(ABC, Generic[TId]):
+    def __init__(self, id: TId):
+        self._id = id
+
+    @property
+    def id(self) -> TId:
+        return self._id
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, Entity):
+            return False
+        return self._id == other._id
+
+    def __hash__(self) -> int:
+        return hash(self._id)
+
+class OrderStatus(Enum):
+    CREATED = "created"
+    PLACED = "placed"
+    SHIPPED = "shipped"
+
+class Order(Entity[UUID]):
+    def __init__(self, id: UUID, customer: "Customer"):
+        super().__init__(id)
+        self.customer = customer
+        self._status = OrderStatus.CREATED
+        self._line_items: List["OrderLineItem"] = []
+
+    def add_line_item(self, product: "Product", quantity: int) -> None:
+        if self._status != OrderStatus.CREATED:
+            raise ValueError("Cannot modify a placed order.")
+        self._line_items.append(OrderLineItem(product, quantity))
+
+    def place(self) -> None:
+        if not self._line_items:
+            raise ValueError("Order must have at least one line item.")
+        self._status = OrderStatus.PLACED
+
+# 使用
+order1 = Order(uuid4(), customer)
+order2 = Order(order1.id, customer)
+print(order1 == order2)  # True
+```
+
+## 概念圖
+
+<Diagram data='{"nodes":[{"id":"entity","label":"Entity（實體）","type":"highlight"},{"id":"identity","label":"Identity（唯一識別）","type":"default"},{"id":"lifecycle","label":"生命週期","type":"default"},{"id":"behavior","label":"業務行為","type":"default"},{"id":"vo","label":"Value Object（值物件）","type":"muted"},{"id":"aggregate","label":"Aggregate（聚合）","type":"muted"}],"edges":[{"from":"entity","to":"identity","label":"必須具備"},{"from":"entity","to":"lifecycle","label":"擁有"},{"from":"entity","to":"behavior","label":"封裝"},{"from":"entity","to":"vo","label":"包含（屬性）"},{"from":"aggregate","to":"entity","label":"由 Entity 組成"}]}' />
+
+## 實戰補充
+
+<Callout type="tip" title="資深開發者筆記">
+在 C# 專案中，建議建立一個 `Entity<TId>` 基底類別放在 Domain 層的 `SeedWork` 或 `Common` 資料夾。所有 Entity 繼承它，省去重複實作 `Equals` 和 `GetHashCode` 的麻煩。
+
+ID 的型別選擇：GUID 適合分散式系統（無需中央分配）；自增整數適合單體應用（查詢效率高）；業務編號（如 `ORD-20260407-001`）適合需要人類可讀的場景。三者可以混搭使用。
+
+最重要的一點：Entity 不是 DTO。Entity 要有行為，DTO 只有資料。如果你的 Entity 只有 getter/setter，回頭檢查業務邏輯是不是被放到 Service 裡了。
+</Callout>
+
+## 理解測驗
+
+<Quiz data='{"question":"兩個 Entity 什麼情況下被視為「相同」？","options":["所有屬性值都一樣","ID 相同","記憶體位址相同","建立時間相同"],"answer":1,"explanation":"Entity 的相等性由 Identity（ID）決定。即使其他屬性不同，只要 ID 相同就是同一個 Entity。"}' />
+
+<Quiz data='{"question":"以下哪個是 Entity 而不是 Value Object？","options":["金額 100 元","地址「台北市信義區」","使用者帳號（有唯一 ID）","顏色 RGB(255,0,0)"],"answer":2,"explanation":"使用者帳號有唯一的身份識別（ID），需要追蹤其生命週期，所以是 Entity。金額、地址、顏色都是用值來定義的，是 Value Object。"}' />
+
+<Quiz data='{"question":"什麼是 Anemic Domain Model（貧血模型）？","options":["Entity 沒有 ID","Entity 只有資料屬性沒有業務行為，邏輯全在 Service 裡","Entity 繼承太多層","Entity 的屬性太少"],"answer":1,"explanation":"貧血模型指 Entity 退化成只有 getter/setter 的資料容器，所有業務邏輯都被放到 Service 中。這違反了 DDD 讓 Entity 封裝業務規則的核心理念。"}' />
+
+## 重點整理
+
+<Callout type="tip" title="一句話記住">
+**Entity = 有身分證的物件，ID 不變就是同一個，而且它自己會做事（封裝業務邏輯）。**
+</Callout>
+
+| 概念 | 說明 |
+|------|------|
+| **Identity** | Entity 的唯一識別，決定相等性 |
+| **生命週期** | Entity 會被建立、修改、刪除 |
+| **業務行為** | Entity 封裝業務邏輯，不只是資料容器 |
+| **基底類別** | 統一處理 ID 和 Equals/GetHashCode |
+| **vs Value Object** | Entity 看 ID，Value Object 看值 |

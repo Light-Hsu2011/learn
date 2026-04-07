@@ -1,0 +1,164 @@
+---
+title: "TDD 反模式"
+order: 9
+description: "過度 Mock、脆弱測試、測試實作細節——常見的測試壞味道"
+---
+
+# TDD 反模式（TDD Anti-Patterns）
+
+<ELI5>
+想像你在健身房練重訓，但**姿勢完全不對**：
+
+- 深蹲時膝蓋內扣 → 越練膝蓋越痛
+- 硬舉時彎腰駝背 → 越練腰越傷
+- 只練上半身不練腿 → 越練越不平衡
+
+TDD 反模式就像錯誤的健身姿勢——你以為在「寫測試」，但其實越寫越讓程式碼變得脆弱、難維護。**不是有測試就好，姿勢對才有效。**
+</ELI5>
+
+## 是什麼？
+
+TDD Anti-Pattern 是那些表面上遵循 TDD 流程，但實際上違反 TDD 精神的測試寫法。這些壞味道會讓測試變成負擔而非安全網。
+
+<Callout type="warning" title="測試債務">
+壞測試比沒有測試更危險——它們給你**虛假的安全感**，同時每次重構都瘋狂報錯，逼你花大量時間維護測試而非改善產品。
+</Callout>
+
+## 常見反模式
+
+### The Liar（說謊者）
+測試永遠通過，但實際上沒有驗證任何有意義的東西。Assert 太寬鬆或根本沒有 Assert。
+
+### The Giant（巨人）
+一個測試方法驗證太多東西，失敗時根本不知道哪裡壞了。違反「一個測試一個概念」原則。
+
+### The Mockery（Mock 狂魔）
+Mock 了所有東西，測試只驗證 Mock 的行為，完全沒碰到真正的業務邏輯。
+
+### Ice Cream Cone（冰淇淋甜筒）
+Test Pyramid 倒過來——大量的 E2E 測試、少量的 Unit Test。執行慢、維護貴、回饋慢。
+
+### The Inspector（窺探者）
+測試直接檢查私有方法或內部實作細節，重構時測試全部壞掉。
+
+## 辨識與修正流程
+
+<StepDiagram data='[{"title":"辨識壞味道","description":"測試常常無故失敗？跑很慢？改一行壞十個？這些都是警訊","icon":"1"},{"title":"分類反模式","description":"對照常見反模式清單，判斷屬於哪一種壞味道","icon":"2"},{"title":"評估影響","description":"這個反模式造成多大的維護成本？優先修最痛的","icon":"3"},{"title":"重構測試","description":"套用對應的修正策略，把測試改成健康的版本","icon":"4"},{"title":"驗證改善","description":"確認測試仍然能抓到真正的 bug，且不再因重構而壞掉","icon":"5"}]' />
+
+## 程式碼範例：Bad vs Good
+
+### The Mockery — C# (xUnit)
+
+```csharp
+// BAD: Mock 了所有東西，測試毫無意義
+[Fact]
+public void PlaceOrder_Bad_MockEverything()
+{
+    var mockRepo = new Mock<IOrderRepository>();
+    var mockValidator = new Mock<IOrderValidator>();
+    var mockPricer = new Mock<IPricingService>();
+
+    mockValidator.Setup(v => v.IsValid(It.IsAny<Order>())).Returns(true);
+    mockPricer.Setup(p => p.Calculate(It.IsAny<Order>())).Returns(100m);
+
+    var service = new OrderService(mockRepo.Object, mockValidator.Object, mockPricer.Object);
+    service.PlaceOrder(new Order());
+
+    // 只驗證「有沒有呼叫」，完全沒驗證業務邏輯
+    mockRepo.Verify(r => r.Save(It.IsAny<Order>()), Times.Once);
+}
+
+// GOOD: 只 Mock 外部依賴，驗證真正的業務結果
+[Fact]
+public void PlaceOrder_Good_VerifyBehavior()
+{
+    var fakeRepo = new InMemoryOrderRepository();
+    var validator = new OrderValidator(); // 用真的
+    var pricer = new PricingService();    // 用真的
+
+    var service = new OrderService(fakeRepo, validator, pricer);
+    service.PlaceOrder(new Order { Items = new[] { new Item("Book", 2) } });
+
+    var saved = fakeRepo.GetAll().Single();
+    Assert.Equal(2, saved.Items.Count());
+    Assert.True(saved.TotalPrice > 0);
+}
+```
+
+### The Liar — TypeScript (Jest)
+
+```typescript
+// BAD: 測試永遠通過，但沒有驗證任何東西
+test('should process payment', () => {
+  const result = processPayment({ amount: 100, currency: 'USD' });
+  expect(result).toBeTruthy(); // 只要不是 null/undefined 就過
+});
+
+// GOOD: 明確驗證業務邏輯
+test('should deduct amount and return success receipt', () => {
+  const result = processPayment({ amount: 100, currency: 'USD' });
+
+  expect(result.status).toBe('success');
+  expect(result.receipt.amount).toBe(100);
+  expect(result.receipt.currency).toBe('USD');
+  expect(result.receipt.timestamp).toBeDefined();
+});
+```
+
+### The Inspector — Python (pytest)
+
+```python
+# BAD: 測試私有方法，綁死內部實作
+def test_bad_inspect_private():
+    cart = ShoppingCart()
+    cart.add_item("book", 30)
+    # 直接戳私有屬性
+    assert cart._items["book"] == 30
+    assert cart._calculate_subtotal() == 30
+
+# GOOD: 透過公開介面驗證行為
+def test_good_verify_public_behavior():
+    cart = ShoppingCart()
+    cart.add_item("book", 30)
+    cart.add_item("pen", 10)
+
+    assert cart.item_count() == 2
+    assert cart.total() == 40
+    assert "book" in cart.list_items()
+```
+
+## 反模式關係圖
+
+<Diagram data='{"nodes":[{"id":"anti","label":"TDD Anti-Patterns","type":"highlight"},{"id":"liar","label":"The Liar\n(空洞斷言)","type":"default"},{"id":"giant","label":"The Giant\n(測試太大)","type":"default"},{"id":"mockery","label":"The Mockery\n(過度 Mock)","type":"default"},{"id":"cone","label":"Ice Cream Cone\n(倒金字塔)","type":"default"},{"id":"inspector","label":"The Inspector\n(測試實作)","type":"default"},{"id":"fragile","label":"脆弱測試","type":"muted"},{"id":"slow","label":"執行緩慢","type":"muted"},{"id":"false","label":"虛假安全感","type":"muted"}],"edges":[{"from":"anti","to":"liar","label":"類型"},{"from":"anti","to":"giant","label":"類型"},{"from":"anti","to":"mockery","label":"類型"},{"from":"anti","to":"cone","label":"類型"},{"from":"anti","to":"inspector","label":"類型"},{"from":"liar","to":"false","label":"導致"},{"from":"giant","to":"fragile","label":"導致"},{"from":"mockery","to":"false","label":"導致"},{"from":"cone","to":"slow","label":"導致"},{"from":"inspector","to":"fragile","label":"導致"}]}' />
+
+## 實戰補充
+
+<Callout type="info" title="資深開發者心得">
+在大型專案中，**The Mockery 是最常見的反模式**。團隊為了追求 100% 覆蓋率，把所有依賴都 Mock 掉，結果測試只驗證了「Mock 框架能正確運作」。正確做法是：只 Mock 你無法控制的外部邊界（HTTP、DB、第三方 API），領域邏輯用真實物件。
+</Callout>
+
+<Callout type="tip" title="Ice Cream Cone 的解法">
+如果你的團隊已經陷入 Ice Cream Cone，不要試圖一次全改。策略是：**新功能強制寫 Unit Test，舊功能在修 Bug 時補 Unit Test**，讓金字塔慢慢長出來。
+</Callout>
+
+## 理解測驗
+
+<Quiz data='{"question":"The Liar 反模式的核心問題是什麼？","options":["測試跑太慢","測試永遠通過但沒有驗證有意義的東西","測試用了太多 Mock","測試方法太長"],"answer":1,"explanation":"The Liar 的問題在於斷言太寬鬆或根本沒有 Assert，測試永遠綠燈但其實什麼都沒驗證到，給你虛假的安全感。"}' />
+
+<Quiz data='{"question":"當你重構內部實作後，大量測試壞掉，最可能是哪個反模式？","options":["The Liar","Ice Cream Cone","The Inspector","The Giant"],"answer":2,"explanation":"The Inspector 直接測試私有方法或內部實作細節，所以一旦重構內部結構，即使外部行為沒變，測試也會全部失敗。"}' />
+
+<Quiz data='{"question":"面對 Ice Cream Cone 問題，最務實的改善策略是？","options":["立即刪除所有 E2E 測試","新功能強制寫 Unit Test，舊功能修 Bug 時補 Unit Test","放棄自動化測試改用手動測試","把所有 E2E 測試轉成 Unit Test"],"answer":1,"explanation":"一次性重寫所有測試不切實際。務實的做法是漸進式改善：新功能從 Unit Test 開始寫，舊功能在修 Bug 時順便補 Unit Test，讓測試金字塔慢慢成形。"}' />
+
+## 重點整理
+
+<Callout type="tip" title="一句話記住">
+**壞測試比沒測試更危險——它們給你虛假的安全感，同時消耗你的維護精力。**
+</Callout>
+
+| 反模式 | 症狀 | 修正方向 |
+|--------|------|----------|
+| **The Liar** | 斷言太寬鬆，永遠綠燈 | 寫精確的斷言，驗證具體值 |
+| **The Giant** | 一個測試驗證太多東西 | 拆成多個小測試，一個測試一個概念 |
+| **The Mockery** | Mock 了所有依賴 | 只 Mock 外部邊界，領域邏輯用真實物件 |
+| **Ice Cream Cone** | E2E 多、Unit 少 | 漸進式補 Unit Test |
+| **The Inspector** | 測試私有方法 | 透過公開介面驗證行為 |

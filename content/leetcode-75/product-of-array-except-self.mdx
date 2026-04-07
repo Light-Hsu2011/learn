@@ -1,0 +1,123 @@
+---
+title: "238. Product of Array Except Self"
+order: 7
+description: "用前綴積和後綴積相乘得到每個位置除自身外的乘積"
+---
+
+# Product of Array Except Self
+
+<ELI5>
+想像你站在一排人中間，要算出除了你以外所有人的身高乘積。如果你站在第 3 個位置，就是「你左邊所有人的身高乘積」×「你右邊所有人的身高乘積」。
+
+做法是先從左到右算一遍「左邊累積乘積」，再從右到左算一遍「右邊累積乘積」，最後把對應位置的左右乘在一起就是答案。
+</ELI5>
+
+## 題目描述
+
+給定整數陣列 `nums`，回傳陣列 `answer`，其中 `answer[i]` 等於 `nums` 中除了 `nums[i]` 以外所有元素的乘積。不能使用除法，且要求 O(n) 時間。
+
+```
+輸入：nums = [1,2,3,4]
+輸出：[24,12,8,6]
+
+輸入：nums = [-1,1,0,-3,3]
+輸出：[0,0,9,0,0]
+```
+
+## 解題思路
+
+<StepDiagram data='[{"title":"前綴積","description":"prefix[i] = nums[0] × nums[1] × ... × nums[i-1]","icon":"1"},{"title":"後綴積","description":"suffix[i] = nums[i+1] × nums[i+2] × ... × nums[n-1]","icon":"2"},{"title":"合併","description":"answer[i] = prefix[i] × suffix[i]","icon":"3"}]' />
+
+## 程式碼
+
+### C#
+
+```csharp
+public class Solution {
+    public int[] ProductExceptSelf(int[] nums) {
+        int n = nums.Length;
+        int[] answer = new int[n];
+
+        // 前綴積：answer[i] 先存左邊的累積乘積
+        answer[0] = 1;
+        for (int i = 1; i < n; i++)
+            answer[i] = answer[i - 1] * nums[i - 1];
+
+        // 後綴積：用一個變數從右邊累積，乘進 answer
+        int suffix = 1;
+        for (int i = n - 2; i >= 0; i--) {
+            suffix *= nums[i + 1];
+            answer[i] *= suffix;
+        }
+        return answer;
+    }
+}
+```
+
+### TypeScript
+
+```typescript
+function productExceptSelf(nums: number[]): number[] {
+    const n = nums.length;
+    const answer = new Array(n);
+
+    // 前綴積
+    answer[0] = 1;
+    for (let i = 1; i < n; i++)
+        answer[i] = answer[i - 1] * nums[i - 1];
+
+    // 後綴積
+    let suffix = 1;
+    for (let i = n - 2; i >= 0; i--) {
+        suffix *= nums[i + 1];
+        answer[i] *= suffix;
+    }
+    return answer;
+}
+```
+
+### Python
+
+```python
+def productExceptSelf(nums: list[int]) -> list[int]:
+    n = len(nums)
+    answer = [1] * n
+
+    # 前綴積
+    for i in range(1, n):
+        answer[i] = answer[i - 1] * nums[i - 1]
+
+    # 後綴積
+    suffix = 1
+    for i in range(n - 2, -1, -1):
+        suffix *= nums[i + 1]
+        answer[i] *= suffix
+
+    return answer
+```
+
+## 複雜度分析
+
+| | Time | Space |
+|--|------|-------|
+| 本解法 | O(n) | O(1) |
+
+兩次遍歷 O(n)。輸出陣列不計入額外空間，suffix 變數為 O(1)。
+
+## 圖解
+
+<Diagram data='{"nodes":[{"id":"nums","label":"nums: [1,2,3,4]","type":"default"},{"id":"prefix","label":"前綴積: [1,1,2,6]","type":"highlight"},{"id":"suffix","label":"後綴積: [24,12,4,1]","type":"highlight"},{"id":"result","label":"answer: [24,12,8,6]","type":"muted"}],"edges":[{"from":"nums","to":"prefix","label":"左→右"},{"from":"nums","to":"suffix","label":"右→左"},{"from":"prefix","to":"result","label":"相乘"},{"from":"suffix","to":"result","label":"相乘"}]}' />
+
+## 進階觀點
+
+<Callout type="tip" title="面試追問">
+- **為什麼不能用除法？** 陣列可能含有 0，除以 0 會出問題。題目也明確禁止。
+- **如果允許除法？** 先算全部乘積，再除以各自值。但要處理 0 的特殊情況（0 個零、1 個零、多個零）。
+- **這個前綴/後綴技巧還能用在哪？** Trapping Rain Water、Minimum Cost to Make Array Equal 等題。
+</Callout>
+
+## 理解測驗
+
+<Quiz data='{"question":"為什麼 answer[i] = prefix[i] × suffix[i] 就是除自身外的乘積？","options":["因為用了除法","因為 prefix[i] 包含 i 左邊所有元素的乘積，suffix[i] 包含 i 右邊所有元素的乘積，兩者合起來就是除 i 以外的所有元素","因為前綴積包含了 nums[i]","因為做了排序"],"answer":1,"explanation":"prefix[i] 是 i 左邊的乘積，suffix[i] 是 i 右邊的乘積，兩者相乘就跳過了 nums[i]。"}' />
+
+<Quiz data='{"question":"nums = [0, 1, 2] 時，answer 是什麼？","options":["[2, 0, 0]","[0, 0, 0]","[2, 0, 1]","[1, 0, 0]"],"answer":0,"explanation":"answer[0] = 1×2 = 2，answer[1] = 0×2 = 0，answer[2] = 0×1 = 0。"}' />

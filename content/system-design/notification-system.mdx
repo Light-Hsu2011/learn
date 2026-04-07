@@ -1,0 +1,163 @@
+---
+title: "設計通知系統"
+order: 9
+description: "多管道通知的統一架構：Push、Email、SMS、In-App"
+---
+
+# 設計通知系統（Notification System）
+
+<ELI5>
+想像學校要通知家長一件重要的事：
+
+- **廣播** → 馬上讓在校園裡的人聽到（Push Notification）
+- **公告欄** → 貼在走廊讓經過的人看到（In-App Notification）
+- **聯絡簿** → 請學生帶回家給家長簽名（Email）
+- **緊急電話** → 直接打給家長（SMS）
+
+不是每件事都要用全部管道通知。午餐菜單變更用公告欄就好，停課通知則每個管道都要發。通知系統就是這個「決定用什麼方式通知誰」的總指揮。
+</ELI5>
+
+## 問題定義
+
+<Callout type="info" title="核心挑戰">
+設計一個支援多管道（Push、Email、SMS、In-App）的統一通知系統，能根據通知類型、用戶偏好、優先級來決定發送策略，並確保高可用性與可擴展性。
+</Callout>
+
+## 需求分析
+
+**Functional Requirements：**
+- 支援多種通知管道：Push、Email、SMS、In-App
+- 用戶可設定通知偏好（哪些管道、哪些類型）
+- 通知分類與優先級（Critical / High / Normal / Low）
+- 通知模板管理（Template Service）
+- 通知歷史查詢
+
+**Non-functional Requirements：**
+- 高可用性：99.9% uptime，通知不可丟失
+- 低延遲：高優先級通知在 1 秒內送達
+- 可擴展：支撐每日數億則通知
+- 去重：同一通知不重複發送
+- Rate Limiting：防止通知轟炸用戶
+
+## 注意事項
+
+<Callout type="warning" title="實戰陷阱">
+**Rate Limiting 比你想的更重要。** 一個 Bug 觸發無限通知迴圈，可以在幾分鐘內發出數百萬封 Email，帳單金額驚人且用戶體驗崩壞。務必在多個層級設置限流：每用戶/每管道/每模板都要有上限。
+</Callout>
+
+## 設計流程
+
+<StepDiagram data='[{"title":"接收通知請求","description":"API Server 接收內部服務的通知請求，驗證格式與權限","icon":"1"},{"title":"通知路由決策","description":"根據通知類型、優先級、用戶偏好決定發送管道","icon":"2"},{"title":"去重與限流","description":"檢查是否重複通知，套用 Rate Limiting 規則","icon":"3"},{"title":"模板渲染","description":"Template Service 根據管道與語系產生最終內容","icon":"4"},{"title":"推送至 Message Queue","description":"按管道分別寫入對應的 Queue（Push Queue、Email Queue 等）","icon":"5"},{"title":"Worker 發送","description":"各管道 Worker 消費 Queue 訊息，呼叫第三方服務發送","icon":"6"},{"title":"狀態追蹤與重試","description":"記錄發送結果，失敗的進入 Retry Queue，搭配 Exponential Backoff","icon":"7"}]' />
+
+## 架構設計
+
+### 去重機制（Idempotency）
+
+```csharp
+public class NotificationDeduplicator
+{
+    private readonly IDistributedCache _cache;
+
+    public async Task<bool> IsDuplicate(string notificationKey)
+    {
+        // 用 notification_type + user_id + content_hash 產生唯一 key
+        var exists = await _cache.GetAsync(notificationKey);
+        if (exists != null) return true;
+
+        // 設定 TTL 避免無限膨脹（例如 24 小時）
+        await _cache.SetAsync(notificationKey, new byte[] { 1 },
+            new DistributedCacheEntryOptions
+            {
+                AbsoluteExpirationRelativeToNow = TimeSpan.FromHours(24)
+            });
+        return false;
+    }
+}
+```
+
+### Rate Limiter（Sliding Window）
+
+```typescript
+class NotificationRateLimiter {
+  private redis: Redis;
+
+  async isAllowed(
+    userId: string,
+    channel: string,
+    limit: number,
+    windowSeconds: number
+  ): Promise<boolean> {
+    const key = `rate:${userId}:${channel}`;
+    const now = Date.now();
+
+    // 移除過期的 timestamp
+    await this.redis.zremrangebyscore(key, 0, now - windowSeconds * 1000);
+    const count = await this.redis.zcard(key);
+
+    if (count >= limit) return false;
+
+    await this.redis.zadd(key, now, `${now}`);
+    await this.redis.expire(key, windowSeconds);
+    return true;
+  }
+}
+```
+
+### Retry 策略（Exponential Backoff）
+
+```python
+import asyncio
+from enum import IntEnum
+
+class Priority(IntEnum):
+    CRITICAL = 0
+    HIGH = 1
+    NORMAL = 2
+    LOW = 3
+
+async def send_with_retry(notification, max_retries=3):
+    for attempt in range(max_retries):
+        try:
+            await send_to_provider(notification)
+            await update_status(notification.id, "delivered")
+            return
+        except TransientError:
+            wait_time = (2 ** attempt) + random.uniform(0, 1)
+            await asyncio.sleep(wait_time)
+        except PermanentError:
+            await update_status(notification.id, "failed_permanent")
+            return
+
+    # 超過重試次數，進入 Dead Letter Queue
+    await move_to_dlq(notification)
+```
+
+## 架構圖
+
+<Diagram data='{"nodes":[{"id":"api","label":"API Server","type":"highlight"},{"id":"router","label":"Notification Router","type":"default"},{"id":"dedup","label":"Dedup + Rate Limiter","type":"default"},{"id":"template","label":"Template Service","type":"default"},{"id":"queue","label":"Message Queue","type":"highlight"},{"id":"push","label":"Push Worker","type":"default"},{"id":"email","label":"Email Worker","type":"default"},{"id":"sms","label":"SMS Worker","type":"default"},{"id":"inapp","label":"In-App Worker","type":"default"},{"id":"analytics","label":"Analytics","type":"muted"},{"id":"prefs","label":"User Preferences DB","type":"muted"}],"edges":[{"from":"api","to":"router","label":"通知請求"},{"from":"router","to":"prefs","label":"查詢偏好"},{"from":"router","to":"dedup","label":"去重與限流"},{"from":"dedup","to":"template","label":"渲染模板"},{"from":"template","to":"queue","label":"按管道分發"},{"from":"queue","to":"push","label":"Push"},{"from":"queue","to":"email","label":"Email"},{"from":"queue","to":"sms","label":"SMS"},{"from":"queue","to":"inapp","label":"In-App"},{"from":"push","to":"analytics","label":"送達狀態"},{"from":"email","to":"analytics","label":"送達狀態"}]}' />
+
+## 延伸討論
+
+<Callout type="tip" title="進階優化">
+**通知聚合（Batching）**：與其每個事件發一封 Email，不如累積 5 分鐘的事件打包成一封摘要信。這大幅降低發送成本，也減少用戶的通知疲勞。實作方式是在 Queue 前加一個 Aggregation Buffer，根據用戶偏好的聚合時間窗口來合併通知。
+</Callout>
+
+## 理解測驗
+
+<Quiz data='{"question":"為什麼通知系統需要去重機制？","options":["讓通知發送更快","減少資料庫儲存空間","防止同一通知重複發送給用戶，避免騷擾","讓系統支援更多管道"],"answer":2,"explanation":"在分散式系統中，網路重試或服務重啟都可能導致同一通知被重複觸發。去重機制（通常基於 notification_key + Redis/Bloom Filter）確保用戶不會收到重複通知。"}' />
+
+<Quiz data='{"question":"Exponential Backoff 的重試間隔為什麼要加上隨機值（Jitter）？","options":["讓程式碼更有趣","避免所有失敗的 Worker 在同一時間重試，造成 Thundering Herd","減少記憶體使用","讓用戶更快收到通知"],"answer":1,"explanation":"如果 1000 個 Worker 同時失敗，沒有 Jitter 的話它們會在完全相同的時間點重試，瞬間壓垮下游服務。加入隨機 Jitter 讓重試時間分散，減輕衝擊。"}' />
+
+<Quiz data='{"question":"哪種做法最適合處理「用戶偏好不要在半夜收到非緊急通知」的需求？","options":["在 Push Worker 裡加 if 判斷時間","在 Notification Router 層根據用戶偏好和時區決定是否延遲發送","關閉半夜的所有通知","讓用戶自己設定手機勿擾模式"],"answer":1,"explanation":"在 Router 層（發送決策點）統一處理時區與偏好邏輯，將非緊急通知排入延遲 Queue，比在每個 Worker 裡分別處理更一致且易維護。"}' />
+
+## 重點整理
+
+| 概念 | 說明 |
+|------|------|
+| **多管道發送** | Push、Email、SMS、In-App 各有 Worker，透過 Message Queue 解耦 |
+| **通知優先級** | Critical 即時發送，Low 可聚合批次處理 |
+| **去重機制** | 用 notification_key + 分散式快取避免重複發送 |
+| **Rate Limiting** | 每用戶/每管道/每模板分別設限，防止通知轟炸 |
+| **Retry 策略** | Exponential Backoff + Jitter，超過次數進 Dead Letter Queue |
+| **模板服務** | 統一管理通知內容，支援多語系與多管道格式 |
+| **用戶偏好** | 讓用戶控制接收管道、時段、頻率 |

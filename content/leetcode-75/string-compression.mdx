@@ -1,0 +1,130 @@
+---
+title: "443. String Compression"
+order: 9
+description: "用雙指針原地壓縮字元陣列記錄字元和出現次數"
+---
+
+# String Compression
+
+<ELI5>
+想像你在整理一排重複的積木：紅紅紅藍藍綠。與其說「紅紅紅藍藍綠」，你可以簡寫成「紅3藍2綠」— 每種顏色後面加上出現次數（只有 1 個就不寫數字）。
+
+這題要你在原地（不用額外陣列）做這件事。用一個「讀取指針」數連續相同字元，用一個「寫入指針」把壓縮結果寫回原陣列。
+</ELI5>
+
+## 題目描述
+
+給定字元陣列 `chars`，原地壓縮。連續相同字元替換為「字元+計數」（計數為 1 時省略）。回傳壓縮後陣列的長度。
+
+```
+輸入：chars = ["a","a","b","b","c","c","c"]
+輸出：6（陣列變為 ["a","2","b","2","c","3"]）
+
+輸入：chars = ["a"]
+輸出：1
+
+輸入：chars = ["a","b","b","b","b","b","b","b","b","b","b","b","b"]
+輸出：4（陣列變為 ["a","b","1","2"]）
+```
+
+## 解題思路
+
+<StepDiagram data='[{"title":"初始化","description":"write = 0（寫入位置），read = 0（讀取位置）","icon":"1"},{"title":"計算連續字元","description":"從 read 開始數相同字元的數量 count","icon":"2"},{"title":"寫入字元","description":"chars[write++] = 當前字元","icon":"3"},{"title":"寫入計數","description":"若 count > 1，將數字逐位寫入","icon":"4"},{"title":"繼續","description":"read 移到下一組不同字元，重複直到結束","icon":"5"}]' />
+
+## 程式碼
+
+### C#
+
+```csharp
+public class Solution {
+    public int Compress(char[] chars) {
+        int write = 0, read = 0;
+        while (read < chars.Length) {
+            char current = chars[read];
+            int count = 0;
+            // 計算連續相同字元數
+            while (read < chars.Length && chars[read] == current) {
+                read++;
+                count++;
+            }
+            // 寫入字元
+            chars[write++] = current;
+            // 寫入計數（大於 1 時）
+            if (count > 1) {
+                foreach (char c in count.ToString())
+                    chars[write++] = c;
+            }
+        }
+        return write;
+    }
+}
+```
+
+### TypeScript
+
+```typescript
+function compress(chars: string[]): number {
+    let write = 0, read = 0;
+    while (read < chars.length) {
+        const current = chars[read];
+        let count = 0;
+        while (read < chars.length && chars[read] === current) {
+            read++;
+            count++;
+        }
+        chars[write++] = current;
+        if (count > 1) {
+            for (const c of count.toString()) {
+                chars[write++] = c;
+            }
+        }
+    }
+    return write;
+}
+```
+
+### Python
+
+```python
+def compress(chars: list[str]) -> int:
+    write = read = 0
+    while read < len(chars):
+        current = chars[read]
+        count = 0
+        while read < len(chars) and chars[read] == current:
+            read += 1
+            count += 1
+        chars[write] = current
+        write += 1
+        if count > 1:
+            for c in str(count):
+                chars[write] = c
+                write += 1
+    return write
+```
+
+## 複雜度分析
+
+| | Time | Space |
+|--|------|-------|
+| 本解法 | O(n) | O(1) |
+
+原地修改，只用常數額外空間。
+
+## 圖解
+
+<Diagram data='{"nodes":[{"id":"input","label":"[a,a,b,b,c,c,c]","type":"default"},{"id":"step1","label":"寫入 a,2","type":"highlight"},{"id":"step2","label":"寫入 b,2","type":"highlight"},{"id":"step3","label":"寫入 c,3","type":"highlight"},{"id":"result","label":"[a,2,b,2,c,3] len=6","type":"muted"}],"edges":[{"from":"input","to":"step1","label":"read 掃描 aa"},{"from":"step1","to":"step2","label":"read 掃描 bb"},{"from":"step2","to":"step3","label":"read 掃描 ccc"},{"from":"step3","to":"result","label":"完成"}]}' />
+
+## 進階觀點
+
+<Callout type="tip" title="面試追問">
+- **計數超過 9 怎麼處理？** 如 12 要寫成 '1','2' 兩個字元，所以要把數字轉字串再逐字元寫入。
+- **為什麼寫入指針不會超過讀取指針？** 因為壓縮後的長度永遠 ≤ 原始長度（最差情況相等）。
+- **Run-Length Encoding 的應用？** 影像壓縮、簡單文字壓縮、面試高頻考點。
+</Callout>
+
+## 理解測驗
+
+<Quiz data='{"question":"為什麼 write 指針永遠不會超過 read 指針？","options":["因為陣列是排序的","因為壓縮後表示永遠不比原始長（1個字元寫1位，n>1個字元寫1+digits位，而 n >= 1+digits）","因為用了額外陣列","因為只處理小寫字母"],"answer":1,"explanation":"即使最差情況（每個字元都不同），write 也只是跟 read 同步，不會超過。"}' />
+
+<Quiz data='{"question":"chars = [\"a\",\"b\",\"c\"] 壓縮後結果是什麼？","options":["[a,1,b,1,c,1] 長度6","[a,b,c] 長度3","[abc] 長度1","[a,b,c,3] 長度4"],"answer":1,"explanation":"每個字元只出現 1 次，計數為 1 時不寫數字，所以陣列不變。"}' />

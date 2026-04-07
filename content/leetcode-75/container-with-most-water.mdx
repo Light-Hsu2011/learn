@@ -1,0 +1,108 @@
+---
+title: "11. Container With Most Water"
+order: 12
+description: "用左右指針從兩端夾逼，每次移動較矮的那邊來尋找最大面積"
+---
+
+# Container With Most Water
+
+<ELI5>
+想像你有一排高低不同的木板，要選兩塊木板當容器的左右壁，裝最多的水。水量取決於兩塊板之間的距離和較矮那塊板的高度。
+
+直覺做法是每一對都試一次，但太慢了。聰明做法：從最左和最右兩塊板開始（距離最大），計算面積，然後移動較矮的那邊 — 因為移動較高的那邊只會讓寬度變小而高度不可能變高，面積只會更小。
+</ELI5>
+
+## 題目描述
+
+給定整數陣列 `height`，第 i 條線段端點為 `(i, 0)` 和 `(i, height[i])`。找兩條線段，使其與 x 軸圍成的容器能裝最多水。
+
+```
+輸入：height = [1,8,6,2,5,4,8,3,7]
+輸出：49（選擇 i=1, j=8，min(8,7)×7 = 49）
+
+輸入：height = [1,1]
+輸出：1
+```
+
+## 解題思路
+
+<StepDiagram data='[{"title":"雙指針初始化","description":"left = 0, right = n-1，從最寬開始","icon":"1"},{"title":"計算面積","description":"area = min(height[left], height[right]) × (right - left)","icon":"2"},{"title":"更新最大值","description":"maxArea = max(maxArea, area)","icon":"3"},{"title":"移動較矮邊","description":"height[left] < height[right] 時 left++，否則 right--","icon":"4"},{"title":"重複","description":"直到 left >= right","icon":"5"}]' />
+
+## 程式碼
+
+### C#
+
+```csharp
+public class Solution {
+    public int MaxArea(int[] height) {
+        int left = 0, right = height.Length - 1;
+        int maxArea = 0;
+        while (left < right) {
+            int area = Math.Min(height[left], height[right]) * (right - left);
+            maxArea = Math.Max(maxArea, area);
+            // 移動較矮的那邊
+            if (height[left] < height[right]) left++;
+            else right--;
+        }
+        return maxArea;
+    }
+}
+```
+
+### TypeScript
+
+```typescript
+function maxArea(height: number[]): number {
+    let left = 0, right = height.length - 1;
+    let maxArea = 0;
+    while (left < right) {
+        const area = Math.min(height[left], height[right]) * (right - left);
+        maxArea = Math.max(maxArea, area);
+        if (height[left] < height[right]) left++;
+        else right--;
+    }
+    return maxArea;
+}
+```
+
+### Python
+
+```python
+def maxArea(height: list[int]) -> int:
+    left, right = 0, len(height) - 1
+    max_area = 0
+    while left < right:
+        area = min(height[left], height[right]) * (right - left)
+        max_area = max(max_area, area)
+        if height[left] < height[right]:
+            left += 1
+        else:
+            right -= 1
+    return max_area
+```
+
+## 複雜度分析
+
+| | Time | Space |
+|--|------|-------|
+| 本解法 | O(n) | O(1) |
+
+雙指針各走一遍，總共 O(n)。
+
+## 圖解
+
+<Diagram data='{"nodes":[{"id":"input","label":"height: [1,8,6,2,5,4,8,3,7]","type":"default"},{"id":"wide","label":"left=0,right=8: min(1,7)×8=8","type":"default"},{"id":"move","label":"移動較矮邊(left)","type":"highlight"},{"id":"best","label":"left=1,right=8: min(8,7)×7=49","type":"highlight"},{"id":"result","label":"maxArea = 49","type":"muted"}],"edges":[{"from":"input","to":"wide","label":"最寬配對"},{"from":"wide","to":"move","label":"1 < 7"},{"from":"move","to":"best","label":"新配對"},{"from":"best","to":"result","label":"持續夾逼"}]}' />
+
+## 進階觀點
+
+<Callout type="tip" title="面試追問">
+- **為什麼移動較矮邊是正確的？** 面積由較矮邊決定。移動較高邊只會讓寬度減少，而高度不可能超過現有較矮邊，面積必定變小。移動較矮邊至少有機會找到更高的板。
+- **跟 Trapping Rain Water 的差別？** 本題找兩條線的最大面積；Trapping Rain Water 計算所有凹槽的總水量。
+- **兩邊等高時移哪邊？** 移哪邊都可以，因為兩邊都「可能」找到更好的答案，不會漏掉最優解。
+</Callout>
+
+## 理解測驗
+
+<Quiz data='{"question":"為什麼從最寬的配對開始？","options":["因為最寬一定是最大面積","因為寬度會逐漸減小，我們透過尋找更高的線來彌補寬度損失","因為方便排序","因為左右指針必須這樣初始化"],"answer":1,"explanation":"從最寬開始保證不遺漏。每次縮小寬度時，只移動較矮邊才有機會找到更高的線來增加面積。"}' />
+
+<Quiz data='{"question":"暴力法的時間複雜度是多少？","options":["O(n)","O(n log n)","O(n²)","O(2^n)"],"answer":2,"explanation":"暴力法需要嘗試所有 n×(n-1)/2 對組合，時間複雜度為 O(n²)。"}' />

@@ -1,0 +1,296 @@
+---
+title: "Prototype Pattern"
+order: 6
+description: "透過複製現有物件來建立新物件，而非從頭建立"
+---
+
+# Prototype Pattern（原型模式）
+
+<ELI5>
+想像你有一份精心排版好的**履歷表**。你的朋友也想做一份類似的，他不需要從空白文件開始排版，只要拿你的履歷去**影印一份**，然後把名字、經歷改成自己的就好。
+
+這就像辦公室的影印機 — 原始文件放上去，按個按鈕就複製出一模一樣的副本。你可以在副本上修改，完全不會影響原始文件。
+
+Prototype 就是這個概念：**透過複製一個現有的物件來建立新物件，比從頭建立更快更方便。**
+</ELI5>
+
+## 是什麼？
+
+Prototype Pattern 讓你透過**複製（Clone）**一個現有的物件來建立新物件，而非透過 new 從頭建構。被複製的物件就是「原型（Prototype）」，新物件是它的副本，可以在副本上做修改而不影響原型。
+
+<Callout type="info" title="GoF 分類">
+Prototype 屬於**建立型模式（Creational Pattern）**，重點在於透過複製既有物件來避免重複的初始化成本。
+</Callout>
+
+## 什麼時候用？
+
+- 物件的建立成本很高（例如需要讀取資料庫、呼叫 API、大量計算）
+- 你需要建立的新物件和現有物件只有少許差異
+- 你想避免依賴具體類別的建構子（透過介面的 Clone 方法建立）
+
+## 什麼時候不該用？
+
+<Callout type="warning" title="過度設計警告">
+如果物件建立成本很低（只是 new 加幾個欄位賦值），用 Prototype 反而多此一舉。另外，當物件有複雜的循環參考時，正確實作 Deep Clone 會非常困難且容易出錯。
+</Callout>
+
+## 執行流程
+
+<StepDiagram data='[{"title":"定義 Prototype 介面","description":"宣告 Clone() 方法，回傳自身型別的副本","icon":"1"},{"title":"實作 Clone","description":"在具體類別中實作深複製或淺複製邏輯","icon":"2"},{"title":"建立原型物件","description":"建立一個完整配置好的物件作為原型","icon":"3"},{"title":"複製原型","description":"呼叫 Clone() 取得副本","icon":"4"},{"title":"修改副本","description":"在副本上調整需要變更的部分","icon":"5"}]' />
+
+## 程式碼範例
+
+### C# 版本
+
+```csharp
+// 1. Prototype 介面
+public interface IDocumentPrototype
+{
+    IDocumentPrototype Clone();
+}
+
+// 2. 具體原型
+public class ReportTemplate : IDocumentPrototype
+{
+    public string Title { get; set; } = "";
+    public string Header { get; set; } = "";
+    public string Footer { get; set; } = "";
+    public List<string> Sections { get; set; } = new();
+    public Dictionary<string, string> Styles { get; set; } = new();
+
+    // Deep Clone
+    public IDocumentPrototype Clone()
+    {
+        return new ReportTemplate
+        {
+            Title = this.Title,
+            Header = this.Header,
+            Footer = this.Footer,
+            Sections = new List<string>(this.Sections),
+            Styles = new Dictionary<string, string>(this.Styles)
+        };
+    }
+
+    public override string ToString() =>
+        $"Report: {Title} | Sections: {Sections.Count} | Styles: {Styles.Count}";
+}
+
+// 3. 使用
+var template = new ReportTemplate
+{
+    Title = "月報範本",
+    Header = "公司機密",
+    Footer = "第 {page} 頁",
+    Sections = new List<string> { "摘要", "本月數據", "下月計畫" },
+    Styles = new Dictionary<string, string> { ["font"] = "Arial", ["size"] = "12pt" }
+};
+
+// 複製後修改
+var januaryReport = (ReportTemplate)template.Clone();
+januaryReport.Title = "2024 年 1 月報";
+januaryReport.Sections.Add("特別事項：農曆新年");
+
+var februaryReport = (ReportTemplate)template.Clone();
+februaryReport.Title = "2024 年 2 月報";
+
+Console.WriteLine(template);        // Report: 月報範本 | Sections: 3
+Console.WriteLine(januaryReport);   // Report: 2024 年 1 月報 | Sections: 4
+Console.WriteLine(februaryReport);  // Report: 2024 年 2 月報 | Sections: 3
+```
+
+### TypeScript 版本
+
+```typescript
+// 1. Prototype 介面
+interface Cloneable<T> {
+  clone(): T;
+}
+
+// 2. 具體原型
+class ReportTemplate implements Cloneable<ReportTemplate> {
+  constructor(
+    public title: string = "",
+    public header: string = "",
+    public footer: string = "",
+    public sections: string[] = [],
+    public styles: Record<string, string> = {}
+  ) {}
+
+  clone(): ReportTemplate {
+    return new ReportTemplate(
+      this.title,
+      this.header,
+      this.footer,
+      [...this.sections],
+      { ...this.styles }
+    );
+  }
+
+  toString(): string {
+    return `Report: ${this.title} | Sections: ${this.sections.length}`;
+  }
+}
+
+// 3. 使用
+const template = new ReportTemplate(
+  "月報範本", "公司機密", "第 {page} 頁",
+  ["摘要", "本月數據", "下月計畫"],
+  { font: "Arial", size: "12pt" }
+);
+
+const januaryReport = template.clone();
+januaryReport.title = "2024 年 1 月報";
+januaryReport.sections.push("特別事項：農曆新年");
+
+const februaryReport = template.clone();
+februaryReport.title = "2024 年 2 月報";
+
+console.log(template.toString());        // Report: 月報範本 | Sections: 3
+console.log(januaryReport.toString());   // Report: 2024 年 1 月報 | Sections: 4
+console.log(februaryReport.toString());  // Report: 2024 年 2 月報 | Sections: 3
+```
+
+### Python 版本
+
+```python
+import copy
+from dataclasses import dataclass, field
+
+# 1. 具體原型（Python 用 copy 模組）
+@dataclass
+class ReportTemplate:
+    title: str = ""
+    header: str = ""
+    footer: str = ""
+    sections: list = field(default_factory=list)
+    styles: dict = field(default_factory=dict)
+
+    def clone(self) -> "ReportTemplate":
+        return copy.deepcopy(self)
+
+    def __str__(self) -> str:
+        return f"Report: {self.title} | Sections: {len(self.sections)}"
+
+# 2. 使用
+template = ReportTemplate(
+    title="月報範本",
+    header="公司機密",
+    footer="第 {page} 頁",
+    sections=["摘要", "本月數據", "下月計畫"],
+    styles={"font": "Arial", "size": "12pt"},
+)
+
+january_report = template.clone()
+january_report.title = "2024 年 1 月報"
+january_report.sections.append("特別事項：農曆新年")
+
+february_report = template.clone()
+february_report.title = "2024 年 2 月報"
+
+print(template)         # Report: 月報範本 | Sections: 3
+print(january_report)   # Report: 2024 年 1 月報 | Sections: 4
+print(february_report)  # Report: 2024 年 2 月報 | Sections: 3
+```
+
+### Java 版本
+
+```java
+import java.util.*;
+
+// 1. Prototype 介面
+public interface DocumentPrototype {
+    DocumentPrototype clone();
+}
+
+// 2. 具體原型
+public class ReportTemplate implements DocumentPrototype {
+    private String title;
+    private String header;
+    private String footer;
+    private List<String> sections;
+    private Map<String, String> styles;
+
+    public ReportTemplate(String title, String header, String footer,
+                          List<String> sections, Map<String, String> styles) {
+        this.title = title;
+        this.header = header;
+        this.footer = footer;
+        this.sections = sections;
+        this.styles = styles;
+    }
+
+    @Override
+    public ReportTemplate clone() {
+        return new ReportTemplate(
+            this.title, this.header, this.footer,
+            new ArrayList<>(this.sections),
+            new HashMap<>(this.styles)
+        );
+    }
+
+    public void setTitle(String title) { this.title = title; }
+    public List<String> getSections() { return sections; }
+
+    @Override
+    public String toString() {
+        return "Report: " + title + " | Sections: " + sections.size();
+    }
+}
+
+// 3. 使用
+ReportTemplate template = new ReportTemplate(
+    "月報範本", "公司機密", "第 {page} 頁",
+    new ArrayList<>(List.of("摘要", "本月數據", "下月計畫")),
+    new HashMap<>(Map.of("font", "Arial", "size", "12pt"))
+);
+
+ReportTemplate januaryReport = template.clone();
+januaryReport.setTitle("2024 年 1 月報");
+januaryReport.getSections().add("特別事項：農曆新年");
+
+ReportTemplate februaryReport = template.clone();
+februaryReport.setTitle("2024 年 2 月報");
+
+System.out.println(template);        // Report: 月報範本 | Sections: 3
+System.out.println(januaryReport);   // Report: 2024 年 1 月報 | Sections: 4
+System.out.println(februaryReport);  // Report: 2024 年 2 月報 | Sections: 3
+```
+
+## 結構圖
+
+<Diagram data='{"nodes":[{"id":"client","label":"Client","type":"muted"},{"id":"prototype","label":"Prototype (interface)","type":"highlight"},{"id":"concrete","label":"ReportTemplate (ConcretePrototype)","type":"default"},{"id":"cloned","label":"Cloned Object","type":"default"}],"edges":[{"from":"client","to":"prototype","label":"clone()"},{"from":"prototype","to":"concrete","label":"implements"},{"from":"concrete","to":"cloned","label":"creates copy"}]}' />
+
+## 實戰補充
+
+<Callout type="tip" title="資深開發者經驗">
+**Deep Clone vs Shallow Clone**：Shallow Clone 只複製第一層，參考型別（List、Dictionary）仍指向同一份資料。Deep Clone 會遞迴複製所有層級。大多數情境你需要的是 Deep Clone，否則修改副本會影響原型。
+
+**C# ICloneable 的陷阱**：C# 內建的 `ICloneable` 介面回傳 `object`，沒有泛型支援，也沒有規定是 Deep 還是 Shallow Clone。建議自定義 `IPrototype<T>` 介面，明確語意。
+
+**Prototype Registry**：可以用一個 Dictionary 存放常用的原型，需要時用 key 查詢並 Clone。這在遊戲開發中很常見 — 預設一組怪物原型，生成新怪物時直接複製。
+
+**序列化做 Deep Clone**：懶人版 Deep Clone 可以用 JSON 序列化再反序列化：`JsonSerializer.Deserialize<T>(JsonSerializer.Serialize(obj))`。效能較差但實作簡單，適合不頻繁的場景。
+</Callout>
+
+## 理解測驗
+
+<Quiz data='{"question":"Prototype Pattern 的核心機制是什麼？","options":["透過繼承建立新物件","透過工廠方法建立新物件","透過複製現有物件建立新物件","透過反射建立新物件"],"answer":2,"explanation":"Prototype Pattern 的核心就是 Clone — 複製一個現有的物件來產生新物件，避免從頭建構的成本。"}' />
+
+<Quiz data='{"question":"Deep Clone 和 Shallow Clone 的差別是什麼？","options":["Deep Clone 比較慢所以不好","Shallow Clone 只複製第一層，參考型別仍共用；Deep Clone 遞迴複製所有層級","兩者完全一樣","Deep Clone 只能用在基本型別"],"answer":1,"explanation":"Shallow Clone 只複製值型別和參考的指標，Deep Clone 會遞迴複製所有巢狀物件，確保副本和原型完全獨立。"}' />
+
+<Quiz data='{"question":"以下哪個場景最適合用 Prototype Pattern？","options":["建立一個空的字串","遊戲中需要大量生成配置相似的怪物，每隻只有少許屬性差異","執行一個簡單的數學運算","讀取環境變數"],"answer":1,"explanation":"大量生成相似物件時，從原型 Clone 再微調比每次從頭建構更有效率，這是 Prototype 的經典場景。"}' />
+
+## 重點整理
+
+<Callout type="tip" title="一句話記住">
+**Prototype Pattern = 複製一個現成的物件，在副本上修改，比從頭建立更快。**
+</Callout>
+
+| 概念 | 說明 |
+|------|------|
+| **Prototype（原型介面）** | 定義 Clone() 方法 |
+| **ConcretePrototype（具體原型）** | 實作 Clone()，複製自身 |
+| **Deep Clone** | 遞迴複製所有層級，副本完全獨立 |
+| **Shallow Clone** | 只複製第一層，巢狀物件仍共用 |
+| **核心好處** | 避免昂貴的初始化成本 + 不依賴具體類別的建構子 |
+| **代價** | 正確實作 Deep Clone 可能很複雜（循環參考等） |

@@ -1,0 +1,146 @@
+---
+title: "1466. Reorder Routes to Make All Paths Lead to the City Zero"
+order: 45
+description: "DFS 遍歷樹形圖，計算需要反轉方向的邊數"
+---
+
+# Reorder Routes to Make All Paths Lead to the City Zero
+
+<ELI5>
+想像一個國家有 n 座城市，城市之間有單行道連接，形成一棵樹。現在國王下令：所有道路必須讓每座城市都能到達首都（城市 0）。
+
+你的任務是計算需要「掉頭」的道路數量。從首都出發做 DFS，如果你沿著一條道路的「原始方向」走（離開首都），那這條路就需要反轉。如果你是「逆向」走的（朝向首都），那這條路方向正確。
+
+關鍵洞察：把有向圖當成無向圖做 DFS，但記住每條邊的原始方向。
+</ELI5>
+
+## 題目描述
+
+有 n 座城市和 n-1 條有向道路。回傳最少需要改變方向的道路數量，使所有城市都能到達城市 0。
+
+```
+輸入: n = 6, connections = [[0,1],[1,3],[2,3],[4,0],[4,5]]
+輸出: 3
+解釋: 需要反轉 0→1, 1→3, 4→5 三條路
+
+輸入: n = 3, connections = [[1,0],[2,0]]
+輸出: 0
+解釋: 所有路已經指向 0
+```
+
+## 解題思路
+
+<StepDiagram data='[{"title":"建立雙向鄰接表","description":"每條邊存正向和反向，用標記區分","icon":"1"},{"title":"從城市 0 DFS","description":"把 0 當作根，向外探索","icon":"2"},{"title":"檢查邊方向","description":"如果邊是「離開首都」的方向，計數 +1","icon":"3"},{"title":"累計結果","description":"所有離開首都方向的邊數就是答案","icon":"4"}]' />
+
+## 程式碼
+
+### C#
+
+```csharp
+public class Solution {
+    public int MinReorder(int n, int[][] connections) {
+        // 建立鄰接表：(鄰居, 是否為原始方向)
+        var graph = new List<(int to, bool isOriginal)>[n];
+        for (int i = 0; i < n; i++) graph[i] = new();
+
+        foreach (var conn in connections) {
+            graph[conn[0]].Add((conn[1], true));   // 原始方向
+            graph[conn[1]].Add((conn[0], false));  // 反向（輔助遍歷）
+        }
+
+        var visited = new bool[n];
+        return Dfs(0, graph, visited);
+    }
+
+    private int Dfs(int city, List<(int to, bool isOriginal)>[] graph, bool[] visited) {
+        visited[city] = true;
+        int count = 0;
+        foreach (var (to, isOriginal) in graph[city]) {
+            if (!visited[to]) {
+                if (isOriginal) count++; // 離開首都方向，需要反轉
+                count += Dfs(to, graph, visited);
+            }
+        }
+        return count;
+    }
+}
+```
+
+### TypeScript
+
+```typescript
+function minReorder(n: number, connections: number[][]): number {
+    const graph: [number, boolean][][] = Array.from({ length: n }, () => []);
+
+    for (const [a, b] of connections) {
+        graph[a].push([b, true]);   // 原始方向
+        graph[b].push([a, false]);  // 反向
+    }
+
+    const visited = new Array(n).fill(false);
+
+    function dfs(city: number): number {
+        visited[city] = true;
+        let count = 0;
+        for (const [to, isOriginal] of graph[city]) {
+            if (!visited[to]) {
+                if (isOriginal) count++; // 需要反轉
+                count += dfs(to);
+            }
+        }
+        return count;
+    }
+
+    return dfs(0);
+}
+```
+
+### Python
+
+```python
+def minReorder(n: int, connections: list[list[int]]) -> int:
+    graph = [[] for _ in range(n)]
+    for a, b in connections:
+        graph[a].append((b, True))   # 原始方向
+        graph[b].append((a, False))  # 反向
+
+    visited = [False] * n
+
+    def dfs(city):
+        visited[city] = True
+        count = 0
+        for to, is_original in graph[city]:
+            if not visited[to]:
+                if is_original:
+                    count += 1  # 需要反轉
+                count += dfs(to)
+        return count
+
+    return dfs(0)
+```
+
+## 複雜度分析
+
+| | Time | Space |
+|--|------|-------|
+| 本解法 | O(n) | O(n) |
+
+## 圖解
+
+<Diagram data='{"nodes":[{"id":"c0","label":"0 (首都)","type":"highlight"},{"id":"c1","label":"1","type":"default"},{"id":"c3","label":"3","type":"default"},{"id":"c2","label":"2","type":"default"},{"id":"c4","label":"4","type":"default"},{"id":"c5","label":"5","type":"default"}],"edges":[{"from":"c0","to":"c1","label":"0→1 反轉!"},{"from":"c1","to":"c3","label":"1→3 反轉!"},{"from":"c2","to":"c3","label":"2→3 OK"},{"from":"c4","to":"c0","label":"4→0 OK"},{"from":"c4","to":"c5","label":"4→5 反轉!"}]}' />
+
+## 進階觀點
+
+<Callout type="tip" title="面試追問">
+**為什麼建雙向鄰接表？** 因為有向邊可能讓 DFS 走不到某些節點。建雙向邊確保遍歷到所有節點，同時用 boolean 標記記住原始方向。
+
+**核心洞察**：n 個城市 n-1 條邊形成一棵樹。從根（城市 0）出發 DFS，所有「離開根」方向的邊都需要反轉。
+
+**變體題**：LC 207 Course Schedule（有向圖環檢測）、LC 332 Reconstruct Itinerary。
+</Callout>
+
+## 理解測驗
+
+<Quiz data='{"question":"為什麼從城市 0 出發 DFS 時，「原始方向」的邊需要反轉？","options":["因為原始方向是錯的","因為原始方向是離開首都的方向，但我們需要所有路指向首都","因為反向邊更短","因為 DFS 的特性"],"answer":1,"explanation":"從首都 DFS 向外走，如果某條邊的原始方向也是向外（離開首都），那它需要反轉才能讓城市沿這條邊回到首都。"}' />
+
+<Quiz data='{"question":"這題的圖為什麼一定是樹？","options":["因為題目說是樹","因為 n 個節點 n-1 條邊且保證連通，這就是樹的定義","因為沒有環","因為是有向圖"],"answer":1,"explanation":"n 個節點 + n-1 條邊 + 連通 = 樹。樹沒有環，所以每兩個城市之間恰好有一條路徑。"}' />

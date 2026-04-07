@@ -1,0 +1,140 @@
+---
+title: "199. Binary Tree Right Side View"
+order: 39
+description: "BFS 逐層遍歷，收集每層最後一個節點"
+---
+
+# Binary Tree Right Side View
+
+<ELI5>
+想像你站在一棵樹的右邊往左看。你只能看到每一層最右邊的那個節點，因為其他節點被擋住了。
+
+就像站在一排教室外面，每間教室坐了一排學生，你從右邊的窗戶看進去，只看得到最靠近窗戶（最右邊）的那個學生。
+
+用 BFS 逐層遍歷，每層取最後一個元素就是答案。
+</ELI5>
+
+## 題目描述
+
+給定一棵二元樹的根節點 root，回傳從右側看到的節點值（從上到下排列）。
+
+```
+輸入:     1
+         / \
+        2   3
+         \   \
+          5   4
+輸出: [1, 3, 4]
+
+輸入:   1
+         \
+          3
+輸出: [1, 3]
+```
+
+## 解題思路
+
+<StepDiagram data='[{"title":"初始化 Queue","description":"把 root 放入 Queue","icon":"1"},{"title":"逐層遍歷","description":"每次處理 Queue 中當前層的所有節點","icon":"2"},{"title":"記錄每層最後一個","description":"每層的最後一個節點就是右側可見的","icon":"3"},{"title":"加入子節點","description":"將下一層的子節點加入 Queue","icon":"4"}]' />
+
+## 程式碼
+
+### C#
+
+```csharp
+public class Solution {
+    public IList<int> RightSideView(TreeNode root) {
+        var result = new List<int>();
+        if (root == null) return result;
+
+        var queue = new Queue<TreeNode>();
+        queue.Enqueue(root);
+
+        while (queue.Count > 0) {
+            int levelSize = queue.Count;
+            for (int i = 0; i < levelSize; i++) {
+                var node = queue.Dequeue();
+                // 每層最後一個節點
+                if (i == levelSize - 1) result.Add(node.val);
+                if (node.left != null) queue.Enqueue(node.left);
+                if (node.right != null) queue.Enqueue(node.right);
+            }
+        }
+        return result;
+    }
+}
+```
+
+### TypeScript
+
+```typescript
+function rightSideView(root: TreeNode | null): number[] {
+    if (!root) return [];
+
+    const result: number[] = [];
+    const queue: TreeNode[] = [root];
+
+    while (queue.length > 0) {
+        const levelSize = queue.length;
+        for (let i = 0; i < levelSize; i++) {
+            const node = queue.shift()!;
+            if (i === levelSize - 1) result.push(node.val);
+            if (node.left) queue.push(node.left);
+            if (node.right) queue.push(node.right);
+        }
+    }
+    return result;
+}
+```
+
+### Python
+
+```python
+from collections import deque
+
+def rightSideView(root: Optional[TreeNode]) -> list[int]:
+    if not root:
+        return []
+
+    result = []
+    queue = deque([root])
+
+    while queue:
+        level_size = len(queue)
+        for i in range(level_size):
+            node = queue.popleft()
+            if i == level_size - 1:  # 每層最後一個
+                result.append(node.val)
+            if node.left:
+                queue.append(node.left)
+            if node.right:
+                queue.append(node.right)
+    return result
+```
+
+## 複雜度分析
+
+| | Time | Space |
+|--|------|-------|
+| 本解法 | O(n) | O(w) |
+
+w 是樹的最大寬度，最壞 O(n)。
+
+## 圖解
+
+<Diagram data='{"nodes":[{"id":"n1","label":"1 ← 第 0 層可見","type":"highlight"},{"id":"n2","label":"2","type":"muted"},{"id":"n3","label":"3 ← 第 1 層可見","type":"highlight"},{"id":"n5","label":"5","type":"muted"},{"id":"n4","label":"4 ← 第 2 層可見","type":"highlight"}],"edges":[{"from":"n1","to":"n2","label":"左"},{"from":"n1","to":"n3","label":"右"},{"from":"n2","to":"n5","label":"右"},{"from":"n3","to":"n4","label":"右"}]}' />
+
+## 進階觀點
+
+<Callout type="tip" title="面試追問">
+**DFS 解法**：也可以用 DFS，維護 depth 變數，當 depth == result.length 時代表這是該層第一次被訪問的最右節點（先走右再走左）。
+
+**Left Side View**：改成每層第一個元素就是左側視圖。BFS 中改 `i == 0` 即可。
+
+**變體題**：LC 116 Populating Next Right Pointers、LC 102 Binary Tree Level Order Traversal。
+</Callout>
+
+## 理解測驗
+
+<Quiz data='{"question":"為什麼用 BFS 而不是 DFS 來解這題更直覺？","options":["BFS 比較快","BFS 天然按層遍歷，容易取每層最後一個","DFS 不能解這題","BFS 不需要遞迴"],"answer":1,"explanation":"BFS 逐層處理節點，每層結束時自然知道最後一個是誰。DFS 也能解，但需要額外追蹤深度。"}' />
+
+<Quiz data='{"question":"如果某層只有左子節點沒有右子節點，右側看到的是哪個？","options":["看不到任何節點","看到左子節點","看到父節點","看到 null"],"answer":1,"explanation":"右側視圖是每層最右邊的節點。如果該層只有左子節點，它就是最右邊的，所以能看到。"}' />

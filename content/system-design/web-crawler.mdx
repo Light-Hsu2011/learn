@@ -1,0 +1,193 @@
+---
+title: "設計網路爬蟲"
+order: 10
+description: "大規模爬取網頁的系統設計：排程、去重、禮貌原則"
+---
+
+# 設計網路爬蟲（Web Crawler）
+
+<ELI5>
+想像一個超級認真的圖書館員，他的工作是巡視全世界的圖書館：
+
+1. 從大門進去（**Seed URL**），看到書架上的書（網頁內容）
+2. 翻開每本書，記錄書名和位置（**爬取與儲存**）
+3. 發現書裡提到其他圖書館的地址（**超連結**），記在清單上
+4. 去過的圖書館打勾，避免重複去（**去重**）
+5. 每間圖書館有自己的規矩：「這區不能進」（**robots.txt**），館員會遵守
+6. 不會在同一間圖書館待太久，以免妨礙其他讀者（**Politeness**）
+
+這就是 Google 等搜尋引擎在背後做的事。
+</ELI5>
+
+## 問題定義
+
+<Callout type="info" title="核心挑戰">
+設計一個可擴展的網路爬蟲系統，能有效率地爬取數十億網頁，同時遵守禮貌原則（Politeness），避免重複爬取，並將爬取結果儲存供下游系統（搜尋引擎、資料分析）使用。
+</Callout>
+
+## 需求分析
+
+**Functional Requirements：**
+- 給定一組 Seed URLs，遞迴爬取所有可達網頁
+- 解析 HTML 提取內容與超連結
+- 遵守 robots.txt 規範
+- URL 去重，避免重複爬取
+- 支援排程（定期重新爬取已變更的頁面）
+
+**Non-functional Requirements：**
+- 高吞吐量：每秒爬取數千頁面
+- 可擴展：水平擴展 Fetcher 節點
+- Politeness：同一域名的請求間隔至少 1 秒
+- 容錯：節點故障不遺失爬取進度
+- 優先級：重要/熱門頁面優先爬取
+
+## 注意事項
+
+<Callout type="warning" title="實戰陷阱">
+**Spider Trap 會讓爬蟲陷入無限迴圈。** 有些網站會動態產生無限層的 URL（例如日曆頁面：`/2025/01/01` → `/2025/01/02` → ...永遠不結束）。務必設定最大爬取深度和每域名最大頁面數。另外，URL 正規化（去除 fragment、統一 trailing slash）是去重的基礎。
+</Callout>
+
+## 設計流程
+
+<StepDiagram data='[{"title":"初始化 Seed URLs","description":"將起始網址放入 URL Frontier 作為爬取起點","icon":"1"},{"title":"URL Frontier 排程","description":"根據優先級和 Politeness 規則，決定下一個要爬取的 URL","icon":"2"},{"title":"DNS 解析與 robots.txt 檢查","description":"解析域名 IP，檢查該 URL 是否被 robots.txt 禁止","icon":"3"},{"title":"Fetcher 下載頁面","description":"HTTP 請求下載網頁內容，處理 redirect、timeout、encoding","icon":"4"},{"title":"內容解析與儲存","description":"Parser 提取文字內容和 metadata，存入 Content Store","icon":"5"},{"title":"URL 提取與去重","description":"從 HTML 中提取超連結，經過 Bloom Filter 去重後加回 Frontier","icon":"6"},{"title":"循環執行","description":"重複步驟 2-6，直到 Frontier 為空或達到爬取上限","icon":"7"}]' />
+
+## 架構設計
+
+### URL Frontier（優先級佇列 + Politeness）
+
+```csharp
+public class UrlFrontier
+{
+    // 前端 Queue：按優先級分層
+    private readonly PriorityQueue<CrawlUrl, int> _priorityQueue = new();
+
+    // 後端 Queue：按域名分組，確保 Politeness
+    private readonly Dictionary<string, Queue<CrawlUrl>> _hostQueues = new();
+    private readonly Dictionary<string, DateTime> _lastAccessTime = new();
+    private readonly TimeSpan _politenessDelay = TimeSpan.FromSeconds(1);
+
+    public void Add(CrawlUrl url, int priority)
+    {
+        _priorityQueue.Enqueue(url, priority);
+    }
+
+    public CrawlUrl? GetNext()
+    {
+        // 找到一個尚未被 Politeness 限制的域名
+        while (_priorityQueue.Count > 0)
+        {
+            var url = _priorityQueue.Dequeue();
+            var host = new Uri(url.Url).Host;
+
+            if (_lastAccessTime.TryGetValue(host, out var lastTime)
+                && DateTime.UtcNow - lastTime < _politenessDelay)
+            {
+                // 還在冷卻期，放回後端 Queue 稍後處理
+                EnqueueToHostQueue(host, url);
+                continue;
+            }
+
+            _lastAccessTime[host] = DateTime.UtcNow;
+            return url;
+        }
+        return null;
+    }
+}
+```
+
+### Bloom Filter 去重
+
+```typescript
+class BloomFilter {
+  private bitArray: Uint8Array;
+  private hashCount: number;
+  private size: number;
+
+  constructor(expectedItems: number, falsePositiveRate: number) {
+    // m = -(n * ln(p)) / (ln2)^2
+    this.size = Math.ceil(
+      -(expectedItems * Math.log(falsePositiveRate)) / Math.pow(Math.LN2, 2)
+    );
+    this.hashCount = Math.ceil((this.size / expectedItems) * Math.LN2);
+    this.bitArray = new Uint8Array(Math.ceil(this.size / 8));
+  }
+
+  add(url: string): void {
+    for (const pos of this.getHashPositions(url)) {
+      this.bitArray[Math.floor(pos / 8)] |= 1 << (pos % 8);
+    }
+  }
+
+  mightContain(url: string): boolean {
+    return this.getHashPositions(url).every(
+      (pos) => (this.bitArray[Math.floor(pos / 8)] & (1 << (pos % 8))) !== 0
+    );
+  }
+}
+
+// 10 億 URL、0.01% false positive rate → 約 2.4 GB 記憶體
+const filter = new BloomFilter(1_000_000_000, 0.0001);
+```
+
+### robots.txt 解析與快取
+
+```python
+from urllib.robotparser import RobotFileParser
+from functools import lru_cache
+import time
+
+class RobotsChecker:
+    def __init__(self):
+        self._cache: dict[str, tuple[RobotFileParser, float]] = {}
+        self._ttl = 86400  # 24 小時快取
+
+    def is_allowed(self, url: str, user_agent: str = "MyBot") -> bool:
+        from urllib.parse import urlparse
+        parsed = urlparse(url)
+        robots_url = f"{parsed.scheme}://{parsed.netloc}/robots.txt"
+
+        parser = self._get_parser(robots_url)
+        return parser.can_fetch(user_agent, url)
+
+    def _get_parser(self, robots_url: str) -> RobotFileParser:
+        if robots_url in self._cache:
+            parser, timestamp = self._cache[robots_url]
+            if time.time() - timestamp < self._ttl:
+                return parser
+
+        parser = RobotFileParser()
+        parser.set_url(robots_url)
+        parser.read()
+        self._cache[robots_url] = (parser, time.time())
+        return parser
+```
+
+## 架構圖
+
+<Diagram data='{"nodes":[{"id":"seed","label":"Seed URLs","type":"muted"},{"id":"frontier","label":"URL Frontier","type":"highlight"},{"id":"dns","label":"DNS Resolver","type":"default"},{"id":"robots","label":"robots.txt Cache","type":"default"},{"id":"fetcher","label":"Fetcher (多節點)","type":"highlight"},{"id":"parser","label":"HTML Parser","type":"default"},{"id":"store","label":"Content Store","type":"default"},{"id":"extractor","label":"URL Extractor","type":"default"},{"id":"bloom","label":"Bloom Filter","type":"default"},{"id":"schedule","label":"Re-crawl Scheduler","type":"muted"}],"edges":[{"from":"seed","to":"frontier","label":"初始 URL"},{"from":"frontier","to":"dns","label":"排程取出"},{"from":"dns","to":"robots","label":"檢查權限"},{"from":"robots","to":"fetcher","label":"允許爬取"},{"from":"fetcher","to":"parser","label":"HTML 內容"},{"from":"parser","to":"store","label":"儲存內容"},{"from":"parser","to":"extractor","label":"提取連結"},{"from":"extractor","to":"bloom","label":"URL 去重"},{"from":"bloom","to":"frontier","label":"新 URL 加入"},{"from":"schedule","to":"frontier","label":"定期重爬"}]}' />
+
+## 延伸討論
+
+<Callout type="tip" title="進階優化">
+**Content Fingerprint 偵測頁面變更。** 不是每次重爬都需要重新索引。用 SimHash 或 MinHash 計算頁面指紋，與上次爬取結果比對。只有指紋變化超過閾值才觸發重新索引，大幅節省下游處理資源。另一個常見優化是根據頁面的歷史變更頻率，動態調整重爬間隔。
+</Callout>
+
+## 理解測驗
+
+<Quiz data='{"question":"為什麼用 Bloom Filter 而不是 HashSet 做 URL 去重？","options":["Bloom Filter 查詢比較快","Bloom Filter 的記憶體用量遠小於 HashSet，在數十億 URL 的場景下可行","Bloom Filter 沒有 False Positive","Bloom Filter 支援刪除操作"],"answer":1,"explanation":"10 億個 URL 用 HashSet 存需要數十 GB 記憶體，而 Bloom Filter 僅需約 2-3 GB。代價是有極低的 False Positive Rate（漏爬少量頁面），但這在爬蟲場景中是可接受的。"}' />
+
+<Quiz data='{"question":"Politeness 原則中，為什麼要對同一域名的請求設置間隔？","options":["讓爬蟲跑得更快","避免觸發目標網站的 Rate Limiting 或被封鎖 IP，同時減輕對方伺服器負擔","節省爬蟲的頻寬","讓爬取結果更準確"],"answer":1,"explanation":"高頻率請求同一網站會被視為 DDoS 攻擊，導致 IP 被封鎖。Politeness 原則（通常同一域名間隔 1-2 秒）是爬蟲的基本禮貌，也是 robots.txt 中 crawl-delay 指令的要求。"}' />
+
+<Quiz data='{"question":"URL Frontier 為什麼需要同時具備優先級佇列和域名佇列兩層結構？","options":["純粹是為了程式碼好看","優先級佇列決定爬取順序，域名佇列確保 Politeness 約束","域名佇列負責去重","優先級佇列負責 DNS 解析"],"answer":1,"explanation":"前端的優先級佇列確保重要頁面優先爬取，後端的域名佇列確保同一域名的請求保持適當間隔。兩層結構讓系統同時滿足效率和禮貌的需求。"}' />
+
+## 重點整理
+
+| 概念 | 說明 |
+|------|------|
+| **URL Frontier** | 爬取排程的核心，結合優先級與 Politeness |
+| **BFS 爬取** | 廣度優先確保重要頁面（離 Seed 近）先被爬取 |
+| **Bloom Filter** | 空間效率極高的去重方案，容忍極低 False Positive |
+| **robots.txt** | 遵守網站的爬取規範，快取解析結果 |
+| **Politeness** | 同一域名請求間隔 1-2 秒，避免被封鎖 |
+| **Spider Trap** | 設定最大深度和每域名上限防止無限爬取 |
+| **Content Fingerprint** | 用 SimHash 偵測頁面是否變更，減少不必要的重新索引 |

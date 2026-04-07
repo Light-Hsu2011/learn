@@ -1,0 +1,294 @@
+---
+title: "Proxy Pattern"
+order: 13
+description: "為另一個物件提供一個替代品或佔位符，以控制對它的存取"
+---
+
+# Proxy Pattern（代理模式）
+
+<ELI5>
+想像你要**租房子**。你不用自己去找房東談價格、簽合約、處理水電過戶。你找一個**房屋仲介**，仲介幫你跟房東打交道。
+
+仲介在你和房東之間做了很多事：幫你篩選房源（你不用看所有的房子）、幫你議價（控制存取）、幫你準備文件（前置處理）。對你來說，你只要跟仲介說「我要一間兩房一廳」就好。
+
+Proxy Pattern 就是程式世界裡的「仲介」 — 在你和真正的物件之間放一個代理人，代理人控制你怎麼存取真正的物件。
+</ELI5>
+
+## 是什麼？
+
+Proxy Pattern 為另一個物件提供一個**替代品或佔位符**，以控制對該物件的存取。Proxy 和真正的物件實作相同的介面，Client 不知道自己在使用 Proxy 還是真實物件。
+
+<Callout type="info" title="GoF 分類">
+Proxy 屬於**結構型模式（Structural Pattern）**，重點在於如何組合類別和物件以形成更大的結構。
+</Callout>
+
+## 什麼時候用？
+
+- **Lazy Loading**：物件很重（大圖片、資料庫連線），延遲到真正需要時才建立
+- **Access Control**：檢查權限後才允許存取真實物件
+- **Caching**：快取昂貴操作的結果，避免重複計算
+- **Logging / Monitoring**：在存取前後記錄日誌、監控效能
+- **Remote Proxy**：代表一個遠端物件（RPC、gRPC、API Gateway）
+
+## 什麼時候不該用？
+
+<Callout type="warning" title="過度設計警告">
+如果物件的建立成本很低、不需要存取控制、不需要快取，加 Proxy 只會多一層不必要的間接呼叫和複雜度。另外，過多的 Proxy 層會讓除錯變困難。確定有明確的需求（效能、安全、遠端存取）再使用。
+</Callout>
+
+## 執行流程
+
+<StepDiagram data='[{"title":"定義共用介面","description":"Proxy 和真實物件實作相同的介面","icon":"1"},{"title":"實作真實物件","description":"包含實際的業務邏輯","icon":"2"},{"title":"建立 Proxy","description":"實作相同介面，內部持有或延遲建立真實物件","icon":"3"},{"title":"加入控制邏輯","description":"在委派給真實物件之前/之後加入額外邏輯","icon":"4"},{"title":"Client 使用 Proxy","description":"Client 透過介面使用，不知道背後是 Proxy 還是真實物件","icon":"5"}]' />
+
+## 程式碼範例
+
+### C# 版本
+
+```csharp
+// 共用介面
+public interface IDocumentRepository
+{
+    string GetDocument(string id);
+    List<string> ListDocuments();
+}
+
+// 真實物件（昂貴的資料庫操作）
+public class DatabaseDocumentRepository : IDocumentRepository
+{
+    public string GetDocument(string id)
+    {
+        Console.WriteLine($"[DB] Querying database for document {id}...");
+        Thread.Sleep(100); // 模擬慢速查詢
+        return $"Content of document {id}";
+    }
+
+    public List<string> ListDocuments()
+    {
+        Console.WriteLine("[DB] Loading all documents...");
+        return new List<string> { "doc-1", "doc-2", "doc-3" };
+    }
+}
+
+// Caching Proxy
+public class CachingDocumentProxy : IDocumentRepository
+{
+    private readonly IDocumentRepository _real;
+    private readonly Dictionary<string, string> _cache = new();
+
+    public CachingDocumentProxy(IDocumentRepository real)
+    {
+        _real = real;
+    }
+
+    public string GetDocument(string id)
+    {
+        if (!_cache.ContainsKey(id))
+        {
+            Console.WriteLine($"[Cache] MISS for {id}, fetching from source...");
+            _cache[id] = _real.GetDocument(id);
+        }
+        else
+        {
+            Console.WriteLine($"[Cache] HIT for {id}");
+        }
+        return _cache[id];
+    }
+
+    public List<string> ListDocuments() => _real.ListDocuments();
+}
+
+// 使用
+IDocumentRepository repo = new CachingDocumentProxy(new DatabaseDocumentRepository());
+Console.WriteLine(repo.GetDocument("doc-1")); // MISS → 查 DB
+Console.WriteLine(repo.GetDocument("doc-1")); // HIT → 從快取拿
+Console.WriteLine(repo.GetDocument("doc-2")); // MISS → 查 DB
+```
+
+### TypeScript 版本
+
+```typescript
+// 共用介面
+interface DocumentRepository {
+  getDocument(id: string): string;
+  listDocuments(): string[];
+}
+
+// 真實物件
+class DatabaseDocumentRepository implements DocumentRepository {
+  getDocument(id: string): string {
+    console.log(`[DB] Querying database for document ${id}...`);
+    return `Content of document ${id}`;
+  }
+
+  listDocuments(): string[] {
+    console.log("[DB] Loading all documents...");
+    return ["doc-1", "doc-2", "doc-3"];
+  }
+}
+
+// Caching Proxy
+class CachingDocumentProxy implements DocumentRepository {
+  private cache = new Map<string, string>();
+
+  constructor(private real: DocumentRepository) {}
+
+  getDocument(id: string): string {
+    if (!this.cache.has(id)) {
+      console.log(`[Cache] MISS for ${id}, fetching from source...`);
+      this.cache.set(id, this.real.getDocument(id));
+    } else {
+      console.log(`[Cache] HIT for ${id}`);
+    }
+    return this.cache.get(id)!;
+  }
+
+  listDocuments(): string[] {
+    return this.real.listDocuments();
+  }
+}
+
+// 使用
+const repo: DocumentRepository = new CachingDocumentProxy(
+  new DatabaseDocumentRepository()
+);
+console.log(repo.getDocument("doc-1")); // MISS
+console.log(repo.getDocument("doc-1")); // HIT
+console.log(repo.getDocument("doc-2")); // MISS
+```
+
+### Python 版本
+
+```python
+from abc import ABC, abstractmethod
+
+# 共用介面
+class DocumentRepository(ABC):
+    @abstractmethod
+    def get_document(self, doc_id: str) -> str:
+        pass
+
+    @abstractmethod
+    def list_documents(self) -> list[str]:
+        pass
+
+# 真實物件
+class DatabaseDocumentRepository(DocumentRepository):
+    def get_document(self, doc_id: str) -> str:
+        print(f"[DB] Querying database for document {doc_id}...")
+        return f"Content of document {doc_id}"
+
+    def list_documents(self) -> list[str]:
+        print("[DB] Loading all documents...")
+        return ["doc-1", "doc-2", "doc-3"]
+
+# Caching Proxy
+class CachingDocumentProxy(DocumentRepository):
+    def __init__(self, real: DocumentRepository):
+        self._real = real
+        self._cache: dict[str, str] = {}
+
+    def get_document(self, doc_id: str) -> str:
+        if doc_id not in self._cache:
+            print(f"[Cache] MISS for {doc_id}, fetching from source...")
+            self._cache[doc_id] = self._real.get_document(doc_id)
+        else:
+            print(f"[Cache] HIT for {doc_id}")
+        return self._cache[doc_id]
+
+    def list_documents(self) -> list[str]:
+        return self._real.list_documents()
+
+# 使用
+repo: DocumentRepository = CachingDocumentProxy(DatabaseDocumentRepository())
+print(repo.get_document("doc-1"))  # MISS
+print(repo.get_document("doc-1"))  # HIT
+print(repo.get_document("doc-2"))  # MISS
+```
+
+### Java 版本
+
+```java
+import java.util.*;
+
+// 共用介面
+public interface DocumentRepository {
+    String getDocument(String id);
+    List<String> listDocuments();
+}
+
+// 真實物件
+public class DatabaseDocumentRepository implements DocumentRepository {
+    public String getDocument(String id) {
+        System.out.println("[DB] Querying database for document " + id + "...");
+        return "Content of document " + id;
+    }
+
+    public List<String> listDocuments() {
+        System.out.println("[DB] Loading all documents...");
+        return List.of("doc-1", "doc-2", "doc-3");
+    }
+}
+
+// Caching Proxy
+public class CachingDocumentProxy implements DocumentRepository {
+    private final DocumentRepository real;
+    private final Map<String, String> cache = new HashMap<>();
+
+    public CachingDocumentProxy(DocumentRepository real) {
+        this.real = real;
+    }
+
+    public String getDocument(String id) {
+        if (!cache.containsKey(id)) {
+            System.out.println("[Cache] MISS for " + id + ", fetching from source...");
+            cache.put(id, real.getDocument(id));
+        } else {
+            System.out.println("[Cache] HIT for " + id);
+        }
+        return cache.get(id);
+    }
+
+    public List<String> listDocuments() {
+        return real.listDocuments();
+    }
+}
+
+// 使用
+DocumentRepository repo = new CachingDocumentProxy(new DatabaseDocumentRepository());
+System.out.println(repo.getDocument("doc-1")); // MISS
+System.out.println(repo.getDocument("doc-1")); // HIT
+System.out.println(repo.getDocument("doc-2")); // MISS
+```
+
+## 結構圖
+
+<Diagram data='{"nodes":[{"id":"client","label":"Client","type":"muted"},{"id":"subject","label":"Subject Interface","type":"highlight"},{"id":"proxy","label":"Proxy (CachingDocumentProxy)","type":"default"},{"id":"real","label":"RealSubject (DatabaseDocumentRepository)","type":"default"}],"edges":[{"from":"client","to":"subject","label":"uses"},{"from":"proxy","to":"subject","label":"implements"},{"from":"real","to":"subject","label":"implements"},{"from":"proxy","to":"real","label":"delegates to (with control)"}]}' />
+
+## 實戰補充
+
+<Callout type="tip" title="資深開發者經驗">
+Proxy 在企業開發中極為常見。**Entity Framework 的 Lazy Loading** 就是 Proxy — 當你存取 Navigation Property 時，它才去查資料庫。**API Gateway**（如 Kong、YARP）是 Remote Proxy — 幫你處理路由、限流、認證後再轉發到後端服務。在 .NET 中，`DispatchProxy` 可以在執行時動態產生 Proxy 類別，用於 AOP（Aspect-Oriented Programming）場景如自動日誌、交易管理。Proxy 和 Decorator 看起來很像，關鍵差異在於意圖：**Decorator 加功能，Proxy 控存取**。
+</Callout>
+
+## 理解測驗
+
+<Quiz data='{"question":"Proxy Pattern 和 Decorator Pattern 的關鍵差異是什麼？","options":["Proxy 用繼承，Decorator 用組合","Proxy 控制對物件的存取，Decorator 為物件添加功能","Proxy 更快，Decorator 更慢","兩者完全相同"],"answer":1,"explanation":"雖然結構相似（都包裝了另一個物件），但意圖不同：Proxy 的重點是「控制存取」（權限、快取、延遲載入），Decorator 的重點是「增加功能」。"}' />
+
+<Quiz data='{"question":"以下哪個不是 Proxy 的常見類型？","options":["Caching Proxy（快取代理）","Virtual Proxy（延遲載入代理）","Composite Proxy（組合代理）","Protection Proxy（保護代理）"],"answer":2,"explanation":"常見的 Proxy 類型包括 Virtual（延遲載入）、Protection（存取控制）、Remote（遠端存取）、Caching（快取）。「Composite Proxy」不是標準分類。"}' />
+
+<Quiz data='{"question":"在 Caching Proxy 範例中，第二次呼叫 getDocument(\"doc-1\") 時發生了什麼？","options":["再次查詢資料庫","直接從快取返回結果","拋出例外","建立新的 Proxy 實例"],"answer":1,"explanation":"第二次呼叫時，Proxy 發現快取中已有 doc-1 的結果（Cache HIT），直接返回快取的值，不再呼叫真實物件的方法。"}' />
+
+## 重點整理
+
+<Callout type="tip" title="一句話記住">
+**Proxy Pattern = 在 Client 和真實物件之間放一個代理人，控制存取方式而不改變介面。**
+</Callout>
+
+| 概念 | 說明 |
+|------|------|
+| **Subject（共用介面）** | Proxy 和真實物件共同實作的介面 |
+| **RealSubject（真實物件）** | 包含實際業務邏輯的物件 |
+| **Proxy（代理）** | 實作相同介面，在委派前後加入控制邏輯 |
+| **常見類型** | Virtual、Protection、Remote、Caching、Logging |
+| **核心好處** | 不修改真實物件就能控制存取方式 |
+| **代價** | 增加一層間接呼叫，過多 Proxy 會讓系統難以追蹤 |

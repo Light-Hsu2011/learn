@@ -1,0 +1,175 @@
+---
+title: "399. Evaluate Division"
+order: 46
+description: "建立帶權重的有向圖，用 DFS 計算變數間的除法結果"
+---
+
+# Evaluate Division
+
+<ELI5>
+想像你在旅行，知道一些國家之間的匯率：1 美元 = 2 歐元，1 歐元 = 3 日元。
+
+現在有人問你：1 美元等於多少日元？你要沿著匯率鏈推導：美元 → 歐元 → 日元 = 2 × 3 = 6。
+
+如果問你「比特幣等於多少歐元」但你完全沒有比特幣的資料，答案就是 -1。
+
+這就是帶權重的圖搜尋 — 節點是變數，邊的權重是除法的值，DFS 沿路徑乘以權重。
+</ELI5>
+
+## 題目描述
+
+給定一些等式 `equations` 和對應的值 `values`（a / b = k），回答一系列查詢 `queries`（x / y = ?）。如果無法推算，回傳 -1.0。
+
+```
+輸入: equations = [["a","b"],["b","c"]]
+      values = [2.0, 3.0]
+      queries = [["a","c"],["b","a"],["a","e"]]
+輸出: [6.0, 0.5, -1.0]
+解釋: a/b=2, b/c=3 → a/c=6, b/a=0.5, e 不存在=-1
+```
+
+## 解題思路
+
+<StepDiagram data='[{"title":"建立帶權重圖","description":"a/b=2 → a→b 權重 2, b→a 權重 0.5","icon":"1"},{"title":"處理查詢","description":"對每個 query (x, y)，做 DFS 從 x 找到 y","icon":"2"},{"title":"DFS 乘以權重","description":"沿路徑把權重相乘，到達 y 時就是答案","icon":"3"},{"title":"找不到回傳 -1","description":"x 或 y 不在圖中，或無法從 x 到達 y","icon":"4"}]' />
+
+## 程式碼
+
+### C#
+
+```csharp
+public class Solution {
+    public double[] CalcEquation(
+        IList<IList<string>> equations, double[] values,
+        IList<IList<string>> queries) {
+
+        // 建立帶權重鄰接表
+        var graph = new Dictionary<string, List<(string node, double weight)>>();
+        for (int i = 0; i < equations.Count; i++) {
+            string a = equations[i][0], b = equations[i][1];
+            if (!graph.ContainsKey(a)) graph[a] = new();
+            if (!graph.ContainsKey(b)) graph[b] = new();
+            graph[a].Add((b, values[i]));
+            graph[b].Add((a, 1.0 / values[i]));
+        }
+
+        var result = new double[queries.Count];
+        for (int i = 0; i < queries.Count; i++) {
+            string src = queries[i][0], dst = queries[i][1];
+            if (!graph.ContainsKey(src) || !graph.ContainsKey(dst)) {
+                result[i] = -1.0;
+            } else {
+                result[i] = Dfs(src, dst, 1.0, new HashSet<string>(), graph);
+            }
+        }
+        return result;
+    }
+
+    private double Dfs(string curr, string target, double product,
+        HashSet<string> visited, Dictionary<string, List<(string, double)>> graph) {
+        if (curr == target) return product;
+        visited.Add(curr);
+        foreach (var (next, weight) in graph[curr]) {
+            if (!visited.Contains(next)) {
+                double res = Dfs(next, target, product * weight, visited, graph);
+                if (res != -1.0) return res;
+            }
+        }
+        return -1.0;
+    }
+}
+```
+
+### TypeScript
+
+```typescript
+function calcEquation(
+    equations: string[][], values: number[], queries: string[][]
+): number[] {
+    // 建立帶權重鄰接表
+    const graph = new Map<string, [string, number][]>();
+    for (let i = 0; i < equations.length; i++) {
+        const [a, b] = equations[i];
+        if (!graph.has(a)) graph.set(a, []);
+        if (!graph.has(b)) graph.set(b, []);
+        graph.get(a)!.push([b, values[i]]);
+        graph.get(b)!.push([a, 1 / values[i]]);
+    }
+
+    function dfs(curr: string, target: string, product: number, visited: Set<string>): number {
+        if (curr === target) return product;
+        visited.add(curr);
+        for (const [next, weight] of graph.get(curr) ?? []) {
+            if (!visited.has(next)) {
+                const res = dfs(next, target, product * weight, visited);
+                if (res !== -1) return res;
+            }
+        }
+        return -1;
+    }
+
+    return queries.map(([src, dst]) => {
+        if (!graph.has(src) || !graph.has(dst)) return -1;
+        return dfs(src, dst, 1, new Set());
+    });
+}
+```
+
+### Python
+
+```python
+from collections import defaultdict
+
+def calcEquation(equations, values, queries):
+    # 建立帶權重鄰接表
+    graph = defaultdict(list)
+    for (a, b), val in zip(equations, values):
+        graph[a].append((b, val))
+        graph[b].append((a, 1.0 / val))
+
+    def dfs(curr, target, product, visited):
+        if curr == target:
+            return product
+        visited.add(curr)
+        for nxt, weight in graph[curr]:
+            if nxt not in visited:
+                res = dfs(nxt, target, product * weight, visited)
+                if res != -1.0:
+                    return res
+        return -1.0
+
+    results = []
+    for src, dst in queries:
+        if src not in graph or dst not in graph:
+            results.append(-1.0)
+        else:
+            results.append(dfs(src, dst, 1.0, set()))
+    return results
+```
+
+## 複雜度分析
+
+| | Time | Space |
+|--|------|-------|
+| 本解法 | O(Q × (V + E)) | O(V + E) |
+
+Q 是查詢數，V 是變數數，E 是等式數。
+
+## 圖解
+
+<Diagram data='{"nodes":[{"id":"a","label":"a","type":"default"},{"id":"b","label":"b","type":"default"},{"id":"c","label":"c","type":"default"}],"edges":[{"from":"a","to":"b","label":"÷ = 2.0"},{"from":"b","to":"a","label":"÷ = 0.5"},{"from":"b","to":"c","label":"÷ = 3.0"},{"from":"c","to":"b","label":"÷ = 0.333"}]}' />
+
+## 進階觀點
+
+<Callout type="tip" title="面試追問">
+**Union-Find 解法**：也可以用帶權重的 Union-Find。每個變數有一個到根的權重比例。查詢 a/b 就是 weight(a)/weight(b)。實現更複雜但查詢是 O(α(n))。
+
+**BFS 替代**：BFS 也可以，差別在於 BFS 找到的是最短路徑（但此題不在意路徑長度，只在意乘積）。
+
+**變體題**：LC 1971 Find if Path Exists in Graph（簡化版，無權重）。
+</Callout>
+
+## 理解測驗
+
+<Quiz data='{"question":"為什麼 a/b=2 要同時建 a→b(2) 和 b→a(0.5) 兩條邊？","options":["因為是無向圖","因為 b/a = 1/(a/b)，建反向邊讓我們能反向查詢","因為要避免死迴圈","因為鄰接表的要求"],"answer":1,"explanation":"知道 a/b=2 等於知道 b/a=0.5。建雙向邊讓 DFS 可以從任意方向搜尋路徑。"}' />
+
+<Quiz data='{"question":"DFS 路徑上為什麼要把權重相乘而不是相加？","options":["因為題目要求乘法","因為 a/b × b/c = a/c，除法鏈的傳遞性是乘法","因為加法會溢位","因為乘法比較快"],"answer":1,"explanation":"a/c = (a/b) × (b/c)，除法沿路徑的傳遞是乘法關係，所以 DFS 要把每條邊的權重相乘。"}' />

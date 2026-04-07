@@ -1,0 +1,167 @@
+---
+title: "設計動態消息"
+order: 8
+description: "社群媒體的核心：如何高效產生和分發動態消息"
+---
+
+# 設計動態消息（News Feed）
+
+<ELI5>
+想像你訂了 100 份報紙（你追蹤的 100 個人），每天早上要看「今日精選」：
+
+- **Fan-out on Write（推模式）**：每個人寫好文章後，立刻把副本塞進每個訂閱者的信箱。你打開信箱就能直接看，超快！但如果某人有 100 萬粉絲，寫一篇就要塞 100 萬份 — 好累
+- **Fan-out on Read（拉模式）**：你打開信箱時才去每個作者那裡拿最新文章，現場組合。不用預先準備，但你每次都要等
+
+Facebook 和 Twitter 的動態牆就是這樣運作的 — 在「推」和「拉」之間找最佳平衡。
+</ELI5>
+
+## 問題定義
+
+設計社群媒體的動態消息功能：用戶發布貼文後，他的追蹤者能在動態牆看到按時間或相關性排序的內容。
+
+<Callout type="info" title="兩個核心子系統">
+1. **Feed Publishing**：用戶發布貼文後，把貼文分發給追蹤者
+2. **Feed Retrieval**：用戶打開 App 時，取得個人化的動態消息列表
+</Callout>
+
+## 需求分析
+
+- **功能性需求**：發布貼文、查看動態牆（追蹤者的貼文）、支援圖片/影片、按時間+相關性排序
+- **非功能性需求**：動態牆載入 < 500ms、新貼文 < 5 秒出現在追蹤者動態牆
+- **規模估算**：3 億 MAU、每人平均追蹤 200 人、每人每天看 10 次動態牆
+- **關鍵挑戰**：名人帳號（百萬追蹤者）的 Fan-out 爆炸問題
+
+## 注意事項
+
+<Callout type="warning" title="名人問題（Celebrity Problem）">
+一個有 1,000 萬粉絲的名人發一篇貼文，Fan-out on Write 需要寫入 1,000 萬份快取。這會造成巨大的寫入延遲和資源消耗。實務上對名人帳號使用 Fan-out on Read，普通帳號使用 Fan-out on Write — 混合策略。
+</Callout>
+
+## 設計流程
+
+<StepDiagram data='[{"title":"貼文發布","description":"用戶發布貼文，存入 Post 資料庫","icon":"1"},{"title":"Fan-out 決策","description":"判斷發布者粉絲數，選擇推模式或拉模式","icon":"2"},{"title":"推模式執行","description":"普通用戶：非同步寫入每個粉絲的 Feed Cache","icon":"3"},{"title":"Feed 查詢","description":"用戶請求動態牆：先讀自己的 Feed Cache","icon":"4"},{"title":"拉模式補充","description":"再拉取名人帳號的最新貼文，合併排序","icon":"5"},{"title":"Ranking 排序","description":"用排名演算法（時間+互動+相關性）決定最終順序","icon":"6"}]' />
+
+## 架構設計
+
+### Fan-out on Write（推模式）
+
+```csharp
+public class FeedPublisher
+{
+    private readonly IMessageQueue _queue;
+    private readonly IFollowerService _followers;
+    private readonly IFeedCache _feedCache;
+
+    public async Task PublishPost(Post post)
+    {
+        // 1. 儲存貼文
+        await _postRepo.SaveAsync(post);
+
+        // 2. 取得粉絲清單
+        var followers = await _followers.GetFollowerIdsAsync(post.AuthorId);
+
+        // 3. 名人帳號（粉絲 > 10 萬）用拉模式，不做 Fan-out
+        if (followers.Count > 100_000)
+        {
+            await _hotAuthorIndex.AddAsync(post.AuthorId, post.Id);
+            return;
+        }
+
+        // 4. 普通帳號：非同步推送到每個粉絲的 Feed Cache
+        foreach (var batch in followers.Chunk(1000))
+        {
+            await _queue.PublishAsync("feed.fanout", new FanoutTask
+            {
+                PostId = post.Id,
+                FollowerIds = batch.ToList()
+            });
+        }
+    }
+}
+
+// Fan-out Worker
+public class FanoutWorker
+{
+    public async Task Execute(FanoutTask task)
+    {
+        foreach (var followerId in task.FollowerIds)
+        {
+            // 寫入每個粉絲的 Feed Cache（Redis Sorted Set）
+            await _feedCache.AddToFeedAsync(followerId, task.PostId, timestamp);
+            // 保留最新 500 篇，淘汰舊的
+            await _feedCache.TrimFeedAsync(followerId, 500);
+        }
+    }
+}
+```
+
+### Feed 查詢（混合策略，TypeScript）
+
+```typescript
+async function getFeed(userId: string, page: number): Promise<FeedItem[]> {
+  // 1. 從 Feed Cache 取得推模式的貼文（普通帳號發的）
+  const cachedPostIds = await redis.zrevrange(
+    `feed:${userId}`, page * 20, (page + 1) * 20 - 1
+  );
+
+  // 2. 取得此用戶追蹤的名人清單
+  const hotAuthors = await getFollowedHotAuthors(userId);
+
+  // 3. 拉取名人的最新貼文
+  const hotPosts = await Promise.all(
+    hotAuthors.map(authorId =>
+      redis.zrevrange(`posts:${authorId}`, 0, 5)
+    )
+  );
+
+  // 4. 合併、排序、去重
+  const allPostIds = [...new Set([...cachedPostIds, ...hotPosts.flat()])];
+  const posts = await batchGetPosts(allPostIds);
+
+  // 5. Ranking（簡化版：時間衰減 + 互動分數）
+  return posts
+    .map(post => ({
+      ...post,
+      score: calcScore(post.timestamp, post.likes, post.comments)
+    }))
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 20);
+}
+```
+
+## 架構圖
+
+<Diagram data='{"nodes":[{"id":"user","label":"User (Publisher)","type":"muted"},{"id":"postdb","label":"Post Database","type":"default"},{"id":"fanout","label":"Fan-out Service","type":"highlight"},{"id":"mq","label":"Message Queue","type":"default"},{"id":"worker","label":"Fan-out Workers","type":"default"},{"id":"feedcache","label":"Feed Cache (Redis)","type":"highlight"},{"id":"reader","label":"User (Reader)","type":"muted"},{"id":"feedsvc","label":"Feed Service","type":"highlight"},{"id":"ranking","label":"Ranking Service","type":"default"}],"edges":[{"from":"user","to":"postdb","label":"publish post"},{"from":"postdb","to":"fanout","label":"trigger"},{"from":"fanout","to":"mq","label":"fan-out tasks"},{"from":"mq","to":"worker","label":"consume"},{"from":"worker","to":"feedcache","label":"write to each follower"},{"from":"reader","to":"feedsvc","label":"get feed"},{"from":"feedsvc","to":"feedcache","label":"read cached feed"},{"from":"feedsvc","to":"ranking","label":"rank & merge"}]}' />
+
+## 實戰補充
+
+<Callout type="tip" title="Ranking 排序演算法">
+現代社群平台不再只用時間排序，而是綜合多個訊號：
+1. **時間衰減**：越新的貼文分數越高
+2. **互動分數**：讚數、留言數、分享數的加權
+3. **用戶偏好**：你常互動的朋友的貼文權重更高
+4. **內容類型**：影片 vs 圖片 vs 純文字的權重不同
+5. **負面訊號**：被隱藏或檢舉的貼文降權
+</Callout>
+
+## 理解測驗
+
+<Quiz data='{"question":"Fan-out on Write 和 Fan-out on Read 的核心差異是什麼？","options":["一個用 SQL，一個用 NoSQL","Fan-out on Write 在發布時寫入所有粉絲的 Cache；Fan-out on Read 在查看時才拉取","一個快一個慢","一個用 Redis 一個用 MongoDB"],"answer":1,"explanation":"Write 推模式在貼文發布時就預先計算每個粉絲的 Feed；Read 拉模式在用戶查看時才即時組合。推模式讀快寫慢，拉模式寫快讀慢。"}' />
+
+<Quiz data='{"question":"為什麼名人帳號不適合用 Fan-out on Write？","options":["名人的貼文太長","名人的粉絲數太多，Fan-out 寫入量爆炸","名人不常發貼文","名人的貼文不需要排序"],"answer":1,"explanation":"假設名人有 1,000 萬粉絲，Fan-out on Write 要寫入 1,000 萬份快取。這會造成巨大延遲和資源消耗。對名人用 Fan-out on Read，在粉絲查看時才拉取，可以避免這個問題。"}' />
+
+<Quiz data='{"question":"Feed Cache 使用 Redis Sorted Set 的好處是什麼？","options":["可以自動翻譯","支援 SQL 查詢","天然按分數（時間戳）排序，方便取最新的 N 篇","可以儲存影片"],"answer":2,"explanation":"Redis Sorted Set 的每個元素都有一個 score（用時間戳作為 score），天然按分數排序。用 ZREVRANGE 就能高效取得最新的 N 篇貼文，非常適合 Feed 場景。"}' />
+
+## 重點整理
+
+<Callout type="tip" title="一句話記住">
+**動態消息 = 普通用戶推模式 + 名人拉模式 + Ranking 排序，Fan-out 用 Message Queue 非同步處理。**
+</Callout>
+
+| 概念 | 說明 |
+|------|------|
+| **Fan-out on Write** | 發布時推送，讀取快但寫入量大 |
+| **Fan-out on Read** | 查看時拉取，寫入快但讀取慢 |
+| **混合策略** | 普通帳號推、名人帳號拉，兼顧效能 |
+| **Feed Cache** | Redis Sorted Set，按時間戳排序的貼文 ID 列表 |
+| **Ranking** | 時間衰減 + 互動分數 + 用戶偏好的綜合排名 |

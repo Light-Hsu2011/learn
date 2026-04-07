@@ -1,0 +1,200 @@
+---
+title: "Test Doubles"
+order: 2
+description: "Mock、Stub、Fake、Spy 的差異與使用時機"
+---
+
+# Test Doubles（測試替身）
+
+<ELI5>
+想像拍電影時，主角要從高樓跳下。導演不會讓真正的演員冒險，而是找一個**替身演員**來完成這個動作。在測試的世界裡也一樣——當你不想讓測試碰到真的資料庫、真的 API，你就派一個「替身」上場。
+
+不同的替身有不同的專長：有的只會**照劇本唸台詞**（Stub），有的會**偷偷記錄發生了什麼**（Spy），有的會**檢查你有沒有按劇本演**（Mock），還有的是一個**簡化版的真演員**（Fake）。
+
+選對替身，測試就快又穩；選錯替身，測試就脆弱又難維護。
+</ELI5>
+
+## 是什麼？
+
+Test Double 是 Gerard Meszaros 在《xUnit Test Patterns》中定義的統稱，指所有在測試中替代真實依賴的物件。常見的四種 Test Double：Stub、Mock、Fake、Spy。
+
+<Callout type="info" title="術語澄清">
+很多人把所有測試替身都叫「Mock」，但嚴格來說 Mock 只是 Test Double 的一種。理解它們的差異能幫你選擇最適合的工具。
+</Callout>
+
+## 核心觀念
+
+- **Stub**：回傳預設值的替身，控制被測物件的輸入。「你問我什麼，我照劇本回答」
+- **Mock**：帶有驗證期望的替身，檢查互動是否正確發生。「我會記錄你怎麼叫我，最後驗證」
+- **Fake**：有簡化實作的替身，如 In-Memory Database。「我是簡化版的真東西」
+- **Spy**：記錄呼叫紀錄的替身，事後查詢互動細節。「我默默記下一切，你事後再問我」
+- **Dummy**：僅用於填充參數，不會被實際使用
+
+## 常見誤區
+
+<Callout type="warning" title="Test Double 的陷阱">
+- **過度 Mock**：每個依賴都 Mock 會讓測試與實作高度耦合，重構就全部爆掉
+- **Mock 了不該 Mock 的東西**：不要 Mock 值物件（Value Object）或純函式
+- **Stub 和 Mock 混淆**：Stub 用來控制輸入，Mock 用來驗證輸出和互動，目的不同
+- **Fake 太複雜**：如果 Fake 需要自己的測試，代表它太複雜了
+</Callout>
+
+## 選擇流程
+
+<StepDiagram data='[{"title":"確認依賴類型","description":"這個依賴是查詢（回傳資料）還是命令（產生副作用）？","icon":"1"},{"title":"查詢用 Stub","description":"只需要控制回傳值，讓被測物件走到特定路徑","icon":"2"},{"title":"命令用 Mock/Spy","description":"需要驗證是否正確呼叫了外部服務（如寄信、寫入資料庫）","icon":"3"},{"title":"複雜依賴用 Fake","description":"需要更接近真實行為時（如 In-Memory DB），使用 Fake","icon":"4"},{"title":"填參數用 Dummy","description":"只為了滿足方法簽名，不會被實際呼叫","icon":"5"}]' />
+
+## 程式碼範例
+
+### C#（xUnit + Moq）
+
+```csharp
+// 被測試的服務
+public interface IEmailSender
+{
+    void Send(string to, string body);
+}
+
+public interface IUserRepository
+{
+    User? GetById(int id);
+}
+
+public class NotificationService
+{
+    private readonly IEmailSender _sender;
+    private readonly IUserRepository _repo;
+
+    public NotificationService(IEmailSender sender, IUserRepository repo)
+    {
+        _sender = sender;
+        _repo = repo;
+    }
+
+    public bool NotifyUser(int userId, string message)
+    {
+        var user = _repo.GetById(userId);
+        if (user == null) return false;
+        _sender.Send(user.Email, message);
+        return true;
+    }
+}
+
+// Stub: 控制 Repository 回傳值
+// Mock: 驗證 Email 是否被呼叫
+[Fact]
+public void NotifyUser_UserExists_SendsEmail()
+{
+    var stubRepo = new Mock<IUserRepository>();
+    stubRepo.Setup(r => r.GetById(1))
+            .Returns(new User { Email = "test@example.com" });
+
+    var mockSender = new Mock<IEmailSender>();
+
+    var service = new NotificationService(mockSender.Object, stubRepo.Object);
+    var result = service.NotifyUser(1, "Hello");
+
+    Assert.True(result);
+    mockSender.Verify(s => s.Send("test@example.com", "Hello"), Times.Once);
+}
+```
+
+### TypeScript（Jest）
+
+```typescript
+// Stub: 控制回傳值
+const stubRepo = {
+  getById: jest.fn().mockReturnValue({ email: "test@example.com" }),
+};
+
+// Spy: 記錄呼叫，事後驗證
+const spySender = {
+  send: jest.fn(),
+};
+
+describe("NotificationService", () => {
+  it("sends email when user exists", () => {
+    const service = new NotificationService(spySender, stubRepo);
+    const result = service.notifyUser(1, "Hello");
+
+    expect(result).toBe(true);
+    expect(spySender.send).toHaveBeenCalledWith("test@example.com", "Hello");
+    expect(spySender.send).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns false when user not found", () => {
+    stubRepo.getById.mockReturnValue(null);
+    const service = new NotificationService(spySender, stubRepo);
+    const result = service.notifyUser(999, "Hello");
+
+    expect(result).toBe(false);
+    expect(spySender.send).not.toHaveBeenCalled();
+  });
+});
+```
+
+### Python（pytest + unittest.mock）
+
+```python
+from unittest.mock import Mock, patch
+
+# Stub: 控制回傳值
+def test_notify_user_sends_email():
+    stub_repo = Mock()
+    stub_repo.get_by_id.return_value = User(email="test@example.com")
+
+    mock_sender = Mock()
+
+    service = NotificationService(mock_sender, stub_repo)
+    result = service.notify_user(1, "Hello")
+
+    assert result is True
+    mock_sender.send.assert_called_once_with("test@example.com", "Hello")
+
+# Spy 風格：記錄呼叫並驗證
+def test_notify_user_not_found():
+    stub_repo = Mock()
+    stub_repo.get_by_id.return_value = None
+
+    spy_sender = Mock()
+
+    service = NotificationService(spy_sender, stub_repo)
+    result = service.notify_user(999, "Hello")
+
+    assert result is False
+    spy_sender.send.assert_not_called()
+```
+
+## 關係圖
+
+<Diagram data='{"nodes":[{"id":"td","label":"Test Double (統稱)","type":"highlight"},{"id":"stub","label":"Stub (控制輸入)","type":"default"},{"id":"mock","label":"Mock (驗證互動)","type":"default"},{"id":"fake","label":"Fake (簡化實作)","type":"default"},{"id":"spy","label":"Spy (記錄呼叫)","type":"default"},{"id":"dummy","label":"Dummy (填充參數)","type":"muted"}],"edges":[{"from":"td","to":"stub","label":"回傳預設值"},{"from":"td","to":"mock","label":"帶驗證期望"},{"from":"td","to":"fake","label":"簡化但能運作"},{"from":"td","to":"spy","label":"記錄後查詢"},{"from":"td","to":"dummy","label":"僅佔位"}]}' />
+
+## 實戰補充
+
+<Callout type="tip" title="資深開發者的經驗">
+- **優先用 Stub，慎用 Mock**：過度使用 Mock 會讓測試變成「重新實作一次被測程式碼」。只在驗證重要副作用（寄信、付款）時才用 Mock。
+- **常用框架**：C# 用 Moq 或 NSubstitute，TypeScript 用 Jest 內建 mock，Python 用 unittest.mock。
+- **Fake 的投資報酬率高**：例如用 SQLite In-Memory 替代 SQL Server，既快又接近真實行為。
+- **London School vs. Chicago School**：London School 偏好大量 Mock 來隔離每個單元；Chicago School 偏好真實物件，只在邊界 Mock。選擇取決於團隊風格。
+</Callout>
+
+## 理解測驗
+
+<Quiz data='{"question":"Stub 和 Mock 的主要差異是什麼？","options":["Stub 比較快，Mock 比較慢","Stub 控制輸入（回傳值），Mock 驗證互動（是否被正確呼叫）","它們完全一樣，只是名字不同","Stub 用在單元測試，Mock 用在整合測試"],"answer":1,"explanation":"Stub 用來控制被測物件的輸入（回傳預設值），Mock 則帶有驗證期望，確認互動是否正確發生。"}' />
+
+<Quiz data='{"question":"以下哪個是 Fake 的典型例子？","options":["回傳固定字串的物件","In-Memory Database 替代真實資料庫","驗證方法被呼叫次數的物件","null"],"answer":1,"explanation":"Fake 是有簡化實作的替身。In-Memory Database 是典型的 Fake——有真實的讀寫行為，但不需要外部服務。"}' />
+
+<Quiz data='{"question":"什麼時候不該使用 Test Double？","options":["依賴是外部 API 且呼叫有成本","依賴是純粹的值物件或簡單資料結構","依賴是資料庫連線","依賴是第三方付款服務"],"answer":1,"explanation":"值物件和簡單資料結構不需要替身——它們本身就很輕量、無副作用、可預測。替代它們只會增加不必要的複雜度。"}' />
+
+## 重點整理
+
+<Callout type="tip" title="一句話記住">
+**Test Double = 用替身隔離依賴。Stub 控制輸入，Mock 驗證互動，Fake 簡化實作，Spy 記錄呼叫。**
+</Callout>
+
+| 類型 | 用途 | 典型場景 |
+|------|------|----------|
+| **Stub** | 回傳預設值，控制測試路徑 | Repository 回傳假資料 |
+| **Mock** | 驗證互動是否正確發生 | 確認 Email 被寄出 |
+| **Fake** | 簡化但可運作的實作 | In-Memory Database |
+| **Spy** | 記錄呼叫，事後查詢 | 檢查 log 被寫入幾次 |
+| **Dummy** | 僅填充參數位置 | 不會被使用的建構參數 |

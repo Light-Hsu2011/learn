@@ -1,0 +1,331 @@
+---
+title: "Template Method Pattern"
+order: 16
+description: "在父類別中定義演算法的骨架，將某些步驟延遲到子類別實作"
+---
+
+# Template Method Pattern（模板方法模式）
+
+<ELI5>
+想像你在泡泡麵：
+
+- **步驟永遠一樣**：拆包裝 → 放麵條 → 加調味包 → 倒熱水 → 等三分鐘
+- 但每個人**加的料不同**：有人加蛋、有人加起司、有人什麼都不加
+
+說明書上的步驟就是「模板（Template）」，而「加什麼料」這個步驟留給你自己決定。
+
+就像考試的答案卷——格式已經印好了（姓名、班級、選擇題、問答題），你只需要填寫你的答案。框架固定，內容自訂。
+</ELI5>
+
+## 是什麼？
+
+Template Method Pattern 在父類別中定義一個**演算法的骨架**（一系列步驟的順序），但把某些步驟的具體實作留給子類別。子類別可以重寫特定步驟，但不能改變整體流程。
+
+<Callout type="info" title="GoF 分類">
+Template Method 屬於**行為型模式（Behavioral Pattern）**，重點在於用繼承來控制演算法流程，同時允許子類別自訂部分步驟。
+</Callout>
+
+## 什麼時候用？
+
+- 多個類別有相似的演算法流程，只有某些步驟不同
+- 你想控制子類別的擴展點——只允許它們自訂特定步驟
+- 框架需要定義生命週期鉤子（Lifecycle Hook）
+- 你想避免重複的流程控制程式碼
+
+## 什麼時候不該用？
+
+<Callout type="warning" title="過度設計警告">
+如果步驟變化太多，繼承層次會越來越深且難以維護。此時 Strategy Pattern（組合優於繼承）可能是更好的選擇。當流程本身也需要變化時，Template Method 會變得太僵硬。
+</Callout>
+
+## 執行流程
+
+<StepDiagram data='[{"title":"定義抽象類別","description":"撰寫 Template Method，按順序呼叫各步驟","icon":"1"},{"title":"標記固定步驟","description":"在父類別中實作不需要變化的步驟","icon":"2"},{"title":"標記抽象步驟","description":"宣告為 abstract，強制子類別實作","icon":"3"},{"title":"提供 Hook 方法","description":"可選步驟，子類別可以覆寫也可以不覆寫","icon":"4"},{"title":"子類別實作","description":"繼承父類別，填入自訂步驟的具體邏輯","icon":"5"}]' />
+
+## 程式碼範例
+
+### C# 版本
+
+```csharp
+// 1. 抽象類別：定義模板
+public abstract class DataMiner
+{
+    // Template Method — 定義流程骨架
+    public void Mine(string path)
+    {
+        OpenFile(path);
+        var rawData = ExtractData();
+        var data = ParseData(rawData);
+        AnalyzeData(data);
+        SendReport();
+        CloseFile();
+    }
+
+    // 固定步驟
+    private void AnalyzeData(string data)
+    {
+        Console.WriteLine($"  分析資料：找到 {data.Length} 個字元");
+    }
+
+    private void SendReport()
+    {
+        Console.WriteLine("  報告已發送");
+    }
+
+    // 抽象步驟 — 子類別必須實作
+    protected abstract void OpenFile(string path);
+    protected abstract string ExtractData();
+    protected abstract string ParseData(string rawData);
+    protected abstract void CloseFile();
+}
+
+// 2. 具體實作：CSV 版本
+public class CsvDataMiner : DataMiner
+{
+    protected override void OpenFile(string path)
+        => Console.WriteLine($"  開啟 CSV 檔案：{path}");
+    protected override string ExtractData()
+        => "name,age,city";
+    protected override string ParseData(string rawData)
+        => rawData.Replace(",", " | ");
+    protected override void CloseFile()
+        => Console.WriteLine("  關閉 CSV 檔案");
+}
+
+// 3. 具體實作：JSON 版本
+public class JsonDataMiner : DataMiner
+{
+    protected override void OpenFile(string path)
+        => Console.WriteLine($"  開啟 JSON 檔案：{path}");
+    protected override string ExtractData()
+        => "{\"name\":\"Alice\",\"age\":30}";
+    protected override string ParseData(string rawData)
+        => rawData.Replace("{", "").Replace("}", "");
+    protected override void CloseFile()
+        => Console.WriteLine("  關閉 JSON 檔案");
+}
+
+// 4. 使用
+DataMiner csvMiner = new CsvDataMiner();
+csvMiner.Mine("data.csv");
+
+DataMiner jsonMiner = new JsonDataMiner();
+jsonMiner.Mine("data.json");
+```
+
+### TypeScript 版本
+
+```typescript
+// 1. 抽象類別
+abstract class DataMiner {
+  // Template Method
+  mine(path: string): void {
+    this.openFile(path);
+    const rawData = this.extractData();
+    const data = this.parseData(rawData);
+    this.analyzeData(data);
+    this.sendReport();
+    this.closeFile();
+  }
+
+  private analyzeData(data: string): void {
+    console.log(`  分析資料：找到 ${data.length} 個字元`);
+  }
+
+  private sendReport(): void {
+    console.log("  報告已發送");
+  }
+
+  protected abstract openFile(path: string): void;
+  protected abstract extractData(): string;
+  protected abstract parseData(rawData: string): string;
+  protected abstract closeFile(): void;
+}
+
+// 2. CSV 版本
+class CsvDataMiner extends DataMiner {
+  protected openFile(path: string) { console.log(`  開啟 CSV：${path}`); }
+  protected extractData() { return "name,age,city"; }
+  protected parseData(rawData: string) { return rawData.replace(/,/g, " | "); }
+  protected closeFile() { console.log("  關閉 CSV 檔案"); }
+}
+
+// 3. JSON 版本
+class JsonDataMiner extends DataMiner {
+  protected openFile(path: string) { console.log(`  開啟 JSON：${path}`); }
+  protected extractData() { return '{"name":"Alice","age":30}'; }
+  protected parseData(rawData: string) { return rawData.replace(/[{}]/g, ""); }
+  protected closeFile() { console.log("  關閉 JSON 檔案"); }
+}
+
+// 4. 使用
+const csvMiner = new CsvDataMiner();
+csvMiner.mine("data.csv");
+
+const jsonMiner = new JsonDataMiner();
+jsonMiner.mine("data.json");
+```
+
+### Python 版本
+
+```python
+from abc import ABC, abstractmethod
+
+# 1. 抽象類別
+class DataMiner(ABC):
+    # Template Method
+    def mine(self, path: str) -> None:
+        self.open_file(path)
+        raw_data = self.extract_data()
+        data = self.parse_data(raw_data)
+        self._analyze_data(data)
+        self._send_report()
+        self.close_file()
+
+    def _analyze_data(self, data: str) -> None:
+        print(f"  分析資料：找到 {len(data)} 個字元")
+
+    def _send_report(self) -> None:
+        print("  報告已發送")
+
+    @abstractmethod
+    def open_file(self, path: str) -> None:
+        pass
+    @abstractmethod
+    def extract_data(self) -> str:
+        pass
+    @abstractmethod
+    def parse_data(self, raw_data: str) -> str:
+        pass
+    @abstractmethod
+    def close_file(self) -> None:
+        pass
+
+# 2. CSV 版本
+class CsvDataMiner(DataMiner):
+    def open_file(self, path: str) -> None:
+        print(f"  開啟 CSV 檔案：{path}")
+    def extract_data(self) -> str:
+        return "name,age,city"
+    def parse_data(self, raw_data: str) -> str:
+        return raw_data.replace(",", " | ")
+    def close_file(self) -> None:
+        print("  關閉 CSV 檔案")
+
+# 3. JSON 版本
+class JsonDataMiner(DataMiner):
+    def open_file(self, path: str) -> None:
+        print(f"  開啟 JSON 檔案：{path}")
+    def extract_data(self) -> str:
+        return '{"name":"Alice","age":30}'
+    def parse_data(self, raw_data: str) -> str:
+        return raw_data.replace("{", "").replace("}", "")
+    def close_file(self) -> None:
+        print("  關閉 JSON 檔案")
+
+# 4. 使用
+csv_miner = CsvDataMiner()
+csv_miner.mine("data.csv")
+
+json_miner = JsonDataMiner()
+json_miner.mine("data.json")
+```
+
+### Java 版本
+
+```java
+// 1. 抽象類別
+public abstract class DataMiner {
+    // Template Method
+    public final void mine(String path) {
+        openFile(path);
+        String rawData = extractData();
+        String data = parseData(rawData);
+        analyzeData(data);
+        sendReport();
+        closeFile();
+    }
+
+    private void analyzeData(String data) {
+        System.out.println("  分析資料：找到 " + data.length() + " 個字元");
+    }
+
+    private void sendReport() {
+        System.out.println("  報告已發送");
+    }
+
+    protected abstract void openFile(String path);
+    protected abstract String extractData();
+    protected abstract String parseData(String rawData);
+    protected abstract void closeFile();
+}
+
+// 2. CSV 版本
+public class CsvDataMiner extends DataMiner {
+    protected void openFile(String path) {
+        System.out.println("  開啟 CSV 檔案：" + path);
+    }
+    protected String extractData() { return "name,age,city"; }
+    protected String parseData(String rawData) {
+        return rawData.replace(",", " | ");
+    }
+    protected void closeFile() { System.out.println("  關閉 CSV 檔案"); }
+}
+
+// 3. JSON 版本
+public class JsonDataMiner extends DataMiner {
+    protected void openFile(String path) {
+        System.out.println("  開啟 JSON 檔案：" + path);
+    }
+    protected String extractData() { return "{\"name\":\"Alice\",\"age\":30}"; }
+    protected String parseData(String rawData) {
+        return rawData.replace("{", "").replace("}", "");
+    }
+    protected void closeFile() { System.out.println("  關閉 JSON 檔案"); }
+}
+
+// 4. 使用
+DataMiner csvMiner = new CsvDataMiner();
+csvMiner.mine("data.csv");
+
+DataMiner jsonMiner = new JsonDataMiner();
+jsonMiner.mine("data.json");
+```
+
+## 結構圖
+
+<Diagram data='{"nodes":[{"id":"client","label":"Client","type":"muted"},{"id":"abstract","label":"AbstractClass (DataMiner)","type":"highlight"},{"id":"concrete_a","label":"ConcreteClass A (CsvMiner)","type":"default"},{"id":"concrete_b","label":"ConcreteClass B (JsonMiner)","type":"default"}],"edges":[{"from":"client","to":"abstract","label":"calls templateMethod()"},{"from":"concrete_a","to":"abstract","label":"extends"},{"from":"concrete_b","to":"abstract","label":"extends"}]}' />
+
+## 實戰補充
+
+<Callout type="tip" title="資深開發者經驗">
+**框架到處都是 Template Method**：ASP.NET 的 `Controller` 生命週期、React 的 Class Component（`componentDidMount`、`render`），都是 Template Method 的應用。
+
+**Hook 方法的威力**：在 Template Method 中加入空的 Hook 方法（非抽象），讓子類別可以選擇性覆寫。例如 `beforeExecute()`、`afterExecute()`。
+
+**sealed/final 的重要性**：Template Method 本身要標記為 `sealed`（C#）或 `final`（Java），防止子類別覆寫整個流程。這是「好萊塢原則（Don't call us, we'll call you）」的體現。
+
+**組合 vs 繼承**：如果步驟變化太多，考慮用 Strategy Pattern 把每個步驟抽成獨立策略，用組合取代繼承，會更靈活。
+</Callout>
+
+## 理解測驗
+
+<Quiz data='{"question":"Template Method Pattern 中，誰控制演算法的執行順序？","options":["子類別決定執行順序","Client 決定執行順序","父類別的 Template Method 決定執行順序","執行時動態決定"],"answer":2,"explanation":"Template Method 定義在父類別中，它控制各步驟的呼叫順序。子類別只能自訂個別步驟的內容，不能改變順序。"}' />
+
+<Quiz data='{"question":"Template Method 和 Strategy Pattern 最大的差異是什麼？","options":["Template Method 用繼承，Strategy 用組合","Template Method 比較快","Strategy 只能用在排序","兩者完全一樣"],"answer":0,"explanation":"Template Method 透過繼承讓子類別覆寫步驟，Strategy 透過組合讓你在執行時注入不同策略。這是繼承 vs 組合的經典對比。"}' />
+
+<Quiz data='{"question":"為什麼 Template Method 要標記為 final 或 sealed？","options":["提升執行效能","防止子類別覆寫整個演算法流程","減少記憶體使用","讓編譯器產生更好的錯誤訊息"],"answer":1,"explanation":"Template Method 的目的是固定流程骨架，如果子類別可以覆寫 Template Method 本身，就失去了控制流程的意義。"}' />
+
+## 重點整理
+
+<Callout type="tip" title="一句話記住">
+**Template Method = 流程固定、細節自訂：父類別說「先做 A 再做 B」，子類別決定 A 和 B 怎麼做。**
+</Callout>
+
+| 概念 | 說明 |
+|------|------|
+| **Template Method** | 父類別中定義的演算法骨架方法 |
+| **Abstract Steps** | 子類別必須實作的抽象步驟 |
+| **Hook Methods** | 子類別可選擇覆寫的空方法 |
+| **核心好處** | 消除重複的流程控制程式碼 |
+| **代價** | 繼承層次可能變深，靈活性不如組合 |

@@ -1,0 +1,113 @@
+---
+title: "875. Koko Eating Bananas"
+order: 56
+description: "二分搜尋答案空間，找到最小吃香蕉速度使得在時限內吃完"
+---
+
+# Koko Eating Bananas
+
+<ELI5>
+Koko 是一隻猴子，面前有好幾堆香蕉，守衛 h 小時後會回來。Koko 每小時只能選一堆吃，每小時最多吃 k 根（吃不完的下一小時繼續吃同一堆）。
+
+問題是：k 最小可以是多少，才能在守衛回來前吃完所有香蕉？
+
+這就像考試前估算讀書速度：每小時至少要讀幾頁才能在考試前讀完所有章節？速度太慢讀不完，太快浪費精力。用二分搜尋找到「剛好夠快」的速度。
+</ELI5>
+
+## 題目描述
+
+給定 `piles` 陣列（每堆香蕉的數量）和 `h` 小時。Koko 每小時吃 k 根，吃完一堆才能換下一堆。回傳最小的 k。
+
+```
+輸入：piles = [3,6,7,11], h = 8
+輸出：4
+解釋：速度 4 → 需要 1+2+2+3 = 8 小時，剛好吃完
+```
+
+## 解題思路
+
+<StepDiagram data='[{"title":"確定搜尋範圍","description":"最慢 k=1，最快 k=max(piles)","icon":"1"},{"title":"二分搜尋速度","description":"mid = (left + right) / 2","icon":"2"},{"title":"計算所需時間","description":"每堆需要 ceil(pile/mid) 小時，加總","icon":"3"},{"title":"判斷可行性","description":"總時間 <= h 可行，嘗試更慢；否則加快","icon":"4"},{"title":"回傳最小速度","description":"left 就是滿足條件的最小 k","icon":"5"}]' />
+
+## 程式碼
+
+### C#
+```csharp
+public class Solution {
+    public int MinEatingSpeed(int[] piles, int h) {
+        int left = 1, right = piles.Max();
+        while (left < right) {
+            int mid = left + (right - left) / 2;
+            // 計算以速度 mid 吃完所有香蕉需要的時間
+            long hours = piles.Sum(p => (long)(p + mid - 1) / mid);
+            if (hours <= h) {
+                right = mid; // 可以更慢
+            } else {
+                left = mid + 1; // 太慢了，加速
+            }
+        }
+        return left;
+    }
+}
+```
+
+### TypeScript
+```typescript
+function minEatingSpeed(piles: number[], h: number): number {
+    let left = 1, right = Math.max(...piles);
+    while (left < right) {
+        const mid = Math.floor((left + right) / 2);
+        // 計算所需小時數
+        const hours = piles.reduce((sum, p) => sum + Math.ceil(p / mid), 0);
+        if (hours <= h) {
+            right = mid; // 速度夠快，嘗試更慢
+        } else {
+            left = mid + 1; // 速度太慢
+        }
+    }
+    return left;
+}
+```
+
+### Python
+```python
+import math
+
+def minEatingSpeed(piles: list[int], h: int) -> int:
+    left, right = 1, max(piles)
+    while left < right:
+        mid = (left + right) // 2
+        # 以速度 mid 吃完所有堆需要的總小時數
+        hours = sum(math.ceil(p / mid) for p in piles)
+        if hours <= h:
+            right = mid  # 可以更慢
+        else:
+            left = mid + 1  # 太慢了
+    return left
+```
+
+## 複雜度分析
+
+| | Time | Space |
+|--|------|-------|
+| 本解法 | O(n log m) | O(1) |
+
+其中 n = piles 長度，m = max(piles)。
+
+## 圖解
+
+<Diagram data='{"nodes":[{"id":"range","label":"速度範圍 [1, max(piles)]","type":"default"},{"id":"mid","label":"嘗試速度 mid","type":"highlight"},{"id":"calc","label":"計算所需時間","type":"default"},{"id":"fast","label":"時間 <= h → 嘗試更慢","type":"muted"},{"id":"slow","label":"時間 > h → 加快速度","type":"muted"},{"id":"answer","label":"最小可行速度","type":"highlight"}],"edges":[{"from":"range","to":"mid","label":"二分"},{"from":"mid","to":"calc","label":"模擬"},{"from":"calc","to":"fast","label":"可行"},{"from":"calc","to":"slow","label":"不可行"},{"from":"fast","to":"answer","label":"收斂"},{"from":"slow","to":"answer","label":"收斂"}]}' />
+
+## 進階觀點
+
+<Callout type="tip" title="面試追問">
+- 這是「Binary Search on Answer」的經典題型。答案空間有單調性：速度越快，所需時間越少。
+- 類似題型：**1011. Capacity To Ship Packages Within D Days**、**410. Split Array Largest Sum**，都是在答案空間上二分搜尋。
+- `ceil(p / mid)` 可以用 `(p + mid - 1) / mid` 整數運算替代，避免浮點誤差。
+- 注意 `piles.Sum()` 可能溢位，用 `long` 累加更安全。
+</Callout>
+
+## 理解測驗
+
+<Quiz data='{"question":"這題的「二分搜尋」搜尋的是什麼？","options":["搜尋某堆香蕉的位置","搜尋可能的吃香蕉速度 k","搜尋時間 h","搜尋香蕉堆的數量"],"answer":1,"explanation":"這是 Binary Search on Answer：搜尋空間是速度 k 的所有可能值 [1, max(piles)]，找到滿足條件的最小 k。"}' />
+
+<Quiz data='{"question":"為什麼答案空間具有單調性？","options":["因為陣列是排序的","速度越快所需時間越少，存在一個分界點使得左邊不可行、右邊可行","因為 h 是固定的","因為每堆大小不同"],"answer":1,"explanation":"速度 k 和所需時間呈反比關係，所以存在一個最小的 k 使得所需時間剛好 <= h，這就是二分搜尋要找的分界點。"}' />

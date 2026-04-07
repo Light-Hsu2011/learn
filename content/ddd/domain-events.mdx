@@ -1,0 +1,256 @@
+---
+title: "Domain Events"
+order: 5
+description: "用事件表達領域中發生的重要事情，實現模組間鬆耦合"
+---
+
+# Domain Events（領域事件）
+
+<ELI5>
+想像學校裡的**廣播系統**。當下課鐘響了，廣播說：「現在是午休時間。」聽到廣播後：
+
+- 學生去吃飯
+- 老師去休息室
+- 值日生開始打掃
+
+廣播系統不需要知道誰在聽、誰要做什麼。它只負責**宣布發生了什麼事**，有興趣的人自己決定要怎麼反應。
+
+Domain Events 就是你系統裡的廣播系統 — 某個 Aggregate 做了一件重要的事，就廣播出去，其他關心這件事的模組自己處理。
+</ELI5>
+
+## 是什麼？
+
+Domain Event 是對**領域中已經發生的重要事情**的描述。它是不可變的、用過去式命名的物件，用來實現 Aggregate 之間的鬆耦合通訊。
+
+<Callout type="info" title="DDD 整合模式">
+Domain Events 是解決「一個交易只修改一個 Aggregate」限制的關鍵工具。當一個 Aggregate 的操作需要觸發另一個 Aggregate 的變更時，用事件來通訊。
+</Callout>
+
+## 核心觀念
+
+- **過去式命名**：事件描述已經發生的事，用過去式命名 — `OrderPlaced`、`PaymentReceived`、`UserRegistered`
+- **不可變**：事件一旦發出就不能修改，它是一個事實記錄
+- **發布/訂閱模式**：發布者不知道誰在聽，訂閱者不知道誰發的，實現鬆耦合
+- **最終一致性**：跨 Aggregate 的操作透過事件實現最終一致性，而非強一致性
+- **攜帶足夠資訊**：事件要包含訂閱者需要的資料，避免訂閱者回頭查詢
+
+## 常見誤區
+
+<Callout type="warning" title="常見誤區">
+**誤區一**：用現在式命名事件（如 `PlaceOrder`）。事件描述的是「已經發生的事」，必須用過去式（`OrderPlaced`）。現在式的是 Command，不是 Event。
+
+**誤區二**：在事件處理器中修改發出事件的那個 Aggregate。事件處理器應該觸發其他 Aggregate 的操作，或執行副作用（寄信、通知）。
+
+**誤區三**：事件攜帶太少資訊，導致訂閱者需要回頭查詢發布者的資料，造成耦合。
+</Callout>
+
+## 事件處理流程
+
+<StepDiagram data='[{"title":"領域操作發生","description":"Aggregate Root 執行了一個業務操作（如 Order.Place()）","icon":"1"},{"title":"產生事件","description":"在 Aggregate 內部建立 Domain Event 物件（OrderPlaced）","icon":"2"},{"title":"收集事件","description":"事件暫存在 Aggregate 內部的清單中","icon":"3"},{"title":"發布事件","description":"在交易完成後，由基礎設施層取出並發布事件","icon":"4"},{"title":"處理事件","description":"訂閱者收到事件後執行各自的邏輯（寄信、更新庫存等）","icon":"5"}]' />
+
+## 程式碼範例
+
+### C# 版本
+
+```csharp
+// Domain Event 基底
+public interface IDomainEvent
+{
+    DateTime OccurredAt { get; }
+}
+
+// 具體事件
+public record OrderPlacedEvent(
+    Guid OrderId,
+    Guid CustomerId,
+    decimal TotalAmount,
+    DateTime OccurredAt
+) : IDomainEvent;
+
+public record PaymentReceivedEvent(
+    Guid OrderId,
+    decimal Amount,
+    string PaymentMethod,
+    DateTime OccurredAt
+) : IDomainEvent;
+
+// Aggregate Root 帶事件收集能力
+public abstract class AggregateRoot<TId> : Entity<TId> where TId : notnull
+{
+    private readonly List<IDomainEvent> _domainEvents = new();
+    public IReadOnlyList<IDomainEvent> DomainEvents => _domainEvents.AsReadOnly();
+
+    protected AggregateRoot(TId id) : base(id) { }
+
+    protected void AddDomainEvent(IDomainEvent domainEvent)
+    {
+        _domainEvents.Add(domainEvent);
+    }
+
+    public void ClearDomainEvents() => _domainEvents.Clear();
+}
+
+// Order Aggregate 發出事件
+public class Order : AggregateRoot<Guid>
+{
+    public void Place()
+    {
+        if (!_lineItems.Any())
+            throw new InvalidOperationException("Cannot place an empty order.");
+
+        Status = OrderStatus.Placed;
+
+        AddDomainEvent(new OrderPlacedEvent(
+            OrderId: Id,
+            CustomerId: CustomerId,
+            TotalAmount: TotalAmount.Amount,
+            OccurredAt: DateTime.UtcNow
+        ));
+    }
+}
+
+// 事件處理器
+public class SendOrderConfirmationEmail : IEventHandler<OrderPlacedEvent>
+{
+    public async Task Handle(OrderPlacedEvent @event)
+    {
+        // 寄出訂單確認信
+        await _emailService.SendOrderConfirmation(@event.OrderId, @event.CustomerId);
+    }
+}
+
+public class UpdateInventory : IEventHandler<OrderPlacedEvent>
+{
+    public async Task Handle(OrderPlacedEvent @event)
+    {
+        // 扣減庫存
+        await _inventoryService.DeductStock(@event.OrderId);
+    }
+}
+```
+
+### TypeScript 版本
+
+```typescript
+// Domain Event
+interface DomainEvent {
+  readonly occurredAt: Date;
+}
+
+class OrderPlacedEvent implements DomainEvent {
+  readonly occurredAt = new Date();
+  constructor(
+    public readonly orderId: string,
+    public readonly customerId: string,
+    public readonly totalAmount: number,
+  ) {}
+}
+
+// Aggregate Root 帶事件收集
+abstract class AggregateRoot<TId> {
+  private domainEvents: DomainEvent[] = [];
+
+  constructor(public readonly id: TId) {}
+
+  protected addDomainEvent(event: DomainEvent): void {
+    this.domainEvents.push(event);
+  }
+
+  pullDomainEvents(): DomainEvent[] {
+    const events = [...this.domainEvents];
+    this.domainEvents = [];
+    return events;
+  }
+}
+
+// Order 發出事件
+class Order extends AggregateRoot<string> {
+  place(): void {
+    if (this.lineItems.length === 0) {
+      throw new Error("Cannot place an empty order.");
+    }
+    this.status = OrderStatus.Placed;
+    this.addDomainEvent(
+      new OrderPlacedEvent(this.id, this.customerId, this.totalAmount.amount)
+    );
+  }
+}
+```
+
+### Python 版本
+
+```python
+from dataclasses import dataclass, field
+from datetime import datetime
+from typing import List
+from abc import ABC, abstractmethod
+
+@dataclass(frozen=True)
+class DomainEvent(ABC):
+    occurred_at: datetime = field(default_factory=datetime.utcnow)
+
+@dataclass(frozen=True)
+class OrderPlacedEvent(DomainEvent):
+    order_id: str = ""
+    customer_id: str = ""
+    total_amount: float = 0.0
+
+class AggregateRoot(ABC):
+    def __init__(self):
+        self._domain_events: List[DomainEvent] = []
+
+    def _add_domain_event(self, event: DomainEvent) -> None:
+        self._domain_events.append(event)
+
+    def pull_domain_events(self) -> List[DomainEvent]:
+        events = list(self._domain_events)
+        self._domain_events.clear()
+        return events
+
+class Order(AggregateRoot):
+    def place(self) -> None:
+        if not self._line_items:
+            raise ValueError("Cannot place an empty order.")
+        self._status = OrderStatus.PLACED
+        self._add_domain_event(OrderPlacedEvent(
+            order_id=str(self.id),
+            customer_id=str(self.customer_id),
+            total_amount=self._total_amount.amount,
+        ))
+```
+
+## 概念圖
+
+<Diagram data='{"nodes":[{"id":"aggregate","label":"Aggregate (Publisher)","type":"default"},{"id":"event","label":"Domain Event","type":"highlight"},{"id":"handler1","label":"Event Handler A（寄信）","type":"default"},{"id":"handler2","label":"Event Handler B（更新庫存）","type":"default"},{"id":"handler3","label":"Event Handler C（通知）","type":"default"},{"id":"bus","label":"Event Bus / Mediator","type":"muted"}],"edges":[{"from":"aggregate","to":"event","label":"產生"},{"from":"event","to":"bus","label":"發布到"},{"from":"bus","to":"handler1","label":"分發"},{"from":"bus","to":"handler2","label":"分發"},{"from":"bus","to":"handler3","label":"分發"}]}' />
+
+## 實戰補充
+
+<Callout type="tip" title="資深開發者筆記">
+在 C# 專案中，MediatR 是最常用的 in-process 事件發布工具。搭配 EF Core 的 `SaveChangesInterceptor`，可以在 SaveChanges 時自動取出所有 Aggregate 的 Domain Events 並發布。
+
+事件分為兩層：**Domain Events**（進程內，同步或非同步）和 **Integration Events**（跨服務，透過 Message Queue）。Domain Events 用 MediatR 處理；Integration Events 用 RabbitMQ、Azure Service Bus 等。
+
+設計事件時，攜帶的資料要遵守「胖事件」原則：包含訂閱者需要的所有資訊，避免訂閱者還要回頭查詢發布者。但也不要把整個 Aggregate 塞進事件裡。
+</Callout>
+
+## 理解測驗
+
+<Quiz data='{"question":"Domain Event 的命名規則是什麼？","options":["用現在式（如 PlaceOrder）","用過去式（如 OrderPlaced）","用未來式（如 OrderWillBePlaced）","沒有規則"],"answer":1,"explanation":"Domain Event 描述的是已經發生的事實，所以必須用過去式命名。現在式的是 Command（命令），未來式沒有意義。"}' />
+
+<Quiz data='{"question":"Domain Events 主要解決什麼問題？","options":["讓程式跑得更快","實現跨 Aggregate 的鬆耦合通訊","減少程式碼行數","取代資料庫"],"answer":1,"explanation":"Domain Events 讓 Aggregate 之間不需要直接依賴就能通訊。一個 Aggregate 發出事件，其他感興趣的模組訂閱處理，實現鬆耦合和最終一致性。"}' />
+
+<Quiz data='{"question":"以下哪個是正確的事件處理方式？","options":["在事件處理器中修改發出事件的那個 Aggregate","在事件處理器中觸發其他 Aggregate 的操作或執行副作用","在事件處理器中刪除事件","在事件處理器中阻止事件發生"],"answer":1,"explanation":"事件處理器應該觸發其他 Aggregate 的操作（如更新庫存）或執行副作用（如寄信），而不是回頭修改發出事件的 Aggregate。"}' />
+
+## 重點整理
+
+<Callout type="tip" title="一句話記住">
+**Domain Event = 系統裡的廣播，告訴大家「發生了什麼事」，聽到的人各自行動。**
+</Callout>
+
+| 概念 | 說明 |
+|------|------|
+| **過去式命名** | OrderPlaced、PaymentReceived |
+| **不可變** | 事件發出後不能修改 |
+| **發布/訂閱** | 發布者和訂閱者互不依賴 |
+| **最終一致性** | 跨 Aggregate 的一致性透過事件實現 |
+| **攜帶足夠資訊** | 訂閱者不需要回頭查詢發布者 |

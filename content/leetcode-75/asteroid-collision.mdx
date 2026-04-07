@@ -1,0 +1,133 @@
+---
+title: "735. Asteroid Collision"
+order: 25
+description: "用 Stack 模擬小行星碰撞邏輯處理正負方向的交互"
+---
+
+# Asteroid Collision
+
+<ELI5>
+想像一條直線上有一排小行星在飛。正數代表向右飛，負數代表向左飛。同方向的不會相撞，只有「右飛的遇到左飛的」才會碰撞。碰撞時，小的那顆爆掉，大的繼續飛，一樣大就兩顆都爆。
+
+用 Stack 來模擬：每顆小行星嘗試入場，如果它向左飛且 Stack 頂端有向右飛的，就開始碰撞。碰完存活的才能留在 Stack 裡。
+</ELI5>
+
+## 題目描述
+
+給定整數陣列 `asteroids`，正數向右移，負數向左移，絕對值代表大小。碰撞時小的爆炸，相同大小都爆炸。回傳碰撞後的狀態。
+
+```
+輸入：asteroids = [5,10,-5]
+輸出：[5,10]（10 和 -5 碰撞，10 存活）
+
+輸入：asteroids = [8,-8]
+輸出：[]（等大互毀）
+
+輸入：asteroids = [10,2,-5]
+輸出：[10]（2 和 -5 碰撞，-5 存活；然後 10 和 -5 碰撞，10 存活）
+```
+
+## 解題思路
+
+<StepDiagram data='[{"title":"遍歷小行星","description":"逐一處理每顆小行星","icon":"1"},{"title":"判斷碰撞","description":"當前為負（左飛）且 Stack 頂為正（右飛）→ 碰撞","icon":"2"},{"title":"比較大小","description":"頂端較小 → pop 繼續檢查；當前較小 → 當前消滅；相等 → 都消滅","icon":"3"},{"title":"存活入棧","description":"碰撞結束後若當前仍存活，push 入 Stack","icon":"4"}]' />
+
+## 程式碼
+
+### C#
+
+```csharp
+public class Solution {
+    public int[] AsteroidCollision(int[] asteroids) {
+        var stack = new Stack<int>();
+        foreach (int ast in asteroids) {
+            bool alive = true;
+            // 碰撞條件：當前向左(負) 且 Stack頂向右(正)
+            while (alive && ast < 0 && stack.Count > 0 && stack.Peek() > 0) {
+                if (stack.Peek() < -ast) {
+                    stack.Pop(); // 頂端較小，爆掉，繼續檢查
+                } else if (stack.Peek() == -ast) {
+                    stack.Pop(); // 等大互毀
+                    alive = false;
+                } else {
+                    alive = false; // 當前較小，當前爆掉
+                }
+            }
+            if (alive) stack.Push(ast);
+        }
+        var result = stack.ToArray();
+        Array.Reverse(result);
+        return result;
+    }
+}
+```
+
+### TypeScript
+
+```typescript
+function asteroidCollision(asteroids: number[]): number[] {
+    const stack: number[] = [];
+    for (const ast of asteroids) {
+        let alive = true;
+        while (alive && ast < 0 && stack.length > 0 && stack[stack.length - 1] > 0) {
+            const top = stack[stack.length - 1];
+            if (top < -ast) {
+                stack.pop();
+            } else if (top === -ast) {
+                stack.pop();
+                alive = false;
+            } else {
+                alive = false;
+            }
+        }
+        if (alive) stack.push(ast);
+    }
+    return stack;
+}
+```
+
+### Python
+
+```python
+def asteroidCollision(asteroids: list[int]) -> list[int]:
+    stack = []
+    for ast in asteroids:
+        alive = True
+        while alive and ast < 0 and stack and stack[-1] > 0:
+            if stack[-1] < -ast:
+                stack.pop()
+            elif stack[-1] == -ast:
+                stack.pop()
+                alive = False
+            else:
+                alive = False
+        if alive:
+            stack.append(ast)
+    return stack
+```
+
+## 複雜度分析
+
+| | Time | Space |
+|--|------|-------|
+| 本解法 | O(n) | O(n) |
+
+每顆小行星最多被 push 和 pop 各一次，攤銷 O(n)。
+
+## 圖解
+
+<Diagram data='{"nodes":[{"id":"input","label":"[10, 2, -5]","type":"default"},{"id":"s1","label":"Stack: [10, 2]","type":"default"},{"id":"s2","label":"-5 vs 2 → 2爆 Stack: [10]","type":"highlight"},{"id":"s3","label":"-5 vs 10 → -5爆 Stack: [10]","type":"highlight"},{"id":"result","label":"結果: [10]","type":"muted"}],"edges":[{"from":"input","to":"s1","label":"push 10, 2"},{"from":"s1","to":"s2","label":"-5 來了"},{"from":"s2","to":"s3","label":"繼續碰撞"},{"from":"s3","to":"result","label":"-5 消滅"}]}' />
+
+## 進階觀點
+
+<Callout type="tip" title="面試追問">
+- **為什麼只有「右飛遇到左飛」才碰撞？** 同向永遠追不上（速度相同），左飛在右飛左邊則越飛越遠。
+- **alive 變數的作用？** 追蹤當前小行星是否還存活。在 while 迴圈中可能被設為 false（被撞毀或互毀）。
+- **連鎖碰撞的例子？** [5,3,2,-10]：-10 依序撞毀 2、3、5，最後只剩 [-10]。
+- **跟括號匹配的關係？** 都是 Stack 的經典應用 — 新元素與 Stack 頂端互動，決定 push 或 pop。
+</Callout>
+
+## 理解測驗
+
+<Quiz data='{"question":"asteroids = [-2,-1,1,2] 的結果是什麼？","options":["[]","[-2,-1,1,2]","[-2,-1]","[1,2]"],"answer":1,"explanation":"[-2,-1] 向左飛，[1,2] 向右飛。負數在正數左邊，它們不會相遇（越飛越遠），所以全部存活。"}' />
+
+<Quiz data='{"question":"為什麼每顆小行星最多被 push 和 pop 各一次，所以時間是 O(n)？","options":["因為用了 Stack","因為每個元素只能進入 Stack 一次，離開 Stack 一次，總操作數最多 2n","因為 while 迴圈只跑一次","因為陣列已排序"],"answer":1,"explanation":"雖然有 while 迴圈，但每個元素被 pop 的次數不超過 1 次。所有 pop 操作的總次數不超過 n，所以攤銷時間為 O(n)。"}' />

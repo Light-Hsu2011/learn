@@ -1,0 +1,134 @@
+---
+title: "1268. Search Suggestions System"
+order: 71
+description: "排序加二分搜尋（或 Trie + DFS）實作搜尋建議功能"
+---
+
+# Search Suggestions System
+
+<ELI5>
+你在購物網站的搜尋框打字，每打一個字母，下面就會跳出最多三個建議。比如你打了 "mou"，就會看到 "mouse"、"mousepad"、"mountain"。
+
+怎麼實作？最簡單的方法：把所有產品名稱排序好。每次你多打一個字母，就用二分搜尋找到「第一個以你打的字開頭的產品」，然後往後看最多三個。因為已經排序了，所以相同前綴的產品一定是連在一起的。
+</ELI5>
+
+## 題目描述
+
+給定產品名稱陣列 `products` 和搜尋字串 `searchWord`。對 `searchWord` 的每個前綴（長度 1, 2, ..., n），回傳最多 3 個字典序最小的匹配產品。
+
+```
+輸入：products = ["mobile","mouse","moneypot","monitor","mousepad"], searchWord = "mouse"
+輸出：[
+  ["mobile","moneypot","monitor"],  // "m"
+  ["mobile","moneypot","monitor"],  // "mo"
+  ["mouse","mousepad"],              // "mou"
+  ["mouse","mousepad"],              // "mous"
+  ["mouse","mousepad"]               // "mouse"
+]
+```
+
+## 解題思路
+
+<StepDiagram data='[{"title":"排序產品","description":"按字典序排列所有產品名稱","icon":"1"},{"title":"逐字元擴展前綴","description":"從 searchWord 的第 1 個字母開始，逐步加長","icon":"2"},{"title":"二分搜尋","description":"找第一個 >= 當前前綴的產品索引","icon":"3"},{"title":"收集結果","description":"從該索引往後取最多 3 個匹配前綴的產品","icon":"4"},{"title":"縮小搜尋範圍","description":"下一輪的搜尋範圍可以從上一輪的位置開始","icon":"5"}]' />
+
+## 程式碼
+
+### C#
+```csharp
+public class Solution {
+    public IList<IList<string>> SuggestedProducts(string[] products, string searchWord) {
+        Array.Sort(products);
+        var result = new List<IList<string>>();
+        int left = 0, right = products.Length - 1;
+        
+        for (int i = 0; i < searchWord.Length; i++) {
+            char c = searchWord[i];
+            // 縮小左右邊界
+            while (left <= right && (products[left].Length <= i || products[left][i] != c))
+                left++;
+            while (left <= right && (products[right].Length <= i || products[right][i] != c))
+                right--;
+            
+            var suggestions = new List<string>();
+            int count = Math.Min(3, right - left + 1);
+            for (int j = 0; j < count; j++) {
+                suggestions.Add(products[left + j]);
+            }
+            result.Add(suggestions);
+        }
+        return result;
+    }
+}
+```
+
+### TypeScript
+```typescript
+function suggestedProducts(products: string[], searchWord: string): string[][] {
+    products.sort();
+    const result: string[][] = [];
+    let left = 0, right = products.length - 1;
+    
+    for (let i = 0; i < searchWord.length; i++) {
+        const c = searchWord[i];
+        while (left <= right && (products[left].length <= i || products[left][i] !== c))
+            left++;
+        while (left <= right && (products[right].length <= i || products[right][i] !== c))
+            right--;
+        
+        const suggestions: string[] = [];
+        const count = Math.min(3, right - left + 1);
+        for (let j = 0; j < count; j++) {
+            suggestions.push(products[left + j]);
+        }
+        result.push(suggestions);
+    }
+    return result;
+}
+```
+
+### Python
+```python
+def suggestedProducts(products: list[str], searchWord: str) -> list[list[str]]:
+    products.sort()
+    result = []
+    left, right = 0, len(products) - 1
+    
+    for i, c in enumerate(searchWord):
+        # 縮小搜尋範圍
+        while left <= right and (len(products[left]) <= i or products[left][i] != c):
+            left += 1
+        while left <= right and (len(products[right]) <= i or products[right][i] != c):
+            right -= 1
+        
+        count = min(3, right - left + 1)
+        result.append([products[left + j] for j in range(count)])
+    
+    return result
+```
+
+## 複雜度分析
+
+| | Time | Space |
+|--|------|-------|
+| 本解法 | O(n log n + n × m) | O(1)（不計輸出） |
+
+其中 n = products 數量，m = searchWord 長度。
+
+## 圖解
+
+<Diagram data='{"nodes":[{"id":"sort","label":"排序 products","type":"highlight"},{"id":"prefix","label":"前綴: m → mo → mou...","type":"default"},{"id":"narrow","label":"左右指標逐步縮小範圍","type":"highlight"},{"id":"pick","label":"取前 3 個匹配","type":"default"},{"id":"result","label":"收集每個前綴的建議","type":"muted"}],"edges":[{"from":"sort","to":"prefix","label":"排序後"},{"from":"prefix","to":"narrow","label":"每加一個字母"},{"from":"narrow","to":"pick","label":"範圍內"},{"from":"pick","to":"result","label":"加入結果"}]}' />
+
+## 進階觀點
+
+<Callout type="tip" title="面試追問">
+- Trie 解法：建一棵 Trie，每個節點存一個排序後的建議列表（最多 3 個）。搜尋時沿著前綴走，每個節點直接回傳建議。空間換時間。
+- 雙指標解法（如上）的優勢：不需要額外空間建 Trie，且 left/right 只會向中間移動，不會回退。
+- 實際搜尋引擎會用更複雜的結構（如 Ternary Search Tree + Frequency Ranking）。
+- 如果產品列表是動態更新的，Trie 更適合，因為可以增量添加。排序解法需要重新排序。
+</Callout>
+
+## 理解測驗
+
+<Quiz data='{"question":"為什麼排序後相同前綴的產品會連在一起？","options":["這只是巧合","因為字典序排序保證相同前綴的字串是連續的","因為排序演算法的特性","因為前綴長度相同"],"answer":1,"explanation":"字典序排序按字元逐一比較，前綴相同的字串在排序後一定是連續排列的，就像字典中 apple 和 application 一定相鄰。"}' />
+
+<Quiz data='{"question":"雙指標解法中，為什麼 left 和 right 不需要重置？","options":["因為前綴只會變長，不會變短，所以合法範圍只會縮小不會擴大","因為排序的關係","為了效能考量","其實應該要重置"],"answer":0,"explanation":"每次前綴加一個字母，匹配的範圍只會等於或小於之前的範圍。所以 left 只會右移，right 只會左移，不需要重置。"}' />

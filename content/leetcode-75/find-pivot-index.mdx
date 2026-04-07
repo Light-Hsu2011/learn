@@ -1,0 +1,107 @@
+---
+title: "724. Find Pivot Index"
+order: 19
+description: "用總和減去左前綴和來判斷是否存在左右和相等的樞紐點"
+---
+
+# Find Pivot Index
+
+<ELI5>
+想像一個翹翹板，上面放了一排不同重量的東西。你要找一個支點位置，讓支點左邊的總重量等於右邊的總重量（支點本身不算進去）。
+
+做法：先算出全部的總重量。然後從左到右試每個位置當支點：左邊重量已知（逐步累加），右邊重量 = 總重量 - 左邊 - 支點本身。當左邊等於右邊，就找到了！
+</ELI5>
+
+## 題目描述
+
+給定整數陣列 `nums`，找出「樞紐索引」— 使得左邊元素之和等於右邊元素之和的索引。不存在時回傳 -1。
+
+```
+輸入：nums = [1,7,3,6,5,6]
+輸出：3（左邊 1+7+3=11，右邊 5+6=11）
+
+輸入：nums = [1,2,3]
+輸出：-1
+
+輸入：nums = [2,1,-1]
+輸出：0（左邊為空=0，右邊 1+(-1)=0）
+```
+
+## 解題思路
+
+<StepDiagram data='[{"title":"算總和","description":"totalSum = sum(nums)","icon":"1"},{"title":"初始化左和","description":"leftSum = 0","icon":"2"},{"title":"遍歷每個索引","description":"rightSum = totalSum - leftSum - nums[i]","icon":"3"},{"title":"判斷","description":"若 leftSum == rightSum，回傳 i","icon":"4"},{"title":"累加","description":"leftSum += nums[i]，繼續下一個","icon":"5"}]' />
+
+## 程式碼
+
+### C#
+
+```csharp
+public class Solution {
+    public int PivotIndex(int[] nums) {
+        int totalSum = nums.Sum();
+        int leftSum = 0;
+        for (int i = 0; i < nums.Length; i++) {
+            int rightSum = totalSum - leftSum - nums[i];
+            if (leftSum == rightSum) return i;
+            leftSum += nums[i];
+        }
+        return -1;
+    }
+}
+```
+
+### TypeScript
+
+```typescript
+function pivotIndex(nums: number[]): number {
+    const totalSum = nums.reduce((a, b) => a + b, 0);
+    let leftSum = 0;
+    for (let i = 0; i < nums.length; i++) {
+        const rightSum = totalSum - leftSum - nums[i];
+        if (leftSum === rightSum) return i;
+        leftSum += nums[i];
+    }
+    return -1;
+}
+```
+
+### Python
+
+```python
+def pivotIndex(nums: list[int]) -> int:
+    total_sum = sum(nums)
+    left_sum = 0
+    for i, num in enumerate(nums):
+        right_sum = total_sum - left_sum - num
+        if left_sum == right_sum:
+            return i
+        left_sum += num
+    return -1
+```
+
+## 複雜度分析
+
+| | Time | Space |
+|--|------|-------|
+| 本解法 | O(n) | O(1) |
+
+計算總和 O(n) + 遍歷 O(n) = O(n)。
+
+## 圖解
+
+<Diagram data='{"nodes":[{"id":"input","label":"[1,7,3,6,5,6] total=28","type":"default"},{"id":"try3","label":"i=3: left=11, right=28-11-6=11","type":"highlight"},{"id":"result","label":"leftSum == rightSum → 回傳 3","type":"muted"}],"edges":[{"from":"input","to":"try3","label":"試 i=3"},{"from":"try3","to":"result","label":"相等!"}]}' />
+
+## 進階觀點
+
+<Callout type="tip" title="面試追問">
+- **索引 0 可以是 pivot 嗎？** 可以，左邊為空（和為 0），如果右邊也是 0 就成立。
+- **有多個 pivot 怎麼辦？** 題目要求回傳最左邊的那個，所以從左往右掃描找到第一個就回傳。
+- **含有負數時？** 演算法依然正確，因為用的是精確的加法比較。
+- **跟「前綴和陣列」的關係？** 這題不需要額外建立前綴和陣列，用一個變數即可。
+</Callout>
+
+## 理解測驗
+
+<Quiz data='{"question":"為什麼 rightSum = totalSum - leftSum - nums[i]？","options":["因為要排除左邊和支點自身，剩下的就是右邊","因為要用除法","因為要排序","因為前綴和的定義"],"answer":0,"explanation":"總和 = 左邊 + 支點 + 右邊，所以右邊 = 總和 - 左邊 - 支點。"}' />
+
+<Quiz data='{"question":"nums = [0,0,0] 的 pivot index 是什麼？","options":["0","1","2","-1"],"answer":0,"explanation":"i=0 時 leftSum=0, rightSum=0+0=0，左右相等，回傳 0。"}' />

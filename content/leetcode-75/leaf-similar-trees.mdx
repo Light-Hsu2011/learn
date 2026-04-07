@@ -1,0 +1,126 @@
+---
+title: "872. Leaf-Similar Trees"
+order: 34
+description: "用 DFS 收集兩棵樹的葉節點序列並比較是否相同"
+---
+
+# Leaf-Similar Trees
+
+<ELI5>
+想像兩棵不同形狀的樹。雖然樹幹和分枝長得不一樣，但如果你把兩棵樹的「葉子」從左到右摘下來排成一排，順序完全一樣，我們就說它們是「leaf-similar」的。
+
+就像兩個人穿不同衣服，但脫了鞋子後腳印一模一樣。
+
+你的任務就是：分別收集兩棵樹的葉子序列，然後比較。
+</ELI5>
+
+## 題目描述
+
+給定兩棵二元樹的根節點 root1 和 root2，判斷它們是否 leaf-similar — 即兩棵樹從左到右的葉節點值序列相同。
+
+```
+輸入: root1 = [3,5,1,6,2,9,8,null,null,7,4]
+      root2 = [3,5,1,6,7,4,2,null,null,null,null,null,null,9,8]
+輸出: true
+解釋: 兩棵樹的葉節點序列都是 [6,7,4,9,8]
+```
+
+## 解題思路
+
+<StepDiagram data='[{"title":"DFS 收集葉子","description":"對每棵樹做 DFS，遇到葉節點就加入列表","icon":"1"},{"title":"辨識葉節點","description":"左右子節點都為 null 的就是葉節點","icon":"2"},{"title":"比較兩個序列","description":"兩個葉子序列完全相同就回傳 true","icon":"3"}]' />
+
+## 程式碼
+
+### C#
+
+```csharp
+public class Solution {
+    public bool LeafSimilar(TreeNode root1, TreeNode root2) {
+        var leaves1 = new List<int>();
+        var leaves2 = new List<int>();
+        CollectLeaves(root1, leaves1);
+        CollectLeaves(root2, leaves2);
+        return leaves1.SequenceEqual(leaves2);
+    }
+
+    private void CollectLeaves(TreeNode node, List<int> leaves) {
+        if (node == null) return;
+        if (node.left == null && node.right == null) {
+            leaves.Add(node.val); // 葉節點
+            return;
+        }
+        CollectLeaves(node.left, leaves);
+        CollectLeaves(node.right, leaves);
+    }
+}
+```
+
+### TypeScript
+
+```typescript
+function leafSimilar(root1: TreeNode | null, root2: TreeNode | null): boolean {
+    const leaves1: number[] = [];
+    const leaves2: number[] = [];
+    collectLeaves(root1, leaves1);
+    collectLeaves(root2, leaves2);
+    return leaves1.length === leaves2.length &&
+           leaves1.every((v, i) => v === leaves2[i]);
+}
+
+function collectLeaves(node: TreeNode | null, leaves: number[]): void {
+    if (!node) return;
+    if (!node.left && !node.right) {
+        leaves.push(node.val); // 葉節點
+        return;
+    }
+    collectLeaves(node.left, leaves);
+    collectLeaves(node.right, leaves);
+}
+```
+
+### Python
+
+```python
+def leafSimilar(root1: Optional[TreeNode], root2: Optional[TreeNode]) -> bool:
+    def collect_leaves(node, leaves):
+        if not node:
+            return
+        if not node.left and not node.right:
+            leaves.append(node.val)  # 葉節點
+            return
+        collect_leaves(node.left, leaves)
+        collect_leaves(node.right, leaves)
+
+    leaves1, leaves2 = [], []
+    collect_leaves(root1, leaves1)
+    collect_leaves(root2, leaves2)
+    return leaves1 == leaves2
+```
+
+## 複雜度分析
+
+| | Time | Space |
+|--|------|-------|
+| 本解法 | O(n1 + n2) | O(n1 + n2) |
+
+n1, n2 分別是兩棵樹的節點數。
+
+## 圖解
+
+<Diagram data='{"nodes":[{"id":"tree1","label":"Tree 1","type":"muted"},{"id":"tree2","label":"Tree 2","type":"muted"},{"id":"l1","label":"葉子: [6,7,4,9,8]","type":"highlight"},{"id":"l2","label":"葉子: [6,7,4,9,8]","type":"highlight"},{"id":"result","label":"相同 → true","type":"highlight"}],"edges":[{"from":"tree1","to":"l1","label":"DFS"},{"from":"tree2","to":"l2","label":"DFS"},{"from":"l1","to":"result","label":"比較"},{"from":"l2","to":"result","label":"比較"}]}' />
+
+## 進階觀點
+
+<Callout type="tip" title="面試追問">
+**Generator 優化**：Python 可以用 yield 做 lazy evaluation，不用一次收集所有葉子，遇到不同就提早結束。面試加分寫法。
+
+**空間優化**：用 iterative DFS（Stack）加 generator，可以做到 O(h) 空間（h 是樹高）。
+
+**變體題**：LC 100 Same Tree（結構和值都相同）、LC 101 Symmetric Tree（鏡像對稱）。
+</Callout>
+
+## 理解測驗
+
+<Quiz data='{"question":"怎麼判斷一個節點是葉節點？","options":["值為 0 的節點","沒有左子節點的節點","沒有右子節點的節點","左右子節點都為 null 的節點"],"answer":3,"explanation":"葉節點的定義是沒有任何子節點，即 left == null 且 right == null。"}' />
+
+<Quiz data='{"question":"兩棵結構完全不同的樹可能是 leaf-similar 嗎？","options":["不可能，結構必須相同","可能，只要葉子序列相同","可能，只要節點數相同","不可能，必須是同一棵樹"],"answer":1,"explanation":"leaf-similar 只看葉子的值和順序，跟樹的形狀無關。題目的範例就是兩棵結構不同但 leaf-similar 的樹。"}' />

@@ -1,0 +1,105 @@
+---
+title: "2390. Removing Stars From a String"
+order: 24
+description: "用 Stack 模擬星號刪除操作逐字元處理字串"
+---
+
+# Removing Stars From a String
+
+<ELI5>
+想像你在打字，每打一個 `*` 就等於按了一次退格鍵（Backspace），會刪掉前面一個字。
+
+比如你打了 "leet**cod*e"：l-e-e-t-退格-退格-c-o-d-退格-e = "lecoe"。
+
+用 Stack 來模擬：普通字元就推入，遇到 `*` 就彈出最上面的。最後 Stack 裡剩下的就是答案。
+</ELI5>
+
+## 題目描述
+
+給定包含星號 `*` 的字串 `s`。每次操作移除最靠近星號左邊的非星號字元，以及星號本身。回傳移除所有星號後的結果。
+
+```
+輸入：s = "leet**cod*e"
+輸出："lecoe"
+
+輸入：s = "erase*****"
+輸出：""
+```
+
+## 解題思路
+
+<StepDiagram data='[{"title":"初始化 Stack","description":"建立空的 Stack（或用陣列模擬）","icon":"1"},{"title":"遍歷字串","description":"逐字元處理","icon":"2"},{"title":"普通字元","description":"推入 Stack","icon":"3"},{"title":"星號","description":"彈出 Stack 頂端（刪除前一個字元）","icon":"4"},{"title":"組合結果","description":"Stack 中剩餘字元即為答案","icon":"5"}]' />
+
+## 程式碼
+
+### C#
+
+```csharp
+public class Solution {
+    public string RemoveStars(string s) {
+        var stack = new Stack<char>();
+        foreach (char c in s) {
+            if (c == '*')
+                stack.Pop();   // 刪除前一個字元
+            else
+                stack.Push(c); // 保留字元
+        }
+        // Stack 是後進先出，需要反轉
+        var arr = stack.ToArray();
+        Array.Reverse(arr);
+        return new string(arr);
+    }
+}
+```
+
+### TypeScript
+
+```typescript
+function removeStars(s: string): string {
+    const stack: string[] = [];
+    for (const c of s) {
+        if (c === "*") stack.pop();
+        else stack.push(c);
+    }
+    return stack.join("");
+}
+```
+
+### Python
+
+```python
+def removeStars(s: str) -> str:
+    stack = []
+    for c in s:
+        if c == "*":
+            stack.pop()
+        else:
+            stack.append(c)
+    return "".join(stack)
+```
+
+## 複雜度分析
+
+| | Time | Space |
+|--|------|-------|
+| 本解法 | O(n) | O(n) |
+
+每個字元最多被 push 和 pop 各一次。
+
+## 圖解
+
+<Diagram data='{"nodes":[{"id":"input","label":"s = leet**cod*e","type":"default"},{"id":"s1","label":"push l,e,e,t","type":"default"},{"id":"s2","label":"pop t, pop e (兩個*)","type":"highlight"},{"id":"s3","label":"push c,o,d","type":"default"},{"id":"s4","label":"pop d (一個*)","type":"highlight"},{"id":"s5","label":"push e","type":"default"},{"id":"result","label":"stack: [l,e,c,o,e] → lecoe","type":"muted"}],"edges":[{"from":"input","to":"s1","label":"l,e,e,t"},{"from":"s1","to":"s2","label":"*,*"},{"from":"s2","to":"s3","label":"c,o,d"},{"from":"s3","to":"s4","label":"*"},{"from":"s4","to":"s5","label":"e"},{"from":"s5","to":"result","label":"join"}]}' />
+
+## 進階觀點
+
+<Callout type="tip" title="面試追問">
+- **能否不用 Stack？** 可以用一個 write 指針在原陣列上操作（類似 String Compression），遇到 `*` 就 write--。
+- **C# 為什麼要 Reverse？** C# 的 `Stack<T>.ToArray()` 是從頂端開始輸出（後進先出），需要反轉。用 `StringBuilder` 或 `List<char>` 可以避免。
+- **如果星號可以刪除多個字元呢？** 那需要數字+星號的格式，解法會更複雜。
+</Callout>
+
+## 理解測驗
+
+<Quiz data='{"question":"為什麼 Stack 適合這題？","options":["因為 Stack 是排序的","因為星號刪除的是最近加入的字元，正好對應 Stack 的後進先出（LIFO）特性","因為 Stack 查找快","因為題目要求用 Stack"],"answer":1,"explanation":"退格操作刪除最近輸入的字元，這正是 Stack 的 LIFO 行為。"}' />
+
+<Quiz data='{"question":"s = \"abc\" （沒有星號）的結果是什麼？","options":["\"\"","\"abc\"","error","\"cba\""],"answer":1,"explanation":"沒有星號就沒有刪除操作，所有字元依序推入 Stack，結果就是原字串。"}' />

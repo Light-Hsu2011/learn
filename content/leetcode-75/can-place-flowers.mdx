@@ -1,0 +1,116 @@
+---
+title: "605. Can Place Flowers"
+order: 4
+description: "用貪心法逐格檢查左右鄰居是否為空來決定能否種花"
+---
+
+# Can Place Flowers
+
+<ELI5>
+想像一排花盆，有些已經種了花（1），有些是空的（0）。規則是相鄰的花盆不能同時種花，不然花會搶養分枯死。
+
+你手上有 n 朵花要種，從左到右看每個空花盆：如果它的左邊和右邊都沒種花，就貪心地種下去。最後看種的夠不夠多。
+</ELI5>
+
+## 題目描述
+
+給定一個整數陣列 `flowerbed`（0 或 1）和整數 `n`，判斷能否在不違反「相鄰不種花」規則下種入 n 朵花。
+
+```
+輸入：flowerbed = [1,0,0,0,1], n = 1
+輸出：true
+
+輸入：flowerbed = [1,0,0,0,1], n = 2
+輸出：false
+```
+
+## 解題思路
+
+<StepDiagram data='[{"title":"遍歷花圃","description":"從左到右掃描每個位置","icon":"1"},{"title":"檢查條件","description":"當前位置為 0，且左右鄰居也為 0（或邊界）","icon":"2"},{"title":"貪心種花","description":"滿足條件就種下（設為 1），計數器 +1","icon":"3"},{"title":"提前結束","description":"計數器 >= n 時直接回傳 true","icon":"4"}]' />
+
+## 程式碼
+
+### C#
+
+```csharp
+public class Solution {
+    public bool CanPlaceFlowers(int[] flowerbed, int n) {
+        int count = 0;
+        for (int i = 0; i < flowerbed.Length; i++) {
+            if (flowerbed[i] == 0) {
+                bool leftEmpty = (i == 0) || (flowerbed[i - 1] == 0);
+                bool rightEmpty = (i == flowerbed.Length - 1) || (flowerbed[i + 1] == 0);
+                if (leftEmpty && rightEmpty) {
+                    flowerbed[i] = 1; // 貪心種下
+                    count++;
+                    if (count >= n) return true;
+                }
+            }
+        }
+        return count >= n;
+    }
+}
+```
+
+### TypeScript
+
+```typescript
+function canPlaceFlowers(flowerbed: number[], n: number): boolean {
+    let count = 0;
+    for (let i = 0; i < flowerbed.length; i++) {
+        if (flowerbed[i] === 0) {
+            const leftEmpty = i === 0 || flowerbed[i - 1] === 0;
+            const rightEmpty = i === flowerbed.length - 1 || flowerbed[i + 1] === 0;
+            if (leftEmpty && rightEmpty) {
+                flowerbed[i] = 1;
+                count++;
+                if (count >= n) return true;
+            }
+        }
+    }
+    return count >= n;
+}
+```
+
+### Python
+
+```python
+def canPlaceFlowers(flowerbed: list[int], n: int) -> bool:
+    count = 0
+    for i in range(len(flowerbed)):
+        if flowerbed[i] == 0:
+            left_empty = (i == 0) or (flowerbed[i - 1] == 0)
+            right_empty = (i == len(flowerbed) - 1) or (flowerbed[i + 1] == 0)
+            if left_empty and right_empty:
+                flowerbed[i] = 1
+                count += 1
+                if count >= n:
+                    return True
+    return count >= n
+```
+
+## 複雜度分析
+
+| | Time | Space |
+|--|------|-------|
+| 本解法 | O(n) | O(1) |
+
+只需一次遍歷，原地修改不需額外空間。
+
+## 圖解
+
+<Diagram data='{"nodes":[{"id":"input","label":"[1,0,0,0,1]","type":"default"},{"id":"check","label":"檢查位置 2: 左=0 右=0","type":"highlight"},{"id":"plant","label":"種花 → [1,0,1,0,1]","type":"highlight"},{"id":"result","label":"count=1 >= n=1 → true","type":"muted"}],"edges":[{"from":"input","to":"check","label":"掃描到 i=2"},{"from":"check","to":"plant","label":"條件滿足"},{"from":"plant","to":"result","label":"判斷結果"}]}' />
+
+## 進階觀點
+
+<Callout type="tip" title="面試追問">
+- **為什麼貪心是正確的？** 越早種花不會影響後面能種的最大數量，因為種在左邊只會「佔掉」它右邊一格，而不種反而浪費機會。
+- **能否不修改原陣列？** 可以，用一個變數記錄上一個種花的位置即可。
+- **邊界情況？** 全 0 陣列、長度 1 的陣列、n = 0（直接 true）。
+</Callout>
+
+## 理解測驗
+
+<Quiz data='{"question":"為什麼這題適合用貪心法？","options":["因為要排序","因為每次能種就種不會影響全局最優解","因為需要回溯","因為有重疊子問題"],"answer":1,"explanation":"貪心法在這裡是安全的 — 遇到能種的位置就種，不會讓後面的機會變少。"}' />
+
+<Quiz data='{"question":"flowerbed = [0,0,0,0,0], n = 3，結果是什麼？","options":["true","false"],"answer":1,"explanation":"可以在位置 0、2、4 種花，得到 [1,0,1,0,1]，共 3 朵，但 n=3 只能種 3 朵剛好。等等，位置 0 種後變 [1,0,0,0,0]，位置 2 種後 [1,0,1,0,0]，位置 4 種後 [1,0,1,0,1]。count=3 >= 3，所以 true。"}' />

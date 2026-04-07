@@ -1,0 +1,239 @@
+---
+title: "CQRS"
+order: 10
+description: "命令查詢職責分離，讀寫模型分開設計優化效能與複雜度"
+---
+
+# CQRS（Command Query Responsibility Segregation）
+
+<ELI5>
+想像一間生意很好的餐廳，有兩個窗口：
+
+- **點菜窗口** → 你告訴廚房要做什麼（寫入）
+- **取餐窗口** → 你來拿做好的餐點（讀取）
+
+這兩個窗口各自有不同的動線、不同的人員配置。點菜窗口需要確認庫存、記帳、通知廚房；取餐窗口只需要快速找到你的餐點遞出去。
+
+把它們分開，兩邊都能針對自己的工作**各自優化**，互不干擾！
+</ELI5>
+
+## 是什麼？
+
+CQRS 把系統的操作分成兩類，並為它們設計**獨立的模型**：
+
+- **Command（命令）**：改變系統狀態的操作（新增、修改、刪除）
+- **Query（查詢）**：讀取資料但不改變任何狀態
+
+傳統做法是讀寫共用一個模型（例如同一個 Entity + Repository）。CQRS 主張：讀和寫的需求天生不同，分開設計能讓每一端都達到最佳效能與可維護性。
+
+<Callout type="info" title="DDD 戰術模式">
+CQRS 經常搭配 Domain-Driven Design 使用。在 DDD 中，Command 端承載核心業務邏輯（Aggregate、Domain Event），Query 端則可以用最適合呈現需求的扁平化 DTO 直接回傳。
+</Callout>
+
+## 核心觀念
+
+### Command vs Query 分離
+
+| 面向 | Command（命令） | Query（查詢） |
+|------|-----------------|---------------|
+| **目的** | 改變狀態 | 讀取資料 |
+| **回傳值** | 無（或只回傳 ID） | 資料 DTO |
+| **驗證** | 完整的業務規則驗證 | 無需驗證 |
+| **模型複雜度** | 高（Aggregate、Domain Event） | 低（扁平化 DTO） |
+
+### 獨立的讀寫模型
+
+- **Write Model**：豐富的領域模型，保護業務不變條件（invariant），產生 Domain Event
+- **Read Model**：針對查詢場景優化的反正規化檢視（Denormalized View），可以是不同的資料庫、快取、甚至搜尋引擎
+
+## 常見誤區
+
+<Callout type="warning" title="不是每個系統都需要 CQRS">
+簡單 CRUD 應用套上 CQRS 只會增加複雜度。當讀寫比例嚴重失衡（讀遠大於寫）、讀寫模型差異大、或需要獨立擴展讀寫端時，CQRS 才值得導入。先確認問題存在，再用 CQRS 解決。
+</Callout>
+
+## 實作流程
+
+<StepDiagram data='[{"title":"識別 Command 與 Query","description":"盤點所有 API，將操作分為「改變狀態」與「讀取資料」兩類","icon":"1"},{"title":"分離模型","description":"為 Command 端設計 Aggregate，為 Query 端設計扁平化 Read DTO","icon":"2"},{"title":"實作 Command Handler","description":"處理命令、執行業務邏輯、寫入 Write Store","icon":"3"},{"title":"實作 Query Handler","description":"從 Read Store 直接查詢，回傳最適合前端的 DTO","icon":"4"},{"title":"同步讀寫模型","description":"透過 Domain Event 或 Change Data Capture 將寫入端的變更投影到讀取端","icon":"5"}]' />
+
+## 程式碼範例
+
+### C# 版本
+
+```csharp
+// Command：改變狀態
+public record CreateOrderCommand(string CustomerId, List<OrderItem> Items);
+
+public class CreateOrderHandler
+{
+    private readonly IOrderRepository _repo;
+    private readonly IEventBus _eventBus;
+
+    public CreateOrderHandler(IOrderRepository repo, IEventBus eventBus)
+    {
+        _repo = repo;
+        _eventBus = eventBus;
+    }
+
+    public async Task<Guid> Handle(CreateOrderCommand cmd)
+    {
+        var order = Order.Create(cmd.CustomerId, cmd.Items);
+        await _repo.Save(order);
+        await _eventBus.Publish(new OrderCreatedEvent(order.Id));
+        return order.Id;
+    }
+}
+
+// Query：讀取資料
+public record GetOrderQuery(Guid OrderId);
+
+public record OrderDto(Guid Id, string CustomerName, decimal Total, string Status);
+
+public class GetOrderHandler
+{
+    private readonly IDbConnection _readDb;
+
+    public GetOrderHandler(IDbConnection readDb)
+    {
+        _readDb = readDb;
+    }
+
+    public async Task<OrderDto> Handle(GetOrderQuery query)
+    {
+        return await _readDb.QuerySingleAsync<OrderDto>(
+            "SELECT Id, CustomerName, Total, Status FROM OrderReadView WHERE Id = @Id",
+            new { Id = query.OrderId });
+    }
+}
+```
+
+### TypeScript 版本
+
+```typescript
+// Command：改變狀態
+interface CreateOrderCommand {
+  customerId: string;
+  items: OrderItem[];
+}
+
+class CreateOrderHandler {
+  constructor(
+    private repo: OrderRepository,
+    private eventBus: EventBus
+  ) {}
+
+  async handle(cmd: CreateOrderCommand): Promise<string> {
+    const order = Order.create(cmd.customerId, cmd.items);
+    await this.repo.save(order);
+    await this.eventBus.publish({ type: "OrderCreated", orderId: order.id });
+    return order.id;
+  }
+}
+
+// Query：讀取資料
+interface GetOrderQuery {
+  orderId: string;
+}
+
+interface OrderDto {
+  id: string;
+  customerName: string;
+  total: number;
+  status: string;
+}
+
+class GetOrderHandler {
+  constructor(private readDb: ReadDatabase) {}
+
+  async handle(query: GetOrderQuery): Promise<OrderDto> {
+    return this.readDb.queryOne<OrderDto>(
+      "SELECT id, customer_name, total, status FROM order_read_view WHERE id = $1",
+      [query.orderId]
+    );
+  }
+}
+```
+
+### Python 版本
+
+```python
+from dataclasses import dataclass
+from uuid import UUID, uuid4
+
+# Command：改變狀態
+@dataclass
+class CreateOrderCommand:
+    customer_id: str
+    items: list
+
+class CreateOrderHandler:
+    def __init__(self, repo, event_bus):
+        self._repo = repo
+        self._event_bus = event_bus
+
+    async def handle(self, cmd: CreateOrderCommand) -> UUID:
+        order = Order.create(cmd.customer_id, cmd.items)
+        await self._repo.save(order)
+        await self._event_bus.publish(OrderCreatedEvent(order.id))
+        return order.id
+
+# Query：讀取資料
+@dataclass
+class GetOrderQuery:
+    order_id: UUID
+
+@dataclass
+class OrderDto:
+    id: UUID
+    customer_name: str
+    total: float
+    status: str
+
+class GetOrderHandler:
+    def __init__(self, read_db):
+        self._read_db = read_db
+
+    async def handle(self, query: GetOrderQuery) -> OrderDto:
+        row = await self._read_db.fetch_one(
+            "SELECT id, customer_name, total, status FROM order_read_view WHERE id = $1",
+            query.order_id,
+        )
+        return OrderDto(**row)
+```
+
+## 架構圖
+
+<Diagram data='{"nodes":[{"id":"client","label":"Client","type":"muted"},{"id":"cmd-bus","label":"Command Bus","type":"default"},{"id":"write-model","label":"Write Model (Aggregate)","type":"highlight"},{"id":"event-store","label":"Event Store / Write DB","type":"default"},{"id":"projection","label":"Event Projection","type":"default"},{"id":"read-model","label":"Read Model (DTO View)","type":"highlight"},{"id":"query-bus","label":"Query Bus","type":"default"}],"edges":[{"from":"client","to":"cmd-bus","label":"send command"},{"from":"cmd-bus","to":"write-model","label":"dispatch"},{"from":"write-model","to":"event-store","label":"persist"},{"from":"event-store","to":"projection","label":"publish event"},{"from":"projection","to":"read-model","label":"update view"},{"from":"client","to":"query-bus","label":"send query"},{"from":"query-bus","to":"read-model","label":"read"}]}' />
+
+## 實戰補充
+
+<Callout type="tip" title="資深開發者筆記">
+**搭配 Event Sourcing**：CQRS 的 Write Model 可以只存 Domain Event，Read Model 透過 Projection 重建。這讓系統擁有完整的歷史紀錄，但也大幅增加了複雜度——先從「分開讀寫模型但共用資料庫」的簡單 CQRS 開始。
+
+**MediatR / Wolverine**：在 .NET 生態中，MediatR 是最常用的 Command/Query 分發框架。定義 `IRequest<T>` + `IRequestHandler<TRequest, TResponse>`，自動路由到對應 Handler。Wolverine 則提供更完整的訊息處理能力。
+
+**最終一致性**：讀寫模型分開後，Read Model 的更新存在延遲。前端需要處理「剛下單但訂單列表還沒出現」的情境——可以用樂觀更新（Optimistic UI）或輪詢機制解決。
+</Callout>
+
+## 理解測驗
+
+<Quiz data='{"question":"CQRS 中的 Command 和 Query 最大的區別是什麼？","options":["Command 比較快，Query 比較慢","Command 改變系統狀態，Query 只讀取資料不改變狀態","Command 用 SQL，Query 用 NoSQL","Command 是同步的，Query 是非同步的"],"answer":1,"explanation":"CQRS 的核心分離原則：Command 負責寫入（改變狀態），Query 負責讀取（不改變狀態）。資料庫選擇和同步/非同步是實作細節，不是定義上的區別。"}' />
+
+<Quiz data='{"question":"什麼情境下最不適合使用 CQRS？","options":["讀寫比例嚴重失衡的高流量系統","簡單的 CRUD 管理後台，讀寫模型幾乎一樣","需要針對讀取和寫入分別擴展的微服務","讀取端需要聚合多個 Aggregate 資料的複雜查詢"],"answer":1,"explanation":"簡單 CRUD 應用的讀寫模型幾乎相同，分離只會增加不必要的複雜度。CQRS 在讀寫需求差異大、需要獨立擴展時才能發揮價值。"}' />
+
+<Quiz data='{"question":"CQRS 中 Read Model 的資料是如何更新的？","options":["Client 同時寫入 Write Model 和 Read Model","Read Model 定期輪詢 Write Model","透過 Domain Event 或 Change Data Capture 將變更投影到 Read Model","Read Model 在每次查詢時即時從 Write Model 計算"],"answer":2,"explanation":"CQRS 透過事件驅動的 Projection 機制，將 Write Model 的變更非同步投影到 Read Model。這是讀寫模型解耦的關鍵機制。"}' />
+
+## 重點整理
+
+<Callout type="tip" title="一句話記住">
+**CQRS = 讀寫分家，各自過各自的最佳生活。**
+</Callout>
+
+| 概念 | 說明 |
+|------|------|
+| **Command** | 改變狀態的操作，經過完整業務驗證 |
+| **Query** | 讀取資料的操作，回傳扁平化 DTO |
+| **Write Model** | 豐富的領域模型，保護業務不變條件 |
+| **Read Model** | 反正規化的查詢檢視，針對讀取場景優化 |
+| **核心好處** | 讀寫獨立擴展、模型各自優化、關注點分離 |
+| **代價** | 架構複雜度上升、最終一致性處理、維運成本增加 |

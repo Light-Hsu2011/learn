@@ -1,0 +1,126 @@
+---
+title: "2352. Equal Row and Column Pairs"
+order: 23
+description: "將每行轉為字串鍵存入 HashMap 再逐列比對計數"
+---
+
+# Equal Row and Column Pairs
+
+<ELI5>
+想像一個數字方陣（n×n 的格子），每一「橫排」是一組數字，每一「直行」也是一組數字。你要找出有多少對（橫排, 直行）的數字序列完全一樣。
+
+做法：把每一橫排的數字序列轉成一個「鑰匙」存入字典（記錄這個序列出現了幾次），然後把每一直行也轉成同樣格式的鑰匙去查字典。
+</ELI5>
+
+## 題目描述
+
+給定 n×n 的整數矩陣 `grid`，回傳行與列相等的配對數量。一行 r 和一列 c 相等表示它們包含相同的元素且順序相同。
+
+```
+輸入：grid = [[3,2,1],[1,7,6],[2,7,7]]
+輸出：1（第 1 行 [3,2,1] 沒有匹配；第 1 列 [3,1,2] 與第 1 行 [3,2,1] 不同⋯只有 1 對匹配）
+
+輸入：grid = [[3,1,2,2],[1,4,4,5],[2,4,2,2],[2,4,2,2]]
+輸出：3
+```
+
+## 解題思路
+
+<StepDiagram data='[{"title":"列舉行","description":"將每一行轉為字串鍵，存入 HashMap 計數","icon":"1"},{"title":"列舉列","description":"將每一列轉為同格式的字串鍵","icon":"2"},{"title":"查字典","description":"若該鍵存在於 HashMap，加上對應的計數","icon":"3"},{"title":"回傳","description":"累加所有匹配計數","icon":"4"}]' />
+
+## 程式碼
+
+### C#
+
+```csharp
+public class Solution {
+    public int EqualPairs(int[][] grid) {
+        int n = grid.Length;
+        var rowMap = new Dictionary<string, int>();
+
+        // 行轉字串存入 HashMap
+        for (int r = 0; r < n; r++) {
+            string key = string.Join(",", grid[r]);
+            rowMap[key] = rowMap.GetValueOrDefault(key) + 1;
+        }
+
+        // 列轉字串查 HashMap
+        int count = 0;
+        for (int c = 0; c < n; c++) {
+            var colKey = new System.Text.StringBuilder();
+            for (int r = 0; r < n; r++) {
+                if (r > 0) colKey.Append(",");
+                colKey.Append(grid[r][c]);
+            }
+            count += rowMap.GetValueOrDefault(colKey.ToString());
+        }
+        return count;
+    }
+}
+```
+
+### TypeScript
+
+```typescript
+function equalPairs(grid: number[][]): number {
+    const n = grid.length;
+    const rowMap = new Map<string, number>();
+
+    // 行轉字串存入 Map
+    for (let r = 0; r < n; r++) {
+        const key = grid[r].join(",");
+        rowMap.set(key, (rowMap.get(key) ?? 0) + 1);
+    }
+
+    // 列轉字串查 Map
+    let count = 0;
+    for (let c = 0; c < n; c++) {
+        const colKey = Array.from({ length: n }, (_, r) => grid[r][c]).join(",");
+        count += rowMap.get(colKey) ?? 0;
+    }
+    return count;
+}
+```
+
+### Python
+
+```python
+from collections import Counter
+
+def equalPairs(grid: list[list[int]]) -> int:
+    # 行轉 tuple 存入 Counter
+    row_counter = Counter(tuple(row) for row in grid)
+
+    count = 0
+    n = len(grid)
+    for c in range(n):
+        col = tuple(grid[r][c] for r in range(n))
+        count += row_counter[col]  # Counter 對不存在的鍵回傳 0
+    return count
+```
+
+## 複雜度分析
+
+| | Time | Space |
+|--|------|-------|
+| 本解法 | O(n²) | O(n²) |
+
+遍歷所有行和列各 O(n²)，HashMap 最多存 n 個長度 n 的鍵。
+
+## 圖解
+
+<Diagram data='{"nodes":[{"id":"grid","label":"n×n grid","type":"default"},{"id":"rows","label":"行 → HashMap","type":"highlight"},{"id":"cols","label":"列 → 查 HashMap","type":"highlight"},{"id":"result","label":"累加匹配數","type":"muted"}],"edges":[{"from":"grid","to":"rows","label":"逐行建鍵"},{"from":"grid","to":"cols","label":"逐列建鍵"},{"from":"rows","to":"result","label":""},{"from":"cols","to":"result","label":"配對計數"}]}' />
+
+## 進階觀點
+
+<Callout type="tip" title="面試追問">
+- **為什麼用字串/tuple 當鍵而不是直接比較陣列？** 大多數語言中陣列的相等比較是 reference equality，不是 value equality。轉成字串或 tuple 才能做內容比較。
+- **分隔符為什麼重要？** 如果不用分隔符，[1,23] 和 [12,3] 都會變成 "123"。用逗號分隔避免碰撞。
+- **O(n³) 暴力法？** 對每一行和每一列逐元素比較，三層迴圈。HashMap 方法把內層比較降為 O(1)。
+</Callout>
+
+## 理解測驗
+
+<Quiz data='{"question":"為什麼 Python 用 tuple 而不是 list 當 HashMap 的鍵？","options":["因為 tuple 比較快","因為 Python 的 list 是 mutable 不能做字典的鍵，tuple 是 immutable 可以被 hash","因為 tuple 佔用更少記憶體","因為題目要求"],"answer":1,"explanation":"Python 要求字典的鍵必須是 hashable 的，list 是 mutable 所以不行，tuple 是 immutable 所以可以。"}' />
+
+<Quiz data='{"question":"如果所有行都相同且所有列也都相同（例如全 1 矩陣），答案是什麼？","options":["n","n²","1","0"],"answer":1,"explanation":"每一行都匹配每一列，共 n 行 × n 列 = n² 對。"}' />

@@ -1,0 +1,163 @@
+---
+title: "設計聊天系統"
+order: 7
+description: "即時通訊的核心挑戰：連線管理、訊息傳遞、離線處理"
+---
+
+# 設計聊天系統（Chat System）
+
+<ELI5>
+想像你和朋友用對講機聊天：
+
+- **一對一聊天**：你按下按鈕說話，對方的對講機立刻響起。如果對方關機了，你的話會被錄下來，等對方開機再播放
+- **群組聊天**：你說一句話，所有同頻道的人都聽到。但如果群組有 500 人，你不可能一個一個打電話通知
+
+WebSocket 就是這個「對講機頻道」— 建立持久連線，伺服器可以主動推訊息給客戶端，不用客戶端一直問「有新訊息嗎？」
+</ELI5>
+
+## 問題定義
+
+設計一個支援一對一聊天和群組聊天的即時通訊系統，包含訊息傳遞、離線訊息、已讀回執等功能。
+
+<Callout type="info" title="核心技術選擇">
+即時通訊的關鍵是 **WebSocket**：建立持久的雙向連線，伺服器可以主動推送訊息。HTTP 輪詢（Polling）太浪費資源，Long Polling 延遲太高，WebSocket 是最佳方案。
+</Callout>
+
+## 需求分析
+
+- **功能性需求**：一對一聊天、群組聊天（最多 500 人）、已讀回執、離線訊息、多裝置同步
+- **非功能性需求**：低延遲（< 200ms）、訊息不遺失、訊息順序正確
+- **規模估算**：5,000 萬 DAU、每人每天 40 條訊息 = 每日 20 億條訊息
+- **連線管理**：每個在線用戶維持一個 WebSocket 連線
+
+## 注意事項
+
+<Callout type="warning" title="群組訊息的扇出問題">
+一個 500 人的群組，發一條訊息就要推送給 499 個人。如果每人都在線，就是 499 次 WebSocket 推送。當有多個大群組同時活躍時，推送量會爆炸。必須用 Message Queue 來削峰，並考慮大群組的特殊處理策略。
+</Callout>
+
+## 設計流程
+
+<StepDiagram data='[{"title":"連線管理","description":"用戶上線建立 WebSocket，伺服器維護連線映射表","icon":"1"},{"title":"訊息發送","description":"發送者透過 WebSocket 發訊息到 Chat Service","icon":"2"},{"title":"訊息路由","description":"Chat Service 查找接收者所在的伺服器，透過 MQ 轉發","icon":"3"},{"title":"訊息推送","description":"接收者在線就透過 WebSocket 推送，離線就存入離線訊息表","icon":"4"},{"title":"訊息持久化","description":"所有訊息寫入資料庫，支援歷史訊息查詢","icon":"5"},{"title":"已讀同步","description":"接收者讀取訊息後，發送已讀回執更新狀態","icon":"6"}]' />
+
+## 架構設計
+
+### WebSocket 連線管理（TypeScript）
+
+```typescript
+// 連線管理器：追蹤哪個用戶在哪台伺服器
+class ConnectionManager {
+  private connections = new Map<string, WebSocket>(); // userId → ws
+
+  addConnection(userId: string, ws: WebSocket) {
+    this.connections.set(userId, ws);
+    // 在 Redis 中記錄：userId → serverId
+    redis.set(`online:${userId}`, SERVER_ID, "EX", 300);
+  }
+
+  removeConnection(userId: string) {
+    this.connections.delete(userId);
+    redis.del(`online:${userId}`);
+  }
+
+  async sendToUser(userId: string, message: ChatMessage) {
+    const ws = this.connections.get(userId);
+    if (ws?.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify(message));
+      return true;
+    }
+    return false; // 用戶不在此伺服器或離線
+  }
+}
+```
+
+### 訊息發送流程（C#）
+
+```csharp
+public class ChatService
+{
+    private readonly IMessageQueue _queue;
+    private readonly IMessageRepository _repo;
+    private readonly IConnectionRegistry _registry;
+
+    public async Task SendMessage(ChatMessage msg)
+    {
+        // 1. 產生訊息 ID 和時間戳
+        msg.Id = Guid.NewGuid().ToString();
+        msg.Timestamp = DateTimeOffset.UtcNow;
+
+        // 2. 持久化訊息
+        await _repo.SaveAsync(msg);
+
+        // 3. 取得接收者清單
+        var recipients = msg.IsGroup
+            ? await _repo.GetGroupMembersAsync(msg.GroupId!)
+            : new[] { msg.RecipientId! };
+
+        // 4. 逐一推送（透過 MQ 非同步）
+        foreach (var recipientId in recipients)
+        {
+            if (recipientId == msg.SenderId) continue;
+            await _queue.PublishAsync("chat.deliver", new DeliveryTask
+            {
+                MessageId = msg.Id,
+                RecipientId = recipientId
+            });
+        }
+    }
+}
+
+// MQ Consumer：負責實際推送
+public class DeliveryWorker
+{
+    public async Task HandleDelivery(DeliveryTask task)
+    {
+        var serverId = await _registry.GetServerIdAsync(task.RecipientId);
+        if (serverId != null)
+        {
+            // 用戶在線：透過該伺服器的 WebSocket 推送
+            await _registry.PushToServerAsync(serverId, task);
+        }
+        else
+        {
+            // 用戶離線：存入離線訊息表
+            await _offlineStore.SaveAsync(task);
+        }
+    }
+}
+```
+
+## 架構圖
+
+<Diagram data='{"nodes":[{"id":"sender","label":"Sender (App)","type":"muted"},{"id":"ws1","label":"WebSocket Server 1","type":"default"},{"id":"ws2","label":"WebSocket Server 2","type":"default"},{"id":"chat","label":"Chat Service","type":"highlight"},{"id":"mq","label":"Message Queue","type":"highlight"},{"id":"redis","label":"Redis (Online Status)","type":"default"},{"id":"db","label":"Message DB","type":"default"},{"id":"receiver","label":"Receiver (App)","type":"muted"}],"edges":[{"from":"sender","to":"ws1","label":"WebSocket"},{"from":"ws1","to":"chat","label":"send message"},{"from":"chat","to":"db","label":"persist"},{"from":"chat","to":"mq","label":"publish delivery"},{"from":"mq","to":"redis","label":"lookup server"},{"from":"mq","to":"ws2","label":"push to receiver"},{"from":"ws2","to":"receiver","label":"WebSocket"}]}' />
+
+## 實戰補充
+
+<Callout type="tip" title="訊息排序的挑戰">
+分散式系統中，訊息的絕對順序很難保證。實務做法：
+1. **單聊**：用伺服器端時間戳排序，精度到微秒基本夠用
+2. **群聊**：用遞增的 Sequence ID（每個群組獨立的計數器），由 Chat Service 統一分配
+3. **跨裝置**：用戶的多裝置間用 Sync Protocol，每個裝置記錄最後同步的 Sequence ID
+</Callout>
+
+## 理解測驗
+
+<Quiz data='{"question":"為什麼即時聊天系統選擇 WebSocket 而不是 HTTP Long Polling？","options":["WebSocket 更安全","WebSocket 是全雙工持久連線，伺服器可以主動推送，不需要客戶端反覆建立連線","WebSocket 不需要伺服器","WebSocket 資料庫查詢更快"],"answer":1,"explanation":"HTTP Long Polling 每次都要建立新連線，而且伺服器只能在回應中傳資料。WebSocket 建立一次連線就能雙向通訊，延遲更低、資源消耗更少。"}' />
+
+<Quiz data='{"question":"群組聊天中，一條訊息發送給 500 人的群組，最大的挑戰是什麼？","options":["訊息太長存不下","要同時推送給 499 個接收者的扇出壓力","群組名稱太長","加密太慢"],"answer":1,"explanation":"一條訊息要生成 499 個推送任務，每個都要查接收者在哪台伺服器、是否在線。多個大群組同時活躍時，推送量是巨大的。需要 Message Queue 削峰和非同步處理。"}' />
+
+<Quiz data='{"question":"用戶離線後重新上線，如何確保收到所有漏掉的訊息？","options":["重新發送所有歷史訊息","從離線訊息表中拉取離線期間的訊息，並記錄最後讀取的 Sequence ID","不需要處理，訊息丟了就丟了","讓發送者重新發送"],"answer":1,"explanation":"離線期間的訊息會被存入離線訊息表。用戶重新上線時，用最後同步的 Sequence ID 為起點，拉取所有後續訊息。這樣確保訊息不遺失且不重複。"}' />
+
+## 重點整理
+
+<Callout type="tip" title="一句話記住">
+**聊天系統 = WebSocket 即時推送 + Message Queue 處理扇出 + 離線訊息表保證不遺失。**
+</Callout>
+
+| 概念 | 說明 |
+|------|------|
+| **WebSocket** | 全雙工持久連線，即時通訊的基礎 |
+| **連線映射** | Redis 記錄 userId → serverId，知道推送到哪台伺服器 |
+| **Message Queue** | 非同步處理訊息推送，削峰填谷 |
+| **離線訊息** | 用戶不在線時暫存訊息，上線後拉取 |
+| **Sequence ID** | 每個對話/群組的遞增序號，確保訊息順序 |

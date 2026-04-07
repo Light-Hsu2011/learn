@@ -1,0 +1,107 @@
+---
+title: "643. Maximum Average Subarray I"
+order: 14
+description: "用固定大小滑動窗口維護子陣列的和來找最大平均值"
+---
+
+# Maximum Average Subarray I
+
+<ELI5>
+想像你在看一週的氣溫紀錄，要找出「連續 k 天」中平均溫度最高的區間。
+
+笨方法是每移一天就把 k 天的溫度全部加一遍。聰明方法：先算前 k 天的總和，然後每往右滑一天，加上新的一天、減掉最左邊那天。就像窗戶往右滑，進來一格、出去一格。
+</ELI5>
+
+## 題目描述
+
+給定整數陣列 `nums` 和整數 `k`，找出長度為 `k` 的連續子陣列的最大平均值。
+
+```
+輸入：nums = [1,12,-5,-6,50,3], k = 4
+輸出：12.75（子陣列 [12,-5,-6,50] 的平均值）
+
+輸入：nums = [5], k = 1
+輸出：5.0
+```
+
+## 解題思路
+
+<StepDiagram data='[{"title":"初始窗口","description":"計算前 k 個元素的總和","icon":"1"},{"title":"滑動窗口","description":"每次加入右邊新元素，移除左邊舊元素","icon":"2"},{"title":"更新最大值","description":"每次滑動後比較當前和與最大和","icon":"3"},{"title":"計算平均","description":"最大和 / k 即為答案","icon":"4"}]' />
+
+## 程式碼
+
+### C#
+
+```csharp
+public class Solution {
+    public double FindMaxAverage(int[] nums, int k) {
+        // 計算初始窗口的和
+        double sum = 0;
+        for (int i = 0; i < k; i++) sum += nums[i];
+        double maxSum = sum;
+
+        // 滑動窗口
+        for (int i = k; i < nums.Length; i++) {
+            sum += nums[i] - nums[i - k]; // 加新的，減舊的
+            maxSum = Math.Max(maxSum, sum);
+        }
+        return maxSum / k;
+    }
+}
+```
+
+### TypeScript
+
+```typescript
+function findMaxAverage(nums: number[], k: number): number {
+    let sum = 0;
+    for (let i = 0; i < k; i++) sum += nums[i];
+    let maxSum = sum;
+
+    for (let i = k; i < nums.length; i++) {
+        sum += nums[i] - nums[i - k];
+        maxSum = Math.max(maxSum, sum);
+    }
+    return maxSum / k;
+}
+```
+
+### Python
+
+```python
+def findMaxAverage(nums: list[int], k: int) -> float:
+    window_sum = sum(nums[:k])
+    max_sum = window_sum
+
+    for i in range(k, len(nums)):
+        window_sum += nums[i] - nums[i - k]
+        max_sum = max(max_sum, window_sum)
+
+    return max_sum / k
+```
+
+## 複雜度分析
+
+| | Time | Space |
+|--|------|-------|
+| 本解法 | O(n) | O(1) |
+
+只需一次遍歷，常數額外空間。
+
+## 圖解
+
+<Diagram data='{"nodes":[{"id":"input","label":"[1,12,-5,-6,50,3] k=4","type":"default"},{"id":"w1","label":"窗口[1,12,-5,-6] sum=2","type":"default"},{"id":"w2","label":"窗口[12,-5,-6,50] sum=51","type":"highlight"},{"id":"w3","label":"窗口[-5,-6,50,3] sum=42","type":"default"},{"id":"result","label":"max=51, avg=12.75","type":"muted"}],"edges":[{"from":"input","to":"w1","label":"初始窗口"},{"from":"w1","to":"w2","label":"+50 -1"},{"from":"w2","to":"w3","label":"+3 -12"},{"from":"w2","to":"result","label":"最大和"}]}' />
+
+## 進階觀點
+
+<Callout type="tip" title="面試追問">
+- **為什麼追蹤 sum 而不是直接追蹤 average？** 比較整數和比浮點數更精確也更快，最後再除一次就好。
+- **如果 k 不固定，要找任意長度的最大平均值？** 那就是 Maximum Average Subarray II（Binary Search + 前綴和），難度大幅提升。
+- **滑動窗口的本質？** 利用相鄰窗口重疊部分的計算結果，避免重複計算。
+</Callout>
+
+## 理解測驗
+
+<Quiz data='{"question":"滑動窗口比暴力法快在哪裡？","options":["用了更好的資料結構","每次滑動只需 O(1) 更新而非 O(k) 重新計算","用了排序","用了遞迴"],"answer":1,"explanation":"暴力法每個窗口要加 k 個數（O(nk)），滑動窗口每次只加減一個數（O(n)）。"}' />
+
+<Quiz data='{"question":"為什麼先追蹤 maxSum 最後才除以 k？","options":["因為除法比較慢","因為整數比較比浮點數比較更精確，避免浮點誤差","因為題目要求回傳 sum","因為 k 可能為 0"],"answer":1,"explanation":"浮點數比較可能有精度問題，用整數和比較更安全，最後才轉換。"}' />

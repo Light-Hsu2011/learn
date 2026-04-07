@@ -1,0 +1,297 @@
+---
+title: "Iterator Pattern"
+order: 17
+description: "提供一種方法循序存取集合中的元素，而不需要暴露其底層表示"
+---
+
+# Iterator Pattern（迭代器模式）
+
+<ELI5>
+想像你用音樂播放器聽歌：
+
+- 按**下一首**就跳到下一首歌
+- 按**上一首**就回到前一首
+- 你完全不用知道歌單是存在手機裡、雲端、還是 USB 隨身碟
+
+你只需要「下一首」這個按鈕就好。不管歌單背後是陣列、連結串列、還是資料庫，操作方式都一樣。
+
+就像搭捷運一樣——你只要知道「下一站」是哪裡，不用管捷運路線圖底層是怎麼儲存的。
+</ELI5>
+
+## 是什麼？
+
+Iterator Pattern 提供一種方法**循序存取集合中的每個元素**，而不需要暴露集合的底層資料結構。它把「如何遍歷」的邏輯從集合中抽離出來，封裝在獨立的迭代器物件中。
+
+<Callout type="info" title="GoF 分類">
+Iterator 屬於**行為型模式（Behavioral Pattern）**，重點在於提供統一的方式來走訪不同類型的集合。
+</Callout>
+
+## 什麼時候用？
+
+- 你想統一不同資料結構（陣列、樹、圖）的走訪方式
+- 你需要同時支援多種走訪策略（正向、反向、篩選）
+- 你想隱藏集合的內部結構，只暴露元素
+- 你需要支援延遲載入（Lazy Evaluation）——一次只取一個元素
+
+## 什麼時候不該用？
+
+<Callout type="warning" title="過度設計警告">
+現代語言（C#、Python、Java、TypeScript）都內建了 Iterator 機制。除非你在開發自訂集合或需要特殊的走訪邏輯，否則直接用語言內建的 `foreach`、`for...of` 就好，不需要手動實作。
+</Callout>
+
+## 執行流程
+
+<StepDiagram data='[{"title":"定義 Iterator 介面","description":"宣告 HasNext、Next 等走訪方法","icon":"1"},{"title":"定義 IterableCollection 介面","description":"宣告 CreateIterator 方法","icon":"2"},{"title":"實作具體集合","description":"儲存元素並建立對應的迭代器","icon":"3"},{"title":"實作具體 Iterator","description":"追蹤目前位置，實作走訪邏輯","icon":"4"},{"title":"Client 使用迭代器","description":"透過 HasNext/Next 統一走訪，不關心底層結構","icon":"5"}]' />
+
+## 程式碼範例
+
+### C# 版本
+
+```csharp
+using System.Collections;
+using System.Collections.Generic;
+
+// 1. 自訂集合：播放清單
+public class Playlist : IEnumerable<string>
+{
+    private readonly List<string> _songs = new();
+
+    public void AddSong(string song) => _songs.Add(song);
+    public int Count => _songs.Count;
+
+    // 正向迭代器
+    public IEnumerator<string> GetEnumerator()
+    {
+        for (int i = 0; i < _songs.Count; i++)
+            yield return _songs[i];
+    }
+
+    // 反向迭代器
+    public IEnumerable<string> Reverse()
+    {
+        for (int i = _songs.Count - 1; i >= 0; i--)
+            yield return _songs[i];
+    }
+
+    // 篩選迭代器
+    public IEnumerable<string> FilterBy(string keyword)
+    {
+        foreach (var song in _songs)
+            if (song.Contains(keyword))
+                yield return song;
+    }
+
+    IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+}
+
+// 2. 使用
+var playlist = new Playlist();
+playlist.AddSong("Bohemian Rhapsody");
+playlist.AddSong("Hotel California");
+playlist.AddSong("Bohemian Grove");
+
+Console.WriteLine("正向播放：");
+foreach (var song in playlist)
+    Console.WriteLine($"  ♪ {song}");
+
+Console.WriteLine("反向播放：");
+foreach (var song in playlist.Reverse())
+    Console.WriteLine($"  ♪ {song}");
+
+Console.WriteLine("搜尋 Bohemian：");
+foreach (var song in playlist.FilterBy("Bohemian"))
+    Console.WriteLine($"  ♪ {song}");
+```
+
+### TypeScript 版本
+
+```typescript
+// 1. 自訂集合：播放清單
+class Playlist implements Iterable<string> {
+  private songs: string[] = [];
+
+  addSong(song: string) { this.songs.push(song); }
+
+  // 正向迭代器
+  [Symbol.iterator](): Iterator<string> {
+    let index = 0;
+    const songs = this.songs;
+    return {
+      next(): IteratorResult<string> {
+        if (index < songs.length) {
+          return { value: songs[index++], done: false };
+        }
+        return { value: undefined as any, done: true };
+      }
+    };
+  }
+
+  // 反向迭代器
+  *reverse(): IterableIterator<string> {
+    for (let i = this.songs.length - 1; i >= 0; i--) {
+      yield this.songs[i];
+    }
+  }
+
+  // 篩選迭代器
+  *filterBy(keyword: string): IterableIterator<string> {
+    for (const song of this.songs) {
+      if (song.includes(keyword)) yield song;
+    }
+  }
+}
+
+// 2. 使用
+const playlist = new Playlist();
+playlist.addSong("Bohemian Rhapsody");
+playlist.addSong("Hotel California");
+playlist.addSong("Bohemian Grove");
+
+console.log("正向播放：");
+for (const song of playlist) console.log(`  ♪ ${song}`);
+
+console.log("反向播放：");
+for (const song of playlist.reverse()) console.log(`  ♪ ${song}`);
+
+console.log("搜尋 Bohemian：");
+for (const song of playlist.filterBy("Bohemian")) console.log(`  ♪ ${song}`);
+```
+
+### Python 版本
+
+```python
+from typing import Iterator
+
+# 1. 自訂集合：播放清單
+class Playlist:
+    def __init__(self):
+        self._songs: list[str] = []
+
+    def add_song(self, song: str) -> None:
+        self._songs.append(song)
+
+    # 正向迭代器
+    def __iter__(self) -> Iterator[str]:
+        return iter(self._songs)
+
+    # 反向迭代器
+    def reverse(self) -> Iterator[str]:
+        for i in range(len(self._songs) - 1, -1, -1):
+            yield self._songs[i]
+
+    # 篩選迭代器
+    def filter_by(self, keyword: str) -> Iterator[str]:
+        for song in self._songs:
+            if keyword in song:
+                yield song
+
+# 2. 使用
+playlist = Playlist()
+playlist.add_song("Bohemian Rhapsody")
+playlist.add_song("Hotel California")
+playlist.add_song("Bohemian Grove")
+
+print("正向播放：")
+for song in playlist:
+    print(f"  ♪ {song}")
+
+print("反向播放：")
+for song in playlist.reverse():
+    print(f"  ♪ {song}")
+
+print("搜尋 Bohemian：")
+for song in playlist.filter_by("Bohemian"):
+    print(f"  ♪ {song}")
+```
+
+### Java 版本
+
+```java
+import java.util.*;
+
+// 1. 自訂集合：播放清單
+public class Playlist implements Iterable<String> {
+    private final List<String> songs = new ArrayList<>();
+
+    public void addSong(String song) { songs.add(song); }
+
+    // 正向迭代器
+    @Override
+    public Iterator<String> iterator() {
+        return songs.iterator();
+    }
+
+    // 反向迭代器
+    public Iterable<String> reverse() {
+        return () -> new Iterator<String>() {
+            private int index = songs.size() - 1;
+
+            public boolean hasNext() { return index >= 0; }
+            public String next() { return songs.get(index--); }
+        };
+    }
+
+    // 篩選迭代器
+    public Iterable<String> filterBy(String keyword) {
+        return () -> songs.stream()
+            .filter(s -> s.contains(keyword))
+            .iterator();
+    }
+}
+
+// 2. 使用
+Playlist playlist = new Playlist();
+playlist.addSong("Bohemian Rhapsody");
+playlist.addSong("Hotel California");
+playlist.addSong("Bohemian Grove");
+
+System.out.println("正向播放：");
+for (String song : playlist)
+    System.out.println("  ♪ " + song);
+
+System.out.println("反向播放：");
+for (String song : playlist.reverse())
+    System.out.println("  ♪ " + song);
+
+System.out.println("搜尋 Bohemian：");
+for (String song : playlist.filterBy("Bohemian"))
+    System.out.println("  ♪ " + song);
+```
+
+## 結構圖
+
+<Diagram data='{"nodes":[{"id":"client","label":"Client","type":"muted"},{"id":"iterable","label":"IterableCollection (Playlist)","type":"highlight"},{"id":"iterator","label":"Iterator Interface","type":"default"},{"id":"concrete_iter","label":"ConcreteIterator","type":"default"}],"edges":[{"from":"client","to":"iterable","label":"requests iterator"},{"from":"iterable","to":"iterator","label":"creates"},{"from":"concrete_iter","to":"iterator","label":"implements"},{"from":"client","to":"iterator","label":"traverses via"}]}' />
+
+## 實戰補充
+
+<Callout type="tip" title="資深開發者經驗">
+**C# 的 yield return**：C# 的 `yield return` 是 Iterator Pattern 的語法糖，編譯器會自動產生狀態機。搭配 LINQ 的延遲執行（Lazy Evaluation），可以處理無限序列而不會耗盡記憶體。
+
+**Python 的 Generator**：Python 的 `yield` 和 Generator Expression 讓 Iterator 的實作極為簡潔。`itertools` 模組提供了大量實用的 Iterator 工具。
+
+**自訂集合的必要性**：當你寫了 `class TreeNode` 這類自訂資料結構時，實作 Iterator 讓使用者可以用 `foreach` 走訪是必要的設計。可以提供 DFS、BFS 等不同的走訪策略。
+
+**效能考量**：Iterator 的延遲載入特性讓你可以處理超大資料集——一次只載入一筆資料到記憶體。這在處理檔案串流、資料庫查詢結果時特別有用。
+</Callout>
+
+## 理解測驗
+
+<Quiz data='{"question":"Iterator Pattern 的核心目的是什麼？","options":["加速集合的存取速度","提供統一的方式走訪集合，而不暴露底層結構","減少記憶體使用","讓集合可以排序"],"answer":1,"explanation":"Iterator 的重點是把走訪邏輯和集合結構解耦，讓 Client 用統一的介面（HasNext/Next）走訪任何類型的集合。"}' />
+
+<Quiz data='{"question":"C# 的 yield return 對應 Iterator Pattern 的哪個概念？","options":["Iterator 介面","具體 Iterator 的狀態管理","集合本身","Client 端的使用方式"],"answer":1,"explanation":"yield return 讓編譯器自動產生一個狀態機，追蹤目前走訪的位置。這就是具體 Iterator 在做的事。"}' />
+
+<Quiz data='{"question":"什麼情況下你需要手動實作 Iterator Pattern？","options":["使用陣列的 for 迴圈","開發自訂樹狀結構的走訪邏輯","用 LINQ 查詢 List","用 forEach 走訪 Map"],"answer":1,"explanation":"陣列、List、Map 等內建集合已經實作了 Iterator。只有自訂資料結構（如樹、圖）需要手動實作，提供特定的走訪策略。"}' />
+
+## 重點整理
+
+<Callout type="tip" title="一句話記住">
+**Iterator Pattern = 統一的「下一個」按鈕：不管集合長什麼樣，走訪方式都一樣。**
+</Callout>
+
+| 概念 | 說明 |
+|------|------|
+| **Iterator（迭代器介面）** | 定義 HasNext、Next 等走訪方法 |
+| **ConcreteIterator** | 追蹤走訪位置，實作具體走訪邏輯 |
+| **IterableCollection** | 提供建立 Iterator 的方法 |
+| **核心好處** | 統一走訪介面、支援多種走訪策略 |
+| **代價** | 簡單集合不需要，現代語言大多已內建支援 |

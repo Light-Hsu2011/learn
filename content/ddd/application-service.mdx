@@ -1,0 +1,223 @@
+---
+title: "Application Service"
+order: 9
+description: "應用層的職責：協調領域物件完成用例，不包含業務邏輯"
+---
+
+# Application Service（應用服務）
+
+<ELI5>
+想像一個電影**導演**：
+
+- 導演不會親自上場演戲
+- 導演不會自己寫劇本
+- 導演做的是：叫演員就位、喊 Action、確保場景按順序拍完
+
+Application Service 就是導演——它**協調**領域物件（演員）完成一個用例（一場戲），但自己不包含任何業務邏輯（不演戲）。
+</ELI5>
+
+## 是什麼？
+
+Application Service 是 DDD 分層架構中**應用層（Application Layer）**的核心元件。它負責接收外部請求、協調 Domain Model 和 Infrastructure 完成一個完整的 Use Case，但不包含業務規則。
+
+<Callout type="info" title="薄服務原則">
+Application Service 必須是「薄」的——如果你發現 Service 裡有 if-else 在判斷業務規則，那些邏輯應該搬進 Domain Model。
+</Callout>
+
+## 核心觀念
+
+### Use Case 導向
+每個公開方法對應一個用例。方法名稱反映業務操作，例如 `PlaceOrder`、`CancelOrder`，而不是 `UpdateOrderStatus`。
+
+### 協調者，不是執行者
+Application Service 的工作模式是固定的：
+1. 從 Repository 取出 Aggregate
+2. 呼叫 Aggregate 上的業務方法
+3. 把結果存回 Repository
+4. 發送 Domain Event（如果有的話）
+
+### 交易邊界
+Application Service 通常是交易（Transaction）的起點和終點，確保一個 Use Case 的所有操作要嘛全成功、要嘛全失敗。
+
+## 常見誤區
+
+<Callout type="warning" title="Fat Service 壞味道">
+把業務邏輯塞進 Application Service 是最常見的錯誤。當你看到 Service 裡有「如果訂單金額大於 1000 就打九折」這種邏輯，它應該在 Domain Model 裡，不是在 Service 裡。
+</Callout>
+
+## 協調流程
+
+<StepDiagram data='[{"title":"接收請求","description":"從 Controller/Handler 接收 Command 或 DTO","icon":"1"},{"title":"載入 Aggregate","description":"透過 Repository 取出需要操作的領域物件","icon":"2"},{"title":"執行業務操作","description":"呼叫 Aggregate 上的方法（邏輯在 Domain 裡）","icon":"3"},{"title":"持久化結果","description":"透過 Repository 儲存變更後的 Aggregate","icon":"4"},{"title":"發布事件","description":"發送 Domain Event 通知其他 Bounded Context","icon":"5"}]' />
+
+## 程式碼範例
+
+### C#
+
+```csharp
+// Application Service — 薄，只做協調
+public class OrderApplicationService
+{
+    private readonly IOrderRepository _orderRepo;
+    private readonly IProductRepository _productRepo;
+    private readonly IDomainEventPublisher _eventPublisher;
+
+    public OrderApplicationService(
+        IOrderRepository orderRepo,
+        IProductRepository productRepo,
+        IDomainEventPublisher eventPublisher)
+    {
+        _orderRepo = orderRepo;
+        _productRepo = productRepo;
+        _eventPublisher = eventPublisher;
+    }
+
+    // 一個方法 = 一個 Use Case
+    public void PlaceOrder(PlaceOrderCommand command)
+    {
+        // 1. 載入需要的領域物件
+        var product = _productRepo.GetById(command.ProductId);
+
+        // 2. 呼叫 Domain Model 的業務方法（邏輯在 Order 裡）
+        var order = Order.Create(
+            customerId: command.CustomerId,
+            product: product,
+            quantity: command.Quantity
+        );
+
+        // 3. 持久化
+        _orderRepo.Save(order);
+
+        // 4. 發布事件
+        _eventPublisher.Publish(new OrderPlacedEvent(order.Id));
+    }
+
+    public void CancelOrder(Guid orderId, string reason)
+    {
+        var order = _orderRepo.GetById(orderId);
+        order.Cancel(reason); // 業務邏輯在 Aggregate 裡
+        _orderRepo.Save(order);
+        _eventPublisher.Publish(new OrderCancelledEvent(orderId, reason));
+    }
+}
+
+// Domain Model — 業務邏輯在這裡
+public class Order
+{
+    public static Order Create(Guid customerId, Product product, int quantity)
+    {
+        if (quantity <= 0)
+            throw new DomainException("Quantity must be positive");
+        if (!product.IsAvailable)
+            throw new DomainException("Product is not available");
+
+        var total = product.Price * quantity;
+        if (total > 1000) total *= 0.9m; // 折扣邏輯在 Domain 裡
+
+        return new Order(customerId, product.Id, quantity, total);
+    }
+}
+```
+
+### TypeScript
+
+```typescript
+// Application Service
+class OrderApplicationService {
+  constructor(
+    private orderRepo: OrderRepository,
+    private productRepo: ProductRepository,
+    private eventPublisher: DomainEventPublisher
+  ) {}
+
+  async placeOrder(command: PlaceOrderCommand): Promise<void> {
+    const product = await this.productRepo.getById(command.productId);
+
+    // 業務邏輯在 Order.create 裡
+    const order = Order.create(
+      command.customerId,
+      product,
+      command.quantity
+    );
+
+    await this.orderRepo.save(order);
+    await this.eventPublisher.publish(new OrderPlacedEvent(order.id));
+  }
+
+  async cancelOrder(orderId: string, reason: string): Promise<void> {
+    const order = await this.orderRepo.getById(orderId);
+    order.cancel(reason); // 業務邏輯在 Aggregate 裡
+    await this.orderRepo.save(order);
+    await this.eventPublisher.publish(new OrderCancelledEvent(orderId, reason));
+  }
+}
+```
+
+### Python
+
+```python
+class OrderApplicationService:
+    def __init__(
+        self,
+        order_repo: OrderRepository,
+        product_repo: ProductRepository,
+        event_publisher: DomainEventPublisher,
+    ):
+        self._order_repo = order_repo
+        self._product_repo = product_repo
+        self._event_publisher = event_publisher
+
+    def place_order(self, command: PlaceOrderCommand) -> None:
+        product = self._product_repo.get_by_id(command.product_id)
+
+        # 業務邏輯在 Order.create 裡
+        order = Order.create(
+            customer_id=command.customer_id,
+            product=product,
+            quantity=command.quantity,
+        )
+
+        self._order_repo.save(order)
+        self._event_publisher.publish(OrderPlacedEvent(order.id))
+
+    def cancel_order(self, order_id: str, reason: str) -> None:
+        order = self._order_repo.get_by_id(order_id)
+        order.cancel(reason)  # 業務邏輯在 Aggregate 裡
+        self._order_repo.save(order)
+        self._event_publisher.publish(OrderCancelledEvent(order_id, reason))
+```
+
+## 結構圖
+
+<Diagram data='{"nodes":[{"id":"controller","label":"Controller / Handler","type":"muted"},{"id":"appservice","label":"Application Service","type":"highlight"},{"id":"repo","label":"Repository","type":"default"},{"id":"aggregate","label":"Aggregate (Domain)","type":"default"},{"id":"event","label":"Domain Event Publisher","type":"default"},{"id":"db","label":"Database","type":"muted"}],"edges":[{"from":"controller","to":"appservice","label":"呼叫 Use Case"},{"from":"appservice","to":"repo","label":"載入 / 儲存"},{"from":"appservice","to":"aggregate","label":"呼叫業務方法"},{"from":"appservice","to":"event","label":"發布事件"},{"from":"repo","to":"db","label":"持久化"}]}' />
+
+## 實戰補充
+
+<Callout type="info" title="資深開發者心得">
+判斷 Application Service 是否太胖的簡單方法：**如果拿掉所有 if-else 後 Service 還能運作，那些 if-else 就應該在 Domain 裡。** Application Service 的流程應該是線性的：取出、操作、儲存、發事件。
+</Callout>
+
+<Callout type="tip" title="與 Domain Service 的區別">
+Application Service 協調用例流程，Domain Service 封裝跨 Aggregate 的業務規則。如果邏輯需要多個 Aggregate 協作且包含業務判斷，那是 Domain Service 的職責，不是 Application Service。
+</Callout>
+
+## 理解測驗
+
+<Quiz data='{"question":"Application Service 的核心職責是什麼？","options":["實作業務邏輯","協調領域物件完成用例","直接操作資料庫","處理 UI 顯示邏輯"],"answer":1,"explanation":"Application Service 是協調者，負責串接 Repository、Domain Model、Event Publisher 來完成一個用例，業務邏輯應該在 Domain Model 裡。"}' />
+
+<Quiz data='{"question":"如果你在 Application Service 裡看到「如果 VIP 客戶則免運費」這段邏輯，正確的做法是？","options":["留在 Application Service 裡，因為它是用例的一部分","搬到 Controller 裡","搬到 Domain Model（例如 Order Aggregate）裡","搬到 Repository 裡"],"answer":2,"explanation":"「VIP 客戶免運費」是業務規則，屬於 Domain Model 的職責。Application Service 只做協調，不做業務判斷。"}' />
+
+<Quiz data='{"question":"Application Service 和 Domain Service 的關鍵差異是？","options":["Application Service 比 Domain Service 更重要","Application Service 協調用例流程，Domain Service 封裝跨 Aggregate 的業務規則","它們是同一個東西的不同名字","Domain Service 負責資料庫操作"],"answer":1,"explanation":"Application Service 是應用層的協調者（取出、操作、儲存），Domain Service 是領域層的業務邏輯封裝（當邏輯不屬於任何單一 Aggregate 時）。"}' />
+
+## 重點整理
+
+<Callout type="tip" title="一句話記住">
+**Application Service = 導演，只喊 Action 不演戲——協調領域物件完成用例，但不包含業務邏輯。**
+</Callout>
+
+| 概念 | 說明 |
+|------|------|
+| **薄服務** | Service 只做協調，業務邏輯在 Domain Model |
+| **Use Case 導向** | 每個公開方法對應一個業務操作 |
+| **固定模式** | 取出 → 操作 → 儲存 → 發事件 |
+| **交易邊界** | Service 是 Transaction 的起點和終點 |
+| **判斷標準** | 拿掉 if-else 後 Service 還能運作 → 那些邏輯應搬到 Domain |

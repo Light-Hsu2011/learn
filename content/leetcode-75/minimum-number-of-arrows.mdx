@@ -1,0 +1,115 @@
+---
+title: "452. Minimum Number of Arrows to Burst Balloons"
+order: 73
+description: "區間貪心，找最少的箭能射穿所有氣球的重疊區域"
+---
+
+# Minimum Number of Arrows to Burst Balloons
+
+<ELI5>
+天空中飄著很多氣球，每個氣球佔據一段水平範圍。你站在地面往上射箭，一支箭是一條垂直線，能射穿它經過的所有氣球。
+
+你想用最少的箭射穿所有氣球。策略是：把氣球按「右邊界」排序，射第一支箭在第一個氣球的右邊界。所有跟這支箭重疊的氣球都被射穿了。然後找到第一個沒被射穿的氣球，再射一支箭在它的右邊界...
+
+這跟「一個老師管最多學生」的邏輯一樣：找到共同重疊最多的區域，一箭搞定。
+</ELI5>
+
+## 題目描述
+
+給定氣球的水平直徑（以 `[start, end]` 表示），箭從某個 x 座標垂直射出，能射穿 `start ≤ x ≤ end` 的所有氣球。回傳射穿所有氣球所需的最少箭數。
+
+```
+輸入：points = [[10,16],[2,8],[1,6],[7,12]]
+輸出：2
+解釋：在 x=6 射穿 [2,8] 和 [1,6]，在 x=11 射穿 [10,16] 和 [7,12]
+
+輸入：points = [[1,2],[3,4],[5,6],[7,8]]
+輸出：4（完全不重疊，每個氣球都要一支箭）
+```
+
+## 解題思路
+
+<StepDiagram data='[{"title":"按右邊界排序","description":"氣球按 end 值升序排列","icon":"1"},{"title":"射第一箭","description":"在第一個氣球的右邊界射箭","icon":"2"},{"title":"檢查下一個氣球","description":"如果氣球的 start <= 當前箭的位置，就被射穿了","icon":"3"},{"title":"需要新箭","description":"如果 start > 當前箭位置，射新箭在這個氣球的右邊界","icon":"4"},{"title":"計數箭數","description":"統計射了幾支箭","icon":"5"}]' />
+
+## 程式碼
+
+### C#
+```csharp
+public class Solution {
+    public int FindMinArrowShots(int[][] points) {
+        // 按右邊界排序
+        Array.Sort(points, (a, b) => a[1].CompareTo(b[1]));
+        
+        int arrows = 1;
+        int arrowPos = points[0][1]; // 第一支箭的位置
+        
+        for (int i = 1; i < points.Length; i++) {
+            if (points[i][0] > arrowPos) {
+                // 這個氣球沒被射到，需要新箭
+                arrows++;
+                arrowPos = points[i][1];
+            }
+            // 否則已被當前箭射穿，不用管
+        }
+        return arrows;
+    }
+}
+```
+
+### TypeScript
+```typescript
+function findMinArrowShots(points: number[][]): number {
+    points.sort((a, b) => a[1] - b[1]);
+    
+    let arrows = 1;
+    let arrowPos = points[0][1];
+    
+    for (let i = 1; i < points.length; i++) {
+        if (points[i][0] > arrowPos) {
+            arrows++;
+            arrowPos = points[i][1];
+        }
+    }
+    return arrows;
+}
+```
+
+### Python
+```python
+def findMinArrowShots(points: list[list[int]]) -> int:
+    points.sort(key=lambda x: x[1])  # 按右邊界排序
+    
+    arrows = 1
+    arrow_pos = points[0][1]
+    
+    for start, end in points[1:]:
+        if start > arrow_pos:
+            arrows += 1       # 需要新箭
+            arrow_pos = end    # 射在右邊界
+    
+    return arrows
+```
+
+## 複雜度分析
+
+| | Time | Space |
+|--|------|-------|
+| 本解法 | O(n log n) | O(1) |
+
+## 圖解
+
+<Diagram data='{"nodes":[{"id":"sort","label":"按右邊界排序","type":"highlight"},{"id":"arrow1","label":"箭1 在第一個氣球右邊界","type":"default"},{"id":"check","label":"下一個氣球 start > 箭位？","type":"default"},{"id":"burst","label":"已被射穿，跳過","type":"muted"},{"id":"new","label":"需要新箭，射在右邊界","type":"highlight"}],"edges":[{"from":"sort","to":"arrow1","label":"第一箭"},{"from":"arrow1","to":"check","label":"遍歷"},{"from":"check","to":"burst","label":"否"},{"from":"check","to":"new","label":"是"},{"from":"new","to":"check","label":"繼續"}]}' />
+
+## 進階觀點
+
+<Callout type="tip" title="面試追問">
+- 和 **435. Non-overlapping Intervals** 的關係：本題的箭數 = 不重疊區間的最大組數，而 435 問的是要移除幾個才能不重疊。本質相同，只是問法不同。
+- 為什麼用 `>` 而不是 `>=`？因為題目說 `start <= x <= end` 都算射穿，所以邊界相觸（start == arrowPos）也能被射穿。
+- 注意排序時用 `a[1].CompareTo(b[1])` 而不是 `a[1] - b[1]`，後者在大數字時可能溢位。
+</Callout>
+
+## 理解測驗
+
+<Quiz data='{"question":"為什麼箭要射在氣球的右邊界而不是左邊界？","options":["射在右邊界更準","射在右邊界能覆蓋最多後面的氣球（向右延伸的機會最大）","沒有差別","題目要求射右邊界"],"answer":1,"explanation":"射在右邊界能最大化覆蓋範圍——排序後右邊界最小的氣球，在其右邊界射箭能同時射穿所有與它重疊的氣球。"}' />
+
+<Quiz data='{"question":"氣球 [1,6] 和 [6,10]，一支箭能同時射穿嗎？","options":["不能，因為只有邊界相觸","能，在 x=6 處可以同時射穿兩個","取決於箭的方向","無法確定"],"answer":1,"explanation":"題目定義 start <= x <= end 都算射穿。x=6 時，6 在 [1,6] 和 [6,10] 的範圍內，所以一箭穿兩個。"}' />

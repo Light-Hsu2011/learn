@@ -1,0 +1,101 @@
+---
+title: "374. Guess Number Higher or Lower"
+order: 53
+description: "經典二分搜尋，透過 API 回饋縮小搜尋範圍"
+---
+
+# Guess Number Higher or Lower
+
+<ELI5>
+這就是小時候玩的猜數字遊戲！我心裡想一個 1 到 N 的數字，你每次猜一個，我告訴你「太高了」、「太低了」或「猜對了」。
+
+最聰明的策略是什麼？每次都猜中間的數字！這樣不管答案在左邊還是右邊，你都能一次淘汰一半的可能性。猜 1~100 的數字，最多只要猜 7 次（因為 2^7 = 128 > 100）。
+</ELI5>
+
+## 題目描述
+
+猜一個 1 到 n 的數字，有一個預定義的 API `guess(num)` 回傳 `-1`（太高）、`1`（太低）或 `0`（正確）。找出正確的數字。
+
+```
+輸入：n = 10, pick = 6
+輸出：6
+解釋：guess(5) → 1, guess(8) → -1, guess(7) → -1, guess(6) → 0
+```
+
+## 解題思路
+
+<StepDiagram data='[{"title":"設定範圍","description":"left = 1, right = n","icon":"1"},{"title":"取中間值","description":"mid = left + (right - left) / 2 避免溢位","icon":"2"},{"title":"呼叫 API","description":"guess(mid) 回傳比較結果","icon":"3"},{"title":"縮小範圍","description":"回傳 -1 往左找，1 往右找，0 就是答案","icon":"4"}]' />
+
+## 程式碼
+
+### C#
+```csharp
+public class Solution : GuessGame {
+    public int GuessNumber(int n) {
+        int left = 1, right = n;
+        while (left <= right) {
+            int mid = left + (right - left) / 2;
+            int result = guess(mid);
+            if (result == 0) return mid;
+            else if (result == -1) right = mid - 1; // 太高
+            else left = mid + 1; // 太低
+        }
+        return -1; // 不會到這裡
+    }
+}
+```
+
+### TypeScript
+```typescript
+function guessNumber(n: number): number {
+    let left = 1, right = n;
+    while (left <= right) {
+        const mid = Math.floor(left + (right - left) / 2);
+        const result = guess(mid);
+        if (result === 0) return mid;
+        else if (result === -1) right = mid - 1;
+        else left = mid + 1;
+    }
+    return -1;
+}
+```
+
+### Python
+```python
+def guessNumber(n: int) -> int:
+    left, right = 1, n
+    while left <= right:
+        mid = left + (right - left) // 2
+        result = guess(mid)
+        if result == 0:
+            return mid
+        elif result == -1:  # 猜太高
+            right = mid - 1
+        else:  # 猜太低
+            left = mid + 1
+    return -1
+```
+
+## 複雜度分析
+
+| | Time | Space |
+|--|------|-------|
+| 本解法 | O(log n) | O(1) |
+
+## 圖解
+
+<Diagram data='{"nodes":[{"id":"range","label":"[1 ... n]","type":"default"},{"id":"mid","label":"取 mid","type":"highlight"},{"id":"api","label":"guess(mid)","type":"default"},{"id":"left","label":"往左半找","type":"muted"},{"id":"right","label":"往右半找","type":"muted"},{"id":"found","label":"找到答案","type":"highlight"}],"edges":[{"from":"range","to":"mid","label":"二分"},{"from":"mid","to":"api","label":"詢問"},{"from":"api","to":"left","label":"-1"},{"from":"api","to":"right","label":"1"},{"from":"api","to":"found","label":"0"}]}' />
+
+## 進階觀點
+
+<Callout type="tip" title="面試追問">
+- 為什麼用 `left + (right - left) / 2` 而不是 `(left + right) / 2`？防止整數溢位，特別是在 C# / Java 中 int 的上限約 21 億。
+- Binary Search 的三種常見變體：找精確值、找左邊界、找右邊界，模板略有不同。
+- 這是 **Interactive Binary Search** 的範例，面試中常見的延伸是猜測有誤差（如 2-3 次錯誤回饋），需要三分搜尋或多次確認。
+</Callout>
+
+## 理解測驗
+
+<Quiz data='{"question":"為什麼 Binary Search 每次能淘汰一半的搜尋範圍？","options":["因為陣列是亂序的","因為每次取中間值，API 的回饋告訴我們答案在哪一半","因為我們用了遞迴","因為搜尋範圍是質數"],"answer":1,"explanation":"Binary Search 的核心：在有序空間中，中間值的比較結果可以確定答案在左半還是右半，從而淘汰另一半。"}' />
+
+<Quiz data='{"question":"猜 1 到 1000 的數字，最多需要幾次？","options":["100 次","50 次","10 次","1000 次"],"answer":2,"explanation":"Binary Search 最多需要 ceil(log2(1000)) = 10 次，因為 2^10 = 1024 > 1000。"}' />

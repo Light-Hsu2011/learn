@@ -1,0 +1,136 @@
+---
+title: "72. Edit Distance"
+order: 66
+description: "經典字串 DP，用插入、刪除、替換三種操作將一個字串轉換為另一個"
+---
+
+# Edit Distance
+
+<ELI5>
+你在用手機打字，打了 "horse" 但其實想打 "ros"。自動修正系統要把你的字改成正確的，它可以做三種事：
+- 插入一個字母
+- 刪除一個字母
+- 替換一個字母
+
+最少要幾步才能改完？這就是 Edit Distance（編輯距離）。
+
+解法像填一張表格：橫軸是原始字串，縱軸是目標字串。每格代表「把前 i 個字母改成前 j 個字母最少要幾步」。如果當前字母一樣就不用動（繼承左上角），不一樣就從插入、刪除、替換三個選項中挑最便宜的。
+</ELI5>
+
+## 題目描述
+
+給定兩個字串 `word1` 和 `word2`，回傳將 word1 轉換為 word2 所需的最少操作數。每次可以插入、刪除或替換一個字元。
+
+```
+輸入：word1 = "horse", word2 = "ros"
+輸出：3
+解釋：horse → rorse（替換 h→r）→ rose（刪除 r）→ ros（刪除 e）
+
+輸入：word1 = "intention", word2 = "execution"
+輸出：5
+```
+
+## 解題思路
+
+<StepDiagram data='[{"title":"定義狀態","description":"dp[i][j] = word1[0..i-1] 轉換成 word2[0..j-1] 的最少操作數","icon":"1"},{"title":"邊界條件","description":"dp[i][0] = i（全刪除），dp[0][j] = j（全插入）","icon":"2"},{"title":"字元相同","description":"dp[i][j] = dp[i-1][j-1]（不需要操作）","icon":"3"},{"title":"字元不同","description":"dp[i][j] = 1 + min(dp[i-1][j], dp[i][j-1], dp[i-1][j-1])","icon":"4"},{"title":"三種操作","description":"刪除=dp[i-1][j], 插入=dp[i][j-1], 替換=dp[i-1][j-1]","icon":"5"}]' />
+
+## 程式碼
+
+### C#
+```csharp
+public class Solution {
+    public int MinDistance(string word1, string word2) {
+        int m = word1.Length, n = word2.Length;
+        int[] dp = new int[n + 1];
+        
+        // 初始化：空字串到 word2[0..j-1] 需要 j 次插入
+        for (int j = 0; j <= n; j++) dp[j] = j;
+        
+        for (int i = 1; i <= m; i++) {
+            int prev = dp[0]; // dp[i-1][j-1]
+            dp[0] = i;        // 空字串需要 i 次刪除
+            for (int j = 1; j <= n; j++) {
+                int temp = dp[j];
+                if (word1[i - 1] == word2[j - 1]) {
+                    dp[j] = prev;
+                } else {
+                    dp[j] = 1 + Math.Min(Math.Min(dp[j], dp[j - 1]), prev);
+                    // dp[j]=刪除, dp[j-1]=插入, prev=替換
+                }
+                prev = temp;
+            }
+        }
+        return dp[n];
+    }
+}
+```
+
+### TypeScript
+```typescript
+function minDistance(word1: string, word2: string): number {
+    const m = word1.length, n = word2.length;
+    const dp: number[][] = Array.from({length: m + 1}, (_, i) =>
+        Array.from({length: n + 1}, (_, j) => (i === 0 ? j : j === 0 ? i : 0))
+    );
+    
+    for (let i = 1; i <= m; i++) {
+        for (let j = 1; j <= n; j++) {
+            if (word1[i - 1] === word2[j - 1]) {
+                dp[i][j] = dp[i - 1][j - 1];
+            } else {
+                dp[i][j] = 1 + Math.min(
+                    dp[i - 1][j],     // 刪除
+                    dp[i][j - 1],     // 插入
+                    dp[i - 1][j - 1]  // 替換
+                );
+            }
+        }
+    }
+    return dp[m][n];
+}
+```
+
+### Python
+```python
+def minDistance(word1: str, word2: str) -> int:
+    m, n = len(word1), len(word2)
+    dp = list(range(n + 1))  # dp[j] = j（初始化）
+    
+    for i in range(1, m + 1):
+        prev = dp[0]
+        dp[0] = i
+        for j in range(1, n + 1):
+            temp = dp[j]
+            if word1[i - 1] == word2[j - 1]:
+                dp[j] = prev
+            else:
+                dp[j] = 1 + min(dp[j], dp[j - 1], prev)
+            prev = temp
+    
+    return dp[n]
+```
+
+## 複雜度分析
+
+| | Time | Space |
+|--|------|-------|
+| 本解法 | O(m × n) | O(n)（空間優化後） |
+
+## 圖解
+
+<Diagram data='{"nodes":[{"id":"same","label":"字元相同","type":"highlight"},{"id":"diff","label":"字元不同","type":"default"},{"id":"diag","label":"dp[i-1][j-1] (替換/不動)","type":"muted"},{"id":"up","label":"dp[i-1][j] (刪除)","type":"muted"},{"id":"left","label":"dp[i][j-1] (插入)","type":"muted"},{"id":"result","label":"dp[i][j]","type":"highlight"}],"edges":[{"from":"same","to":"diag","label":"直接繼承"},{"from":"diag","to":"result","label":"+0"},{"from":"diff","to":"diag","label":"替換"},{"from":"diff","to":"up","label":"刪除"},{"from":"diff","to":"left","label":"插入"},{"from":"up","to":"result","label":"min+1"},{"from":"left","to":"result","label":"min+1"}]}' />
+
+## 進階觀點
+
+<Callout type="tip" title="面試追問">
+- Edit Distance（Levenshtein Distance）在拼字檢查、DNA 比對、搜尋引擎模糊匹配中廣泛使用。
+- 如果要輸出具體的操作序列，需要從 dp 表格反向追溯。
+- **583. Delete Operation for Two Strings** 是只允許刪除的簡化版本，等價於 m + n - 2 × LCS。
+- 進階優化：如果兩個字串長度差很大，可以只計算對角帶狀區域（Ukkonen's algorithm）。
+</Callout>
+
+## 理解測驗
+
+<Quiz data='{"question":"dp[i-1][j] + 1 對應哪種操作？","options":["插入","刪除 word1[i-1]","替換","什麼都不做"],"answer":1,"explanation":"dp[i-1][j] 是 word1 前 i-1 個字元對 word2 前 j 個字元的距離。從這裡到 dp[i][j] 多了 word1[i-1] 這個字元，所以要刪除它（+1 操作）。"}' />
+
+<Quiz data='{"question":"為什麼字元相同時不需要額外操作（dp[i][j] = dp[i-1][j-1]）？","options":["因為相同的字元會自動消失","因為兩邊的字元已經匹配，不需要做任何修改，直接看剩餘部分的編輯距離","因為 DP 會自動跳過","這是一種優化技巧"],"answer":1,"explanation":"word1[i-1] == word2[j-1] 時，這兩個字元已經對齊，不需要額外操作，所以直接等於去掉這兩個字元後的編輯距離 dp[i-1][j-1]。"}' />

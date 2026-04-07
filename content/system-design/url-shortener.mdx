@@ -1,0 +1,137 @@
+---
+title: "設計短網址服務"
+order: 4
+description: "從需求分析到架構設計，完整走過 TinyURL 系統設計"
+---
+
+# 設計短網址服務（URL Shortener）
+
+<ELI5>
+想像你住在一條超長的街道上，地址是「第 9,527,381,047 號」。每次告訴別人你家地址都要說半天。
+
+所以你去郵局申請了一個「簡短代號」：**A7B**。別人只要跟郵差說「A7B」，郵差就會查表幫你轉送到那條超長地址。
+
+短網址服務就是這個郵局 — 把很長的 URL 變成很短的代碼，有人點短網址時再查表跳轉回原本的長網址。
+</ELI5>
+
+## 問題定義
+
+設計一個類似 TinyURL / bit.ly 的短網址服務，支援：將長 URL 轉為短 URL，點擊短 URL 時重定向到原始 URL。
+
+<Callout type="info" title="需求規模估算">
+假設每日新增 1 億個短網址、讀寫比 100:1（每日 100 億次讀取）。短網址需保留 5 年。
+總儲存量：1 億 × 365 × 5 = 1,825 億筆。每筆約 500 bytes → 約 91 TB。
+</Callout>
+
+## 需求分析
+
+- **功能性需求**：輸入長 URL 回傳短 URL、短 URL 重定向到長 URL、可選自訂短碼、設定過期時間
+- **非功能性需求**：低延遲（重定向 < 100ms）、高可用（99.99%）、短碼不可預測
+- **讀寫比**：讀遠大於寫（100:1），架構要針對讀取優化
+- **短碼長度**：Base62（a-z, A-Z, 0-9）7 位 = 62^7 ≈ 3.5 兆組合，足夠使用
+
+## 注意事項
+
+<Callout type="warning" title="Hash 碰撞處理">
+無論用什麼 Hash 函數（MD5、SHA256），截取前 7 位都有碰撞風險。必須在寫入前檢查是否已存在，碰撞時要有重試或追加字元的機制。用自增 ID + Base62 編碼可以完全避免碰撞。
+</Callout>
+
+## 設計流程
+
+<StepDiagram data='[{"title":"需求釐清","description":"讀寫比、儲存量、短碼長度、過期策略","icon":"1"},{"title":"短碼生成策略","description":"Hash 截取 vs 自增 ID + Base62 編碼","icon":"2"},{"title":"API 設計","description":"POST /shorten 建立短碼、GET /:code 重定向","icon":"3"},{"title":"資料庫設計","description":"short_code 為主鍵，加上 original_url、created_at、expires_at","icon":"4"},{"title":"快取策略","description":"熱門短碼放 Redis，Cache Aside pattern","icon":"5"},{"title":"擴展與高可用","description":"資料庫 Sharding by short_code、多機房部署","icon":"6"}]' />
+
+## 架構設計
+
+### 短碼生成（兩種方案）
+
+```csharp
+// 方案一：Hash 截取（簡單但有碰撞風險）
+public string GenerateByHash(string longUrl)
+{
+    var hash = Convert.ToBase64String(
+        MD5.HashData(Encoding.UTF8.GetBytes(longUrl)));
+    return hash[..7].Replace("+", "a").Replace("/", "b");
+}
+
+// 方案二：自增 ID + Base62（推薦，無碰撞）
+public class Base62Encoder
+{
+    private const string Chars =
+        "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
+
+    public static string Encode(long id)
+    {
+        if (id == 0) return "0";
+        var result = new StringBuilder();
+        while (id > 0)
+        {
+            result.Insert(0, Chars[(int)(id % 62)]);
+            id /= 62;
+        }
+        return result.ToString();
+    }
+}
+
+// ID 用分散式 ID 生成器（如 Snowflake）確保唯一性
+var shortCode = Base62Encoder.Encode(snowflakeId); // e.g., "a7Bx9K2"
+```
+
+### 重定向 API（TypeScript）
+
+```typescript
+app.get("/:code", async (req, res) => {
+  const { code } = req.params;
+
+  // 1. 查 Cache
+  const cached = await redis.get(`url:${code}`);
+  if (cached) {
+    res.redirect(301, cached); // 301 永久重定向（瀏覽器會快取）
+    return;
+  }
+
+  // 2. 查 DB
+  const record = await db.query("SELECT original_url FROM urls WHERE short_code = $1", [code]);
+  if (!record) {
+    res.status(404).send("Not found");
+    return;
+  }
+
+  // 3. 寫入 Cache
+  await redis.set(`url:${code}`, record.original_url, "EX", 3600);
+  res.redirect(301, record.original_url);
+});
+```
+
+## 架構圖
+
+<Diagram data='{"nodes":[{"id":"client","label":"Client","type":"muted"},{"id":"lb","label":"Load Balancer","type":"default"},{"id":"api","label":"API Servers","type":"default"},{"id":"cache","label":"Redis Cache","type":"highlight"},{"id":"db","label":"DB (Sharded by code)","type":"highlight"},{"id":"idgen","label":"ID Generator (Snowflake)","type":"default"}],"edges":[{"from":"client","to":"lb","label":"HTTP request"},{"from":"lb","to":"api","label":"route"},{"from":"api","to":"cache","label":"check cache first"},{"from":"api","to":"db","label":"cache miss → query"},{"from":"api","to":"idgen","label":"get unique ID"}]}' />
+
+## 實戰補充
+
+<Callout type="tip" title="301 vs 302 重定向">
+- **301 Moved Permanently**：瀏覽器會快取，下次直接跳轉不經過伺服器。省伺服器資源，但無法追蹤點擊次數。
+- **302 Found**：每次都經過伺服器再跳轉。可以追蹤點擊數據、做 A/B 測試。
+- 實務上 bit.ly 等服務使用 **301** 搭配非同步日誌記錄來兼顧效能和追蹤。
+</Callout>
+
+## 理解測驗
+
+<Quiz data='{"question":"Base62 編碼 7 位短碼可以產生多少個唯一短網址？","options":["約 700 萬","約 7 億","約 3.5 兆","約 70 兆"],"answer":2,"explanation":"Base62 有 62 個字元（a-z, A-Z, 0-9），7 位 = 62^7 ≈ 3.5 兆。這個數量對大多數服務來說綽綽有餘。"}' />
+
+<Quiz data='{"question":"為什麼自增 ID + Base62 編碼比 Hash 截取更好？","options":["生成速度更快","完全不會有碰撞問題","短碼更短","不需要資料庫"],"answer":1,"explanation":"自增 ID 保證唯一，Base62 只是編碼轉換，不會產生碰撞。Hash 截取則必須處理碰撞（截取後不同 URL 可能得到相同短碼），需要額外的衝突檢測和重試機制。"}' />
+
+<Quiz data='{"question":"短網址服務的讀寫比是 100:1，架構設計應該優先優化什麼？","options":["寫入速度","讀取速度和快取策略","資料庫寫入的一致性","短碼的生成速度"],"answer":1,"explanation":"讀遠大於寫，架構應該以讀取優化為主：加 Redis 快取熱門短碼、使用 CDN 就近服務、資料庫讀寫分離。寫入可以接受稍慢，但讀取（重定向）必須極快。"}' />
+
+## 重點整理
+
+<Callout type="tip" title="一句話記住">
+**短網址 = Base62(唯一 ID) + Redis 快取 + 讀寫分離，核心挑戰是短碼生成的唯一性和讀取的低延遲。**
+</Callout>
+
+| 概念 | 說明 |
+|------|------|
+| **Base62 編碼** | 62 個字元組合，7 位可產生 3.5 兆唯一碼 |
+| **Snowflake ID** | 分散式唯一 ID 生成器，避免碰撞 |
+| **301 vs 302** | 301 瀏覽器快取省資源，302 每次經過伺服器可追蹤 |
+| **Cache 策略** | 熱門短碼放 Redis，Cache Aside 模式 |
+| **Sharding** | 按 short_code Hash 分片，均勻分散讀寫 |

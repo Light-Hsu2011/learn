@@ -1,0 +1,110 @@
+---
+title: "1004. Max Consecutive Ones III"
+order: 16
+description: "用可變大小滑動窗口追蹤翻轉次數來找最長連續 1 的子陣列"
+---
+
+# Max Consecutive Ones III
+
+<ELI5>
+想像一排燈泡，有些亮（1）有些暗（0）。你有 k 次機會把暗的燈泡打開。問題是：最多能讓多長的一段連續燈泡全亮？
+
+用一個可以伸縮的窗口：右邊不斷擴張，遇到暗燈泡就用一次機會。如果機會用完了（窗口裡的 0 超過 k 個），就縮左邊直到吐出一個 0。全程追蹤窗口的最大長度。
+</ELI5>
+
+## 題目描述
+
+給定二進位陣列 `nums` 和整數 `k`，最多可以將 `k` 個 0 翻轉為 1，回傳翻轉後最長的連續 1 的長度。
+
+```
+輸入：nums = [1,1,1,0,0,0,1,1,1,1,0], k = 2
+輸出：6（翻轉 nums[5] 和 nums[10]）
+
+輸入：nums = [0,0,1,1,0,0,1,1,1,0,1,1,0,0,0,1,1,1,1], k = 3
+輸出：10
+```
+
+## 解題思路
+
+<StepDiagram data='[{"title":"初始化","description":"left = 0，zeroCount = 0","icon":"1"},{"title":"擴張右邊","description":"right 往右移，遇到 0 就 zeroCount++","icon":"2"},{"title":"收縮左邊","description":"若 zeroCount > k，left 往右移直到吐出一個 0","icon":"3"},{"title":"更新最大值","description":"maxLen = max(maxLen, right - left + 1)","icon":"4"}]' />
+
+## 程式碼
+
+### C#
+
+```csharp
+public class Solution {
+    public int LongestOnes(int[] nums, int k) {
+        int left = 0, zeroCount = 0, maxLen = 0;
+        for (int right = 0; right < nums.Length; right++) {
+            if (nums[right] == 0) zeroCount++;
+            // 窗口內 0 的數量超過 k，收縮左邊
+            while (zeroCount > k) {
+                if (nums[left] == 0) zeroCount--;
+                left++;
+            }
+            maxLen = Math.Max(maxLen, right - left + 1);
+        }
+        return maxLen;
+    }
+}
+```
+
+### TypeScript
+
+```typescript
+function longestOnes(nums: number[], k: number): number {
+    let left = 0, zeroCount = 0, maxLen = 0;
+    for (let right = 0; right < nums.length; right++) {
+        if (nums[right] === 0) zeroCount++;
+        while (zeroCount > k) {
+            if (nums[left] === 0) zeroCount--;
+            left++;
+        }
+        maxLen = Math.max(maxLen, right - left + 1);
+    }
+    return maxLen;
+}
+```
+
+### Python
+
+```python
+def longestOnes(nums: list[int], k: int) -> int:
+    left = zero_count = max_len = 0
+    for right in range(len(nums)):
+        if nums[right] == 0:
+            zero_count += 1
+        while zero_count > k:
+            if nums[left] == 0:
+                zero_count -= 1
+            left += 1
+        max_len = max(max_len, right - left + 1)
+    return max_len
+```
+
+## 複雜度分析
+
+| | Time | Space |
+|--|------|-------|
+| 本解法 | O(n) | O(1) |
+
+left 和 right 各最多走 n 步，總共 O(n)。
+
+## 圖解
+
+<Diagram data='{"nodes":[{"id":"input","label":"[1,1,1,0,0,0,1,1,1,1,0] k=2","type":"default"},{"id":"expand","label":"right 擴張到包含 2 個 0","type":"highlight"},{"id":"shrink","label":"遇到第 3 個 0，left 收縮","type":"highlight"},{"id":"best","label":"最佳窗口 [0,1,1,1,1,0] len=6","type":"muted"}],"edges":[{"from":"input","to":"expand","label":"擴張"},{"from":"expand","to":"shrink","label":"0 超標"},{"from":"shrink","to":"best","label":"找到最佳"}]}' />
+
+## 進階觀點
+
+<Callout type="tip" title="面試追問">
+- **while 換成 if 可以嗎？** 可以！因為每次 right 只加 1，zeroCount 最多超標 1。用 if 甚至可以讓窗口只擴不縮（窗口大小單調不減），結果一樣正確。
+- **k = 0 的特殊情況？** 退化為找最長連續 1 的子陣列。
+- **跟下一題（Longest Subarray of 1's After Deleting）的關係？** 幾乎一樣，只是那題是「刪除一個元素」而非「翻轉」。
+</Callout>
+
+## 理解測驗
+
+<Quiz data='{"question":"為什麼這是可變大小的滑動窗口？","options":["因為 k 會改變","因為窗口大小隨 zeroCount 動態調整 — right 不斷擴張，left 在必要時收縮","因為陣列會改變大小","因為用了兩個迴圈"],"answer":1,"explanation":"窗口的右邊界持續擴張，左邊界只在 0 的數量超標時收縮，窗口大小是動態的。"}' />
+
+<Quiz data='{"question":"nums = [0,0,0], k = 0 的結果是什麼？","options":["3","0","1","-1"],"answer":1,"explanation":"k=0 表示不能翻轉任何 0，而陣列中沒有 1，所以最長連續 1 的長度為 0。"}' />

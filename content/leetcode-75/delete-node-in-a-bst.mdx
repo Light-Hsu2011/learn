@@ -1,0 +1,145 @@
+---
+title: "450. Delete Node in a BST"
+order: 42
+description: "處理三種刪除情況：無子、單子、雙子節點"
+---
+
+# Delete Node in a BST
+
+<ELI5>
+想像一個公司的組織架構圖（BST）。現在要開除一個人，有三種情況：
+
+1. **沒有下屬**（葉節點）：直接移除，不影響任何人。
+2. **只有一邊的下屬**（單子節點）：讓那邊的下屬直接接替他的位置。
+3. **兩邊都有下屬**（雙子節點）：最棘手！找右邊團隊中最資淺的人（中序後繼）來接替，因為他的值剛好比被刪除者大一點點，能維持組織架構的排序。
+</ELI5>
+
+## 題目描述
+
+給定一棵 BST 的根節點 root 和一個值 key，刪除 key 對應的節點並回傳修改後的根節點。保證刪除後仍然是有效的 BST。
+
+```
+輸入: root = [5,3,6,2,4,null,7], key = 3
+輸出: [5,4,6,2,null,null,7]
+解釋: 3 有兩個子節點，用中序後繼 4 替換
+
+輸入: root = [5,3,6,2,4,null,7], key = 0
+輸出: [5,3,6,2,4,null,7]
+解釋: 0 不在樹中，不做任何修改
+```
+
+## 解題思路
+
+<StepDiagram data='[{"title":"搜尋目標節點","description":"利用 BST 性質找到要刪除的節點","icon":"1"},{"title":"Case 1: 葉節點","description":"直接回傳 null","icon":"2"},{"title":"Case 2: 單子節點","description":"回傳唯一的子節點","icon":"3"},{"title":"Case 3: 雙子節點","description":"找右子樹最小值替換，再刪除那個最小節點","icon":"4"}]' />
+
+## 程式碼
+
+### C#
+
+```csharp
+public class Solution {
+    public TreeNode DeleteNode(TreeNode root, int key) {
+        if (root == null) return null;
+
+        if (key < root.val) {
+            root.left = DeleteNode(root.left, key);
+        } else if (key > root.val) {
+            root.right = DeleteNode(root.right, key);
+        } else {
+            // 找到目標節點
+            if (root.left == null) return root.right;  // Case 1 & 2
+            if (root.right == null) return root.left;   // Case 2
+
+            // Case 3: 找右子樹最小值（中序後繼）
+            var successor = root.right;
+            while (successor.left != null) {
+                successor = successor.left;
+            }
+            root.val = successor.val; // 用後繼的值替換
+            root.right = DeleteNode(root.right, successor.val); // 刪除後繼
+        }
+        return root;
+    }
+}
+```
+
+### TypeScript
+
+```typescript
+function deleteNode(root: TreeNode | null, key: number): TreeNode | null {
+    if (!root) return null;
+
+    if (key < root.val) {
+        root.left = deleteNode(root.left, key);
+    } else if (key > root.val) {
+        root.right = deleteNode(root.right, key);
+    } else {
+        if (!root.left) return root.right;  // Case 1 & 2
+        if (!root.right) return root.left;  // Case 2
+
+        // Case 3: 找右子樹最小值
+        let successor = root.right;
+        while (successor.left) {
+            successor = successor.left;
+        }
+        root.val = successor.val;
+        root.right = deleteNode(root.right, successor.val);
+    }
+    return root;
+}
+```
+
+### Python
+
+```python
+def deleteNode(root: Optional[TreeNode], key: int) -> Optional[TreeNode]:
+    if not root:
+        return None
+
+    if key < root.val:
+        root.left = deleteNode(root.left, key)
+    elif key > root.val:
+        root.right = deleteNode(root.right, key)
+    else:
+        if not root.left:
+            return root.right  # Case 1 & 2
+        if not root.right:
+            return root.left   # Case 2
+
+        # Case 3: 找右子樹最小值
+        successor = root.right
+        while successor.left:
+            successor = successor.left
+        root.val = successor.val
+        root.right = deleteNode(root.right, successor.val)
+
+    return root
+```
+
+## 複雜度分析
+
+| | Time | Space |
+|--|------|-------|
+| 本解法 | O(h) | O(h) |
+
+h 是樹高。平衡 BST 中 h = O(log n)。
+
+## 圖解
+
+<Diagram data='{"nodes":[{"id":"n5","label":"5","type":"default"},{"id":"n3","label":"3 (刪除)","type":"muted"},{"id":"n6","label":"6","type":"default"},{"id":"n2","label":"2","type":"default"},{"id":"n4","label":"4 (後繼)","type":"highlight"},{"id":"n7","label":"7","type":"default"},{"id":"result","label":"5→[4,6]→[2,null,null,7]","type":"highlight"}],"edges":[{"from":"n5","to":"n3","label":"左"},{"from":"n5","to":"n6","label":"右"},{"from":"n3","to":"n2","label":"左"},{"from":"n3","to":"n4","label":"右"},{"from":"n6","to":"n7","label":"右"},{"from":"n4","to":"result","label":"替換 3"}]}' />
+
+## 進階觀點
+
+<Callout type="tip" title="面試追問">
+**中序後繼 vs 中序前驅**：也可以用左子樹的最大值（中序前驅）來替換，效果相同。面試中提到兩種方案會加分。
+
+**為什麼用值替換而不是指針操作？** 值替換程式碼簡潔，但在某些場景（如節點有額外資料）不適用。面試可能要求用純指針操作。
+
+**變體題**：LC 669 Trim a BST（刪除範圍外的節點）、LC 1038 BST to Greater Sum Tree。
+</Callout>
+
+## 理解測驗
+
+<Quiz data='{"question":"刪除有兩個子節點的 BST 節點時，為什麼選右子樹的最小值來替換？","options":["因為它是最大的節點","因為它比被刪節點大一點點，能維持 BST 性質","因為它一定是葉節點","因為程式碼比較好寫"],"answer":1,"explanation":"右子樹最小值（中序後繼）是所有比被刪節點大的值中最小的，用它替換能確保左子樹所有值仍然小於它，右子樹所有值仍然大於它。"}' />
+
+<Quiz data='{"question":"中序後繼一定沒有左子節點嗎？","options":["不一定","一定沒有，因為如果有左子節點，那個左子節點才是更小的","一定沒有，因為它是葉節點","取決於樹的形狀"],"answer":1,"explanation":"中序後繼是右子樹中最小的節點，我們是一路往左走到底找到的。如果它還有左子節點，那個左子節點更小，矛盾。所以它一定沒有左子節點。"}' />

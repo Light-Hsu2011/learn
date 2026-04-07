@@ -1,0 +1,162 @@
+---
+title: "設計 Key-Value Store"
+order: 6
+description: "從單機到分散式，打造高效能鍵值儲存系統"
+---
+
+# 設計 Key-Value Store
+
+<ELI5>
+想像你有一個超大的置物櫃牆：
+
+- 每個櫃子有一個**編號**（Key）和裡面的**東西**（Value）
+- 你給編號就能立刻打開對應的櫃子拿東西 — 超級快
+
+但當一面牆放不下時，你需要好幾面牆（多台機器）。問題來了：怎麼知道東西在哪面牆？如果某面牆壞了怎麼辦？這就是分散式 Key-Value Store 要解決的核心挑戰。
+</ELI5>
+
+## 問題定義
+
+設計一個分散式 Key-Value Store，支援 `put(key, value)` 和 `get(key)` 操作，具備高可用性、高擴展性和可調整的一致性保證。
+
+<Callout type="info" title="經典案例">
+Amazon DynamoDB、Apache Cassandra、Redis Cluster 都是分散式 Key-Value Store 的實際產品。這題考的是理解 CAP 定理在實務中的取捨。
+</Callout>
+
+## 需求分析
+
+- **功能性需求**：`put(key, value)`、`get(key)`、`delete(key)`，Key 和 Value 都是 bytes
+- **非功能性需求**：自動擴展、可調一致性（Strong/Eventual）、高可用（即使節點故障）
+- **容量估算**：Key < 10KB、Value < 10MB、儲存數十 TB 資料
+- **CAP 選擇**：AP 系統（優先可用性），透過 Quorum 機制調整一致性等級
+
+## 注意事項
+
+<Callout type="warning" title="一致性與可用性的取捨無法逃避">
+分散式 Key-Value Store 的每個設計決策都是 CAP 取捨。寫入要等幾個副本確認？讀取要查幾個副本？副本之間的衝突怎麼解？沒有完美答案，只有根據業務需求做出的合理選擇。
+</Callout>
+
+## 設計流程
+
+<StepDiagram data='[{"title":"資料分區","description":"用 Consistent Hashing 把 Key 分配到不同節點","icon":"1"},{"title":"資料複製","description":"每個 Key 複製 N 份到順時針方向的 N 個節點","icon":"2"},{"title":"一致性控制","description":"設定 Quorum 參數 W（寫確認數）和 R（讀確認數）","icon":"3"},{"title":"衝突偵測","description":"用 Vector Clock 追蹤資料的因果關係","icon":"4"},{"title":"故障處理","description":"Gossip Protocol 偵測節點狀態，Hinted Handoff 暫存資料","icon":"5"},{"title":"反熵修復","description":"Merkle Tree 比對副本差異，背景修復不一致","icon":"6"}]' />
+
+## 架構設計
+
+### Consistent Hashing 與資料分區
+
+```python
+# 每個 Key 被分配到 Hash 環上順時針方向的第一個節點
+# 資料複製到順時針方向的 N 個不同節點
+
+class DistributedKVStore:
+    def __init__(self, nodes: list[str], replicas: int = 3):
+        self.consistent_hash = ConsistentHash(nodes)
+        self.replicas = replicas
+
+    def get_responsible_nodes(self, key: str) -> list[str]:
+        """取得負責儲存此 Key 的 N 個節點"""
+        primary = self.consistent_hash.get_node(key)
+        nodes = [primary]
+        # 順時針找下 N-1 個不同的節點
+        current = primary
+        while len(nodes) < self.replicas:
+            current = self.consistent_hash.get_next_node(current)
+            if current not in nodes:
+                nodes.append(current)
+        return nodes
+```
+
+### Quorum 讀寫（C#）
+
+```csharp
+public class QuorumKVStore
+{
+    private readonly int N = 3; // 副本數
+    private readonly int W = 2; // 寫入成功需確認數
+    private readonly int R = 2; // 讀取需查詢數
+
+    // W + R > N → 保證 Strong Consistency
+    // W = 1, R = 1 → Eventual Consistency（最快）
+
+    public async Task<bool> Put(string key, byte[] value)
+    {
+        var nodes = GetResponsibleNodes(key); // 取得 N 個節點
+        var tasks = nodes.Select(n => n.WriteAsync(key, value));
+        var results = await Task.WhenAll(tasks);
+        var successCount = results.Count(r => r);
+        return successCount >= W; // 至少 W 個寫入成功
+    }
+
+    public async Task<byte[]?> Get(string key)
+    {
+        var nodes = GetResponsibleNodes(key);
+        var tasks = nodes.Select(n => n.ReadAsync(key));
+        var results = await Task.WhenAll(tasks);
+        // 至少 R 個讀取成功，取最新版本
+        var valid = results.Where(r => r != null).ToList();
+        if (valid.Count < R) throw new Exception("Not enough replicas");
+        return valid.OrderByDescending(r => r!.Timestamp).First()?.Data;
+    }
+}
+```
+
+### Vector Clock 衝突偵測（TypeScript）
+
+```typescript
+type VectorClock = Record<string, number>; // { "nodeA": 3, "nodeB": 1 }
+
+function merge(vc1: VectorClock, vc2: VectorClock): VectorClock {
+  const result = { ...vc1 };
+  for (const [node, count] of Object.entries(vc2)) {
+    result[node] = Math.max(result[node] ?? 0, count);
+  }
+  return result;
+}
+
+function isConflict(vc1: VectorClock, vc2: VectorClock): boolean {
+  // 如果互相都有對方沒有的更新 → 衝突（需要客戶端解決）
+  let vc1Ahead = false, vc2Ahead = false;
+  const allNodes = new Set([...Object.keys(vc1), ...Object.keys(vc2)]);
+  for (const node of allNodes) {
+    if ((vc1[node] ?? 0) > (vc2[node] ?? 0)) vc1Ahead = true;
+    if ((vc2[node] ?? 0) > (vc1[node] ?? 0)) vc2Ahead = true;
+  }
+  return vc1Ahead && vc2Ahead; // 同時為 true = 衝突
+}
+```
+
+## 架構圖
+
+<Diagram data='{"nodes":[{"id":"client","label":"Client","type":"muted"},{"id":"coord","label":"Coordinator Node","type":"highlight"},{"id":"n1","label":"Node A (Primary)","type":"default"},{"id":"n2","label":"Node B (Replica)","type":"default"},{"id":"n3","label":"Node C (Replica)","type":"default"},{"id":"gossip","label":"Gossip Protocol","type":"muted"}],"edges":[{"from":"client","to":"coord","label":"put/get"},{"from":"coord","to":"n1","label":"write (W=2)"},{"from":"coord","to":"n2","label":"write (W=2)"},{"from":"coord","to":"n3","label":"async replica"},{"from":"n1","to":"n2","label":"anti-entropy sync"},{"from":"n2","to":"n3","label":"anti-entropy sync"},{"from":"gossip","to":"n1","label":"heartbeat"},{"from":"gossip","to":"n2","label":"heartbeat"},{"from":"gossip","to":"n3","label":"heartbeat"}]}' />
+
+## 實戰補充
+
+<Callout type="tip" title="Quorum 參數的選擇">
+- **W=1, R=1**：最快但最不一致（Eventual Consistency），適合日誌、計數器
+- **W=N, R=1**：寫慢讀快且一致，適合讀遠多於寫的場景
+- **W=1, R=N**：寫快讀慢且一致，適合寫遠多於讀的場景
+- **W=⌈(N+1)/2⌉, R=⌈(N+1)/2⌉**：平衡的 Strong Consistency
+- 核心公式：**W + R > N** 保證讀取至少命中一個最新副本
+</Callout>
+
+## 理解測驗
+
+<Quiz data='{"question":"在 N=3 的系統中，W=2, R=2 能保證 Strong Consistency 嗎？","options":["不能，需要 W=3 才行","能，因為 W + R = 4 > N = 3，讀寫一定有重疊","不能，只有 W=R=N 才是 Strong Consistency","看情況，取決於網路延遲"],"answer":1,"explanation":"Strong Consistency 的條件是 W + R > N。2 + 2 = 4 > 3，代表讀取的 2 個節點和寫入的 2 個節點一定有至少 1 個重疊，確保讀到最新資料。"}' />
+
+<Quiz data='{"question":"Vector Clock 的用途是什麼？","options":["加快讀取速度","偵測分散式系統中的因果衝突","替代 Load Balancer","壓縮資料"],"answer":1,"explanation":"Vector Clock 記錄每個節點對某個 Key 的更新次數。當兩個副本的 Vector Clock 互相都有對方沒有的更新時，代表發生了衝突（concurrent write），需要客戶端或系統來解決。"}' />
+
+<Quiz data='{"question":"Gossip Protocol 在分散式 KV Store 中的角色是什麼？","options":["負責資料的讀寫","偵測節點是否存活和傳播叢集狀態","做資料壓縮","管理用戶認證"],"answer":1,"explanation":"Gossip Protocol 讓每個節點定期隨機與其他節點交換狀態資訊（如誰活著、誰掛了）。這是去中心化的故障偵測機制，不需要中央監控服務。"}' />
+
+## 重點整理
+
+<Callout type="tip" title="一句話記住">
+**分散式 KV Store = Consistent Hashing 分區 + Quorum 控制一致性 + Vector Clock 解衝突 + Gossip 偵測故障。**
+</Callout>
+
+| 概念 | 說明 |
+|------|------|
+| **Consistent Hashing** | 資料分區策略，節點增減時只搬移少量資料 |
+| **Quorum (W/R/N)** | 控制一致性等級，W+R>N 保證 Strong Consistency |
+| **Vector Clock** | 追蹤因果關係，偵測 concurrent write 衝突 |
+| **Gossip Protocol** | 去中心化的節點狀態傳播和故障偵測 |
+| **Hinted Handoff** | 節點故障時暫存資料到其他節點，恢復後回傳 |

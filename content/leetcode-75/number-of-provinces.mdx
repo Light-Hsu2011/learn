@@ -1,0 +1,144 @@
+---
+title: "547. Number of Provinces"
+order: 44
+description: "用 DFS 或 Union-Find 計算無向圖的連通分量數"
+---
+
+# Number of Provinces
+
+<ELI5>
+想像你的班級有 n 個同學。如果 A 和 B 是朋友，B 和 C 是朋友，那 A、B、C 就在同一個「朋友圈」裡（即使 A 和 C 沒直接交朋友）。
+
+你要找出班級裡有幾個「朋友圈」（Province）。
+
+兩種方法：
+1. **DFS**：挑一個還沒分組的同學，把他和他所有直接/間接朋友都標為同一組。
+2. **Union-Find**：每發現兩人是朋友，就把他們合併到同一組。
+</ELI5>
+
+## 題目描述
+
+給定 n×n 的鄰接矩陣 `isConnected`，其中 `isConnected[i][j] = 1` 表示城市 i 和 j 直接相連。回傳省份（連通分量）的數量。
+
+```
+輸入: isConnected = [[1,1,0],[1,1,0],[0,0,1]]
+輸出: 2
+解釋: {0,1} 和 {2} 是兩個省份
+
+輸入: isConnected = [[1,0,0],[0,1,0],[0,0,1]]
+輸出: 3
+解釋: 三個城市各自獨立
+```
+
+## 解題思路
+
+<StepDiagram data='[{"title":"遍歷每個城市","description":"依序檢查 0 到 n-1","icon":"1"},{"title":"未訪問則 DFS","description":"從該城市出發 DFS，標記所有可達城市","icon":"2"},{"title":"計數 +1","description":"每次啟動新的 DFS 代表發現一個新省份","icon":"3"},{"title":"跳過已訪問","description":"已訪問的城市直接跳過","icon":"4"}]' />
+
+## 程式碼
+
+### C#
+
+```csharp
+public class Solution {
+    // DFS 解法
+    public int FindCircleNum(int[][] isConnected) {
+        int n = isConnected.Length;
+        var visited = new bool[n];
+        int provinces = 0;
+
+        for (int i = 0; i < n; i++) {
+            if (!visited[i]) {
+                Dfs(isConnected, visited, i);
+                provinces++; // 發現新省份
+            }
+        }
+        return provinces;
+    }
+
+    private void Dfs(int[][] grid, bool[] visited, int city) {
+        visited[city] = true;
+        for (int j = 0; j < grid.Length; j++) {
+            if (grid[city][j] == 1 && !visited[j]) {
+                Dfs(grid, visited, j);
+            }
+        }
+    }
+}
+```
+
+### TypeScript
+
+```typescript
+function findCircleNum(isConnected: number[][]): number {
+    const n = isConnected.length;
+    const visited = new Array(n).fill(false);
+    let provinces = 0;
+
+    function dfs(city: number): void {
+        visited[city] = true;
+        for (let j = 0; j < n; j++) {
+            if (isConnected[city][j] === 1 && !visited[j]) {
+                dfs(j);
+            }
+        }
+    }
+
+    for (let i = 0; i < n; i++) {
+        if (!visited[i]) {
+            dfs(i);
+            provinces++;
+        }
+    }
+    return provinces;
+}
+```
+
+### Python
+
+```python
+def findCircleNum(isConnected: list[list[int]]) -> int:
+    n = len(isConnected)
+    visited = [False] * n
+    provinces = 0
+
+    def dfs(city):
+        visited[city] = True
+        for j in range(n):
+            if isConnected[city][j] == 1 and not visited[j]:
+                dfs(j)
+
+    for i in range(n):
+        if not visited[i]:
+            dfs(i)
+            provinces += 1
+    return provinces
+```
+
+## 複雜度分析
+
+| | Time | Space |
+|--|------|-------|
+| DFS | O(n²) | O(n) |
+| Union-Find | O(n² × α(n)) | O(n) |
+
+n 是城市數。α 是反 Ackermann 函數，幾乎是常數。
+
+## 圖解
+
+<Diagram data='{"nodes":[{"id":"c0","label":"City 0","type":"highlight"},{"id":"c1","label":"City 1","type":"highlight"},{"id":"c2","label":"City 2","type":"muted"}],"edges":[{"from":"c0","to":"c1","label":"相連"}]}' />
+
+## 進階觀點
+
+<Callout type="tip" title="面試追問">
+**Union-Find 解法**：初始化 n 個獨立集合，遍歷矩陣上三角，遇到 `isConnected[i][j] == 1` 就 union(i, j)。最終不同的根數量就是省份數。面試中展示兩種方法加分。
+
+**鄰接矩陣 vs 鄰接表**：這題給的是鄰接矩陣，所以 DFS 每個城市要掃描整行 O(n)。如果是鄰接表，DFS 只需 O(degree)。
+
+**變體題**：LC 200 Number of Islands（2D 網格版）、LC 323 Number of Connected Components（鄰接表版）。
+</Callout>
+
+## 理解測驗
+
+<Quiz data='{"question":"為什麼每次啟動新的 DFS 就代表發現一個新省份？","options":["因為 DFS 只能處理一個城市","因為 DFS 會把整個連通分量都標記完，剩下的未訪問城市一定在其他分量","因為我們是按順序遍歷的","因為鄰接矩陣是對稱的"],"answer":1,"explanation":"DFS 從一個城市出發會訪問所有與它相連的城市（整個連通分量）。如果還有未訪問的城市，代表它不在任何已發現的分量中。"}' />
+
+<Quiz data='{"question":"這題和 LC 200 Number of Islands 的本質區別是什麼？","options":["沒有區別","200 用 2D 網格表示圖，547 用鄰接矩陣表示圖","200 只能用 BFS","547 只能用 Union-Find"],"answer":1,"explanation":"兩題都是求連通分量數，但圖的表示方式不同。200 是 2D 網格（每個格子最多 4 個鄰居），547 是鄰接矩陣（每個城市可能和所有城市相連）。"}' />

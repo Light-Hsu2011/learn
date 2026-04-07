@@ -1,0 +1,127 @@
+---
+title: "216. Combination Sum III"
+order: 58
+description: "回溯加剪枝，從 1-9 中選 K 個不重複數字使其和為 N"
+---
+
+# Combination Sum III
+
+<ELI5>
+想像你有 9 顆不同重量的球（1 到 9 公斤），你要從中挑出剛好 K 顆球，讓它們的總重量剛好等於 N。每顆球只能選一次。
+
+怎麼找？一顆一顆試！先拿起 1 號球，然後看剩下的球能不能湊出 N-1。不行就把 1 號球放回去（回溯），換拿 2 號球。如果已經拿了太多球、或者剩餘的球太小湊不夠，就提前放棄這條路（剪枝）。
+</ELI5>
+
+## 題目描述
+
+找出所有用 K 個 1-9 的數字（不重複使用）使其和為 N 的組合。
+
+```
+輸入：k = 3, n = 7
+輸出：[[1,2,4]]
+解釋：1+2+4=7，唯一的組合
+
+輸入：k = 3, n = 9
+輸出：[[1,2,6],[1,3,5],[2,3,4]]
+```
+
+## 解題思路
+
+<StepDiagram data='[{"title":"定義搜尋空間","description":"從數字 1 到 9 中選擇，每個數字最多選一次","icon":"1"},{"title":"回溯框架","description":"維護當前組合、剩餘目標和、起始數字","icon":"2"},{"title":"剪枝條件","description":"剩餘和 < 0 或已選數量超過 K 時提前返回","icon":"3"},{"title":"收集結果","description":"選了 K 個且和剛好為 N 時加入結果","icon":"4"},{"title":"避免重複","description":"下一層從 i+1 開始，確保組合不重複","icon":"5"}]' />
+
+## 程式碼
+
+### C#
+```csharp
+public class Solution {
+    public IList<IList<int>> CombinationSum3(int k, int n) {
+        var result = new List<IList<int>>();
+        Backtrack(k, n, 1, new List<int>(), result);
+        return result;
+    }
+    
+    private void Backtrack(int k, int remain, int start,
+                           List<int> path, List<IList<int>> result) {
+        if (path.Count == k) {
+            if (remain == 0) result.Add(new List<int>(path));
+            return; // 不管是否等於 0 都要 return，已經選了 k 個
+        }
+        for (int i = start; i <= 9; i++) {
+            if (i > remain) break; // 剪枝：當前數字已超過剩餘和
+            path.Add(i);
+            Backtrack(k, remain - i, i + 1, path, result);
+            path.RemoveAt(path.Count - 1); // 回溯
+        }
+    }
+}
+```
+
+### TypeScript
+```typescript
+function combinationSum3(k: number, n: number): number[][] {
+    const result: number[][] = [];
+    
+    function backtrack(remain: number, start: number, path: number[]) {
+        if (path.length === k) {
+            if (remain === 0) result.push([...path]);
+            return;
+        }
+        for (let i = start; i <= 9; i++) {
+            if (i > remain) break; // 剪枝
+            path.push(i);
+            backtrack(remain - i, i + 1, path);
+            path.pop(); // 回溯
+        }
+    }
+    
+    backtrack(n, 1, []);
+    return result;
+}
+```
+
+### Python
+```python
+def combinationSum3(k: int, n: int) -> list[list[int]]:
+    result = []
+    
+    def backtrack(remain: int, start: int, path: list[int]):
+        if len(path) == k:
+            if remain == 0:
+                result.append(path[:])  # 複製一份加入結果
+            return
+        for i in range(start, 10):
+            if i > remain:  # 剪枝：後面的數字更大，不可能湊出
+                break
+            path.append(i)
+            backtrack(remain - i, i + 1, path)
+            path.pop()  # 回溯
+    
+    backtrack(n, 1, [])
+    return result
+```
+
+## 複雜度分析
+
+| | Time | Space |
+|--|------|-------|
+| 本解法 | O(C(9,k)) | O(k) |
+
+C(9,k) 是從 9 個數字中選 k 個的組合數，最多 C(9,4) = 126。
+
+## 圖解
+
+<Diagram data='{"nodes":[{"id":"start","label":"開始 k=3, n=7","type":"default"},{"id":"pick1","label":"選 1, 剩餘 6","type":"highlight"},{"id":"pick2","label":"選 2, 剩餘 4","type":"highlight"},{"id":"pick4","label":"選 4, 剩餘 0 ✓","type":"highlight"},{"id":"pick3","label":"選 3, 剩餘 3","type":"muted"},{"id":"prune","label":"下一個 4>3 剪枝","type":"muted"}],"edges":[{"from":"start","to":"pick1","label":"i=1"},{"from":"pick1","to":"pick2","label":"i=2"},{"from":"pick2","to":"pick4","label":"i=4 → 答案"},{"from":"pick1","to":"pick3","label":"i=3"},{"from":"pick3","to":"prune","label":"剪枝"}]}' />
+
+## 進階觀點
+
+<Callout type="tip" title="面試追問">
+- 和 **39. Combination Sum**（可重複使用）、**40. Combination Sum II**（有重複元素）的差別：本題數字固定 1-9 且不重複，最單純。
+- 剪枝 `if (i > remain) break` 為什麼用 break 而不是 continue？因為數字是遞增的，如果 i 已經超過剩餘和，i+1, i+2... 更大，都不可能成功。
+- 可以進一步剪枝：檢查「剩餘可選數字的最大可能和」是否 ≥ remain。
+</Callout>
+
+## 理解測驗
+
+<Quiz data='{"question":"為什麼遞迴時下一層從 i+1 開始而不是從 1 開始？","options":["為了讓程式跑得更快","避免產生重複組合，如 [1,2,4] 和 [2,1,4]","因為 1 已經被用過","題目要求遞增順序"],"answer":1,"explanation":"從 i+1 開始確保後選的數字一定比先選的大，這樣每個組合只會以一種順序出現，避免重複。"}' />
+
+<Quiz data='{"question":"剪枝 if (i > remain) break 的效果是什麼？","options":["跳過當前數字","終止整個搜尋","終止當前層的迴圈，因為後續數字更大也不可能滿足條件","讓結果按順序排列"],"answer":2,"explanation":"數字是遞增嘗試的，如果 i 已經超過剩餘和 remain，那麼 i+1, i+2... 更不可能，所以 break 結束這一層。"}' />

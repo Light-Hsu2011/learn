@@ -1,0 +1,101 @@
+---
+title: "746. Min Cost Climbing Stairs"
+order: 60
+description: "1D DP 計算爬到樓頂的最小成本，每次可跨一或兩階"
+---
+
+# Min Cost Climbing Stairs
+
+<ELI5>
+你要爬一段樓梯到頂樓，每一階都有一個「過路費」。你可以從第 0 階或第 1 階出發，每次可以爬 1 階或 2 階。你想花最少的錢到達頂樓。
+
+這就像搭公車 vs 走路的選擇：到達每一站，你可以從前一站走過來（付那站的費），也可以從前兩站跳過來（付那站的費）。你選便宜的那條路走就好了。
+</ELI5>
+
+## 題目描述
+
+給定整數陣列 `cost`，`cost[i]` 是踩上第 i 階的費用。可從第 0 或第 1 階開始，每次爬 1 或 2 階。到達陣列長度以外即為頂樓。回傳最小費用。
+
+```
+輸入：cost = [10,15,20]
+輸出：15
+解釋：從第 1 階開始（費用 15），跨兩階到頂樓
+
+輸入：cost = [1,100,1,1,1,100,1,1,100,1]
+輸出：6
+```
+
+## 解題思路
+
+<StepDiagram data='[{"title":"定義狀態","description":"dp[i] = 到達第 i 階的最小累計費用","icon":"1"},{"title":"初始條件","description":"dp[0] = cost[0], dp[1] = cost[1]","icon":"2"},{"title":"轉移方程","description":"dp[i] = cost[i] + min(dp[i-1], dp[i-2])","icon":"3"},{"title":"空間優化","description":"只需前兩個值，用兩個變數滾動","icon":"4"},{"title":"答案","description":"min(dp[n-1], dp[n-2])，從最後兩階跳到頂","icon":"5"}]' />
+
+## 程式碼
+
+### C#
+```csharp
+public class Solution {
+    public int MinCostClimbingStairs(int[] cost) {
+        int n = cost.Length;
+        int prev2 = cost[0]; // dp[i-2]
+        int prev1 = cost[1]; // dp[i-1]
+        
+        for (int i = 2; i < n; i++) {
+            int curr = cost[i] + Math.Min(prev1, prev2);
+            prev2 = prev1;
+            prev1 = curr;
+        }
+        return Math.Min(prev1, prev2);
+    }
+}
+```
+
+### TypeScript
+```typescript
+function minCostClimbingStairs(cost: number[]): number {
+    let prev2 = cost[0];
+    let prev1 = cost[1];
+    
+    for (let i = 2; i < cost.length; i++) {
+        const curr = cost[i] + Math.min(prev1, prev2);
+        prev2 = prev1;
+        prev1 = curr;
+    }
+    return Math.min(prev1, prev2);
+}
+```
+
+### Python
+```python
+def minCostClimbingStairs(cost: list[int]) -> int:
+    prev2, prev1 = cost[0], cost[1]
+    
+    for i in range(2, len(cost)):
+        curr = cost[i] + min(prev1, prev2)
+        prev2, prev1 = prev1, curr
+    
+    return min(prev1, prev2)
+```
+
+## 複雜度分析
+
+| | Time | Space |
+|--|------|-------|
+| 本解法 | O(n) | O(1) |
+
+## 圖解
+
+<Diagram data='{"nodes":[{"id":"s0","label":"階梯 0 (cost[0])","type":"default"},{"id":"s1","label":"階梯 1 (cost[1])","type":"default"},{"id":"s2","label":"階梯 2","type":"highlight"},{"id":"top","label":"頂樓","type":"highlight"}],"edges":[{"from":"s0","to":"s2","label":"跨2階"},{"from":"s1","to":"s2","label":"跨1階"},{"from":"s1","to":"top","label":"跨2階"},{"from":"s2","to":"top","label":"跨1階"}]}' />
+
+## 進階觀點
+
+<Callout type="tip" title="面試追問">
+- 為什麼答案是 `min(dp[n-1], dp[n-2])` 而不是 `dp[n-1]`？因為頂樓在 index n（陣列外），你可以從第 n-1 階跨 1 步或從第 n-2 階跨 2 步到達。
+- 這是 **70. Climbing Stairs** 的帶權版本。Climbing Stairs 計算方案數，本題計算最小成本。
+- 可以改成「最大成本」嗎？只要把 min 改成 max，DP 框架完全相同。
+</Callout>
+
+## 理解測驗
+
+<Quiz data='{"question":"為什麼最終答案是 min(prev1, prev2) 而不只是 prev1？","options":["因為可能有負數費用","因為到達頂樓可以從最後一階跨1步或倒數第二階跨2步","因為 prev2 一定比 prev1 小","這是程式的 bug"],"answer":1,"explanation":"頂樓在陣列外面，你可以從第 n-1 階跨 1 步到頂，或從第 n-2 階跨 2 步到頂，取兩者較小值。"}' />
+
+<Quiz data='{"question":"這題的狀態轉移方程 dp[i] = cost[i] + min(dp[i-1], dp[i-2]) 中，為什麼要加 cost[i]？","options":["因為離開第 i 階需要付費","因為踩上第 i 階就要付費","因為 DP 一定要加東西","為了讓答案更大"],"answer":1,"explanation":"cost[i] 是踩上第 i 階的費用，到達第 i 階就必須付費，所以 dp[i] 要包含 cost[i]。"}' />

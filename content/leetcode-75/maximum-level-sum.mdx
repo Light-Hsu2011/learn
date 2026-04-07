@@ -1,0 +1,159 @@
+---
+title: "1161. Maximum Level Sum of a Binary Tree"
+order: 40
+description: "BFS 逐層計算節點值總和，找出總和最大的層級"
+---
+
+# Maximum Level Sum of a Binary Tree
+
+<ELI5>
+想像一棟大樓，每層樓住了一些人，每個人有不同的存款。你想知道哪一層的住戶「總存款」最多。
+
+你從一樓開始，逐層往上，把每層所有住戶的存款加起來，記錄最大的那層。如果有多層金額相同，選最低的那層。
+
+BFS 就是你的電梯 — 一層一層往上，每層停下來統計。
+</ELI5>
+
+## 題目描述
+
+給定一棵二元樹的根節點 root，回傳節點值總和最大的層級編號（根為第 1 層）。如果有多個層級總和相同，回傳最小的層級編號。
+
+```
+輸入:       1
+           / \
+          7   0
+         / \
+        7  -8
+輸出: 2
+解釋: 第 1 層和 = 1，第 2 層和 = 7+0=7，第 3 層和 = 7+(-8)=-1
+      最大的是第 2 層。
+```
+
+## 解題思路
+
+<StepDiagram data='[{"title":"BFS 初始化","description":"Queue 放入 root，level = 1","icon":"1"},{"title":"逐層處理","description":"每層計算所有節點值的總和","icon":"2"},{"title":"比較更新","description":"如果當前層的總和 > 最大總和，更新答案","icon":"3"},{"title":"進入下一層","description":"level++，繼續處理 Queue 中的節點","icon":"4"}]' />
+
+## 程式碼
+
+### C#
+
+```csharp
+public class Solution {
+    public int MaxLevelSum(TreeNode root) {
+        var queue = new Queue<TreeNode>();
+        queue.Enqueue(root);
+
+        int maxSum = int.MinValue;
+        int resultLevel = 1;
+        int level = 0;
+
+        while (queue.Count > 0) {
+            level++;
+            int levelSize = queue.Count;
+            int levelSum = 0;
+
+            for (int i = 0; i < levelSize; i++) {
+                var node = queue.Dequeue();
+                levelSum += node.val;
+                if (node.left != null) queue.Enqueue(node.left);
+                if (node.right != null) queue.Enqueue(node.right);
+            }
+
+            if (levelSum > maxSum) {
+                maxSum = levelSum;
+                resultLevel = level;
+            }
+        }
+        return resultLevel;
+    }
+}
+```
+
+### TypeScript
+
+```typescript
+function maxLevelSum(root: TreeNode | null): number {
+    const queue: TreeNode[] = [root!];
+    let maxSum = -Infinity;
+    let resultLevel = 1;
+    let level = 0;
+
+    while (queue.length > 0) {
+        level++;
+        const levelSize = queue.length;
+        let levelSum = 0;
+
+        for (let i = 0; i < levelSize; i++) {
+            const node = queue.shift()!;
+            levelSum += node.val;
+            if (node.left) queue.push(node.left);
+            if (node.right) queue.push(node.right);
+        }
+
+        if (levelSum > maxSum) {
+            maxSum = levelSum;
+            resultLevel = level;
+        }
+    }
+    return resultLevel;
+}
+```
+
+### Python
+
+```python
+from collections import deque
+
+def maxLevelSum(root: Optional[TreeNode]) -> int:
+    queue = deque([root])
+    max_sum = float('-inf')
+    result_level = 1
+    level = 0
+
+    while queue:
+        level += 1
+        level_size = len(queue)
+        level_sum = 0
+
+        for _ in range(level_size):
+            node = queue.popleft()
+            level_sum += node.val
+            if node.left:
+                queue.append(node.left)
+            if node.right:
+                queue.append(node.right)
+
+        if level_sum > max_sum:
+            max_sum = level_sum
+            result_level = level
+
+    return result_level
+```
+
+## 複雜度分析
+
+| | Time | Space |
+|--|------|-------|
+| 本解法 | O(n) | O(w) |
+
+w 是樹的最大寬度。
+
+## 圖解
+
+<Diagram data='{"nodes":[{"id":"l1","label":"Level 1: [1] sum=1","type":"default"},{"id":"l2","label":"Level 2: [7,0] sum=7","type":"highlight"},{"id":"l3","label":"Level 3: [7,-8] sum=-1","type":"muted"},{"id":"result","label":"答案: Level 2","type":"highlight"}],"edges":[{"from":"l1","to":"l2","label":""},{"from":"l2","to":"l3","label":""},{"from":"l2","to":"result","label":"最大"}]}' />
+
+## 進階觀點
+
+<Callout type="tip" title="面試追問">
+**DFS 替代方案**：用 DFS + HashMap（level → sum）也可以，但 BFS 更自然因為天然按層處理。
+
+**為什麼初始化 maxSum 為 int.MinValue？** 因為節點值可能是負數，所有層的和都可能是負數。
+
+**變體題**：LC 515 Find Largest Value in Each Tree Row（每層最大值）、LC 637 Average of Levels（每層平均值）。
+</Callout>
+
+## 理解測驗
+
+<Quiz data='{"question":"如果第 2 層和第 4 層的總和都是最大值，應該回傳哪一層？","options":["第 2 層","第 4 層","兩層都回傳","取平均"],"answer":0,"explanation":"題目要求回傳最小的層級編號。因為我們從第 1 層開始遍歷，用 > 而非 >= 來更新，自然保留較小的層級。"}' />
+
+<Quiz data='{"question":"為什麼要用 levelSize 控制內層迴圈，而不是直接處理到 Queue 為空？","options":["為了效能","因為 Queue 中混合了不同層的節點，levelSize 確保只處理當前層","因為 Queue 有大小限制","因為語法要求"],"answer":1,"explanation":"BFS 的 Queue 在處理當前層時會不斷加入下一層的節點。用 levelSize 記住當前層有幾個節點，確保只處理這一層。"}' />

@@ -1,0 +1,371 @@
+---
+title: "Visitor Pattern"
+order: 21
+description: "將演算法與物件結構分離，讓你可以在不修改物件的情況下定義新操作"
+---
+
+# Visitor Pattern（訪問者模式）
+
+<ELI5>
+想像一個**稅務員**到不同商店查帳：
+
+- 到**餐廳**：查食材進貨單、營業額、員工薪資
+- 到**書店**：查進書紀錄、庫存、折扣紀錄
+- 到**超市**：查生鮮保存期限、進貨來源、退貨率
+
+稅務員（Visitor）帶著自己的「查帳方法」去拜訪每間商店。商店不用為了被查帳而改變自己的結構，稅務員自己知道怎麼查不同類型的商店。
+
+今天換成**消防員**來檢查，同樣的商店結構不用改，消防員帶著自己的「消防檢查方法」來就好。
+</ELI5>
+
+## 是什麼？
+
+Visitor Pattern 讓你在**不修改既有物件結構的情況下定義新的操作**。透過「雙重分派（Double Dispatch）」技巧，把操作邏輯從物件中抽離到獨立的 Visitor 類別中。
+
+<Callout type="info" title="GoF 分類">
+Visitor 屬於**行為型模式（Behavioral Pattern）**，重點在於將演算法和物件結構分離，方便新增操作而不修改現有類別。
+</Callout>
+
+## 什麼時候用？
+
+- 你需要對一組不同型別的物件執行多種不同的操作
+- 物件結構穩定（很少新增型別），但操作經常變動（常新增新操作）
+- 你想避免在每個物件類別中堆積不相關的操作方法
+- 你在處理 AST（抽象語法樹）、文件結構等複合結構
+
+## 什麼時候不該用？
+
+<Callout type="warning" title="過度設計警告">
+如果物件的型別經常新增，每新增一種型別就要修改所有 Visitor——這正好違反了開放封閉原則。Visitor 適合「型別穩定、操作多變」的場景。如果反過來，用普通的多型（Polymorphism）更合適。
+</Callout>
+
+## 執行流程
+
+<StepDiagram data='[{"title":"定義 Visitor 介面","description":"為每種元素型別宣告一個 Visit 方法","icon":"1"},{"title":"定義 Element 介面","description":"宣告 Accept(visitor) 方法","icon":"2"},{"title":"實作具體 Element","description":"Accept 方法中呼叫 visitor.Visit(this)","icon":"3"},{"title":"實作具體 Visitor","description":"在每個 Visit 方法中定義對該型別的操作","icon":"4"},{"title":"Client 走訪結構","description":"遍歷所有元素，對每個呼叫 Accept(visitor)","icon":"5"}]' />
+
+## 程式碼範例
+
+### C# 版本
+
+```csharp
+// 1. Element 介面
+public interface IShape
+{
+    void Accept(IShapeVisitor visitor);
+}
+
+// 2. 具體 Element
+public class Circle : IShape
+{
+    public double Radius { get; }
+    public Circle(double radius) => Radius = radius;
+    public void Accept(IShapeVisitor visitor) => visitor.VisitCircle(this);
+}
+
+public class Rectangle : IShape
+{
+    public double Width { get; }
+    public double Height { get; }
+    public Rectangle(double w, double h) { Width = w; Height = h; }
+    public void Accept(IShapeVisitor visitor) => visitor.VisitRectangle(this);
+}
+
+public class Triangle : IShape
+{
+    public double Base { get; }
+    public double Height { get; }
+    public Triangle(double b, double h) { Base = b; Height = h; }
+    public void Accept(IShapeVisitor visitor) => visitor.VisitTriangle(this);
+}
+
+// 3. Visitor 介面
+public interface IShapeVisitor
+{
+    void VisitCircle(Circle circle);
+    void VisitRectangle(Rectangle rectangle);
+    void VisitTriangle(Triangle triangle);
+}
+
+// 4. 具體 Visitor：計算面積
+public class AreaCalculator : IShapeVisitor
+{
+    public double TotalArea { get; private set; }
+
+    public void VisitCircle(Circle c)
+    {
+        var area = Math.PI * c.Radius * c.Radius;
+        TotalArea += area;
+        Console.WriteLine($"  圓形面積：{area:F2}");
+    }
+
+    public void VisitRectangle(Rectangle r)
+    {
+        var area = r.Width * r.Height;
+        TotalArea += area;
+        Console.WriteLine($"  矩形面積：{area:F2}");
+    }
+
+    public void VisitTriangle(Triangle t)
+    {
+        var area = t.Base * t.Height / 2;
+        TotalArea += area;
+        Console.WriteLine($"  三角形面積：{area:F2}");
+    }
+}
+
+// 5. 具體 Visitor：繪製描述
+public class ShapeDescriber : IShapeVisitor
+{
+    public void VisitCircle(Circle c)
+        => Console.WriteLine($"  [描述] 半徑 {c.Radius} 的圓");
+    public void VisitRectangle(Rectangle r)
+        => Console.WriteLine($"  [描述] {r.Width}x{r.Height} 的矩形");
+    public void VisitTriangle(Triangle t)
+        => Console.WriteLine($"  [描述] 底 {t.Base} 高 {t.Height} 的三角形");
+}
+
+// 6. 使用
+IShape[] shapes = { new Circle(5), new Rectangle(4, 6), new Triangle(3, 8) };
+
+var calculator = new AreaCalculator();
+var describer = new ShapeDescriber();
+
+Console.WriteLine("計算面積：");
+foreach (var shape in shapes) shape.Accept(calculator);
+Console.WriteLine($"總面積：{calculator.TotalArea:F2}");
+
+Console.WriteLine("描述形狀：");
+foreach (var shape in shapes) shape.Accept(describer);
+```
+
+### TypeScript 版本
+
+```typescript
+// 1. 介面
+interface ShapeVisitor {
+  visitCircle(circle: Circle): void;
+  visitRectangle(rect: Rectangle): void;
+  visitTriangle(tri: Triangle): void;
+}
+
+interface Shape {
+  accept(visitor: ShapeVisitor): void;
+}
+
+// 2. 具體 Element
+class Circle implements Shape {
+  constructor(public radius: number) {}
+  accept(visitor: ShapeVisitor) { visitor.visitCircle(this); }
+}
+
+class Rectangle implements Shape {
+  constructor(public width: number, public height: number) {}
+  accept(visitor: ShapeVisitor) { visitor.visitRectangle(this); }
+}
+
+class Triangle implements Shape {
+  constructor(public base: number, public height: number) {}
+  accept(visitor: ShapeVisitor) { visitor.visitTriangle(this); }
+}
+
+// 3. 具體 Visitor
+class AreaCalculator implements ShapeVisitor {
+  totalArea = 0;
+
+  visitCircle(c: Circle) {
+    const area = Math.PI * c.radius ** 2;
+    this.totalArea += area;
+    console.log(`  圓形面積：${area.toFixed(2)}`);
+  }
+  visitRectangle(r: Rectangle) {
+    const area = r.width * r.height;
+    this.totalArea += area;
+    console.log(`  矩形面積：${area.toFixed(2)}`);
+  }
+  visitTriangle(t: Triangle) {
+    const area = (t.base * t.height) / 2;
+    this.totalArea += area;
+    console.log(`  三角形面積：${area.toFixed(2)}`);
+  }
+}
+
+// 4. 使用
+const shapes: Shape[] = [new Circle(5), new Rectangle(4, 6), new Triangle(3, 8)];
+const calc = new AreaCalculator();
+shapes.forEach(s => s.accept(calc));
+console.log(`總面積：${calc.totalArea.toFixed(2)}`);
+```
+
+### Python 版本
+
+```python
+from abc import ABC, abstractmethod
+import math
+
+# 1. Visitor 介面
+class ShapeVisitor(ABC):
+    @abstractmethod
+    def visit_circle(self, circle: "Circle") -> None:
+        pass
+    @abstractmethod
+    def visit_rectangle(self, rect: "Rectangle") -> None:
+        pass
+    @abstractmethod
+    def visit_triangle(self, tri: "Triangle") -> None:
+        pass
+
+# 2. Element 介面
+class Shape(ABC):
+    @abstractmethod
+    def accept(self, visitor: ShapeVisitor) -> None:
+        pass
+
+# 3. 具體 Element
+class Circle(Shape):
+    def __init__(self, radius: float):
+        self.radius = radius
+    def accept(self, visitor: ShapeVisitor) -> None:
+        visitor.visit_circle(self)
+
+class Rectangle(Shape):
+    def __init__(self, width: float, height: float):
+        self.width = width
+        self.height = height
+    def accept(self, visitor: ShapeVisitor) -> None:
+        visitor.visit_rectangle(self)
+
+class Triangle(Shape):
+    def __init__(self, base: float, height: float):
+        self.base = base
+        self.height = height
+    def accept(self, visitor: ShapeVisitor) -> None:
+        visitor.visit_triangle(self)
+
+# 4. 具體 Visitor
+class AreaCalculator(ShapeVisitor):
+    def __init__(self):
+        self.total_area = 0.0
+
+    def visit_circle(self, c: Circle) -> None:
+        area = math.pi * c.radius ** 2
+        self.total_area += area
+        print(f"  圓形面積：{area:.2f}")
+
+    def visit_rectangle(self, r: Rectangle) -> None:
+        area = r.width * r.height
+        self.total_area += area
+        print(f"  矩形面積：{area:.2f}")
+
+    def visit_triangle(self, t: Triangle) -> None:
+        area = t.base * t.height / 2
+        self.total_area += area
+        print(f"  三角形面積：{area:.2f}")
+
+# 5. 使用
+shapes = [Circle(5), Rectangle(4, 6), Triangle(3, 8)]
+calc = AreaCalculator()
+for shape in shapes:
+    shape.accept(calc)
+print(f"總面積：{calc.total_area:.2f}")
+```
+
+### Java 版本
+
+```java
+// 1. 介面
+public interface ShapeVisitor {
+    void visitCircle(Circle circle);
+    void visitRectangle(Rectangle rect);
+    void visitTriangle(Triangle tri);
+}
+
+public interface Shape {
+    void accept(ShapeVisitor visitor);
+}
+
+// 2. 具體 Element
+public class Circle implements Shape {
+    public final double radius;
+    public Circle(double radius) { this.radius = radius; }
+    public void accept(ShapeVisitor v) { v.visitCircle(this); }
+}
+
+public class Rectangle implements Shape {
+    public final double width, height;
+    public Rectangle(double w, double h) { width = w; height = h; }
+    public void accept(ShapeVisitor v) { v.visitRectangle(this); }
+}
+
+public class Triangle implements Shape {
+    public final double base, height;
+    public Triangle(double b, double h) { base = b; height = h; }
+    public void accept(ShapeVisitor v) { v.visitTriangle(this); }
+}
+
+// 3. 具體 Visitor
+public class AreaCalculator implements ShapeVisitor {
+    private double totalArea = 0;
+
+    public void visitCircle(Circle c) {
+        double area = Math.PI * c.radius * c.radius;
+        totalArea += area;
+        System.out.printf("  圓形面積：%.2f%n", area);
+    }
+    public void visitRectangle(Rectangle r) {
+        double area = r.width * r.height;
+        totalArea += area;
+        System.out.printf("  矩形面積：%.2f%n", area);
+    }
+    public void visitTriangle(Triangle t) {
+        double area = t.base * t.height / 2;
+        totalArea += area;
+        System.out.printf("  三角形面積：%.2f%n", area);
+    }
+
+    public double getTotalArea() { return totalArea; }
+}
+
+// 4. 使用
+Shape[] shapes = { new Circle(5), new Rectangle(4, 6), new Triangle(3, 8) };
+AreaCalculator calc = new AreaCalculator();
+for (Shape s : shapes) s.accept(calc);
+System.out.printf("總面積：%.2f%n", calc.getTotalArea());
+```
+
+## 結構圖
+
+<Diagram data='{"nodes":[{"id":"client","label":"Client","type":"muted"},{"id":"element","label":"Element (Shape)","type":"default"},{"id":"concrete_a","label":"ConcreteElement A (Circle)","type":"default"},{"id":"concrete_b","label":"ConcreteElement B (Rectangle)","type":"default"},{"id":"visitor","label":"Visitor Interface","type":"highlight"},{"id":"concrete_v","label":"ConcreteVisitor (AreaCalculator)","type":"default"}],"edges":[{"from":"client","to":"element","label":"iterates"},{"from":"concrete_a","to":"element","label":"implements"},{"from":"concrete_b","to":"element","label":"implements"},{"from":"element","to":"visitor","label":"accept(visitor)"},{"from":"concrete_v","to":"visitor","label":"implements"}]}' />
+
+## 實戰補充
+
+<Callout type="tip" title="資深開發者經驗">
+**AST 遍歷**：編譯器和程式碼分析工具（如 Roslyn Analyzer）廣泛使用 Visitor Pattern。語法樹的節點型別固定（IfStatement、ForLoop、Assignment...），但你需要定義各種不同的分析操作。
+
+**報表生成**：同一組資料結構需要產出 PDF、Excel、HTML 等不同格式的報表。每種格式是一個 Visitor，資料結構不用改。
+
+**Double Dispatch**：Visitor 的核心技巧是 Double Dispatch——`element.Accept(visitor)` 先分派到正確的元素型別，再分派到 `visitor.Visit(element)` 的正確多載。這繞過了大部分語言單一分派的限制。
+
+**C# 的 Pattern Matching**：C# 8+ 的 `switch expression` + Pattern Matching 在某些情況下可以取代 Visitor，寫起來更簡潔。但當操作需要跨元素累積狀態時，Visitor 仍然更適合。
+</Callout>
+
+## 理解測驗
+
+<Quiz data='{"question":"Visitor Pattern 最適合什麼樣的場景？","options":["型別經常新增，操作很少變","型別穩定，操作經常新增","型別和操作都經常變","型別和操作都不會變"],"answer":1,"explanation":"Visitor 的優勢是新增操作只需新增 Visitor 類別，不用改 Element。但新增型別需要修改所有 Visitor，所以型別必須穩定。"}' />
+
+<Quiz data='{"question":"Visitor Pattern 中的 Double Dispatch 是什麼意思？","options":["執行兩次","先根據 Element 型別分派到 Accept，再根據 Visitor 型別分派到 Visit","建立兩個物件","呼叫兩次方法"],"answer":1,"explanation":"Double Dispatch 是指方法的最終執行取決於兩個物件的型別：Element 的 Accept 決定呼叫哪個 Visit 多載，達成雙重分派。"}' />
+
+<Quiz data='{"question":"以下哪個是 Visitor Pattern 的缺點？","options":["無法處理多種型別","新增元素型別時需要修改所有 Visitor","執行速度太慢","無法累積狀態"],"answer":1,"explanation":"每新增一種 Element 型別，所有 Visitor 都要新增對應的 Visit 方法。這是 Visitor Pattern 最大的缺點。"}' />
+
+## 重點整理
+
+<Callout type="tip" title="一句話記住">
+**Visitor Pattern = 外掛操作：物件結構不動，新操作用 Visitor 外掛上去。**
+</Callout>
+
+| 概念 | 說明 |
+|------|------|
+| **Visitor（訪問者介面）** | 為每種元素型別定義一個 Visit 方法 |
+| **ConcreteVisitor** | 實作對每種元素的具體操作 |
+| **Element（元素介面）** | 定義 Accept(visitor) 方法 |
+| **核心好處** | 新增操作不用改元素類別 |
+| **代價** | 新增元素型別要改所有 Visitor |

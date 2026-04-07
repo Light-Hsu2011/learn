@@ -1,0 +1,324 @@
+---
+title: "Facade Pattern"
+order: 11
+description: "為子系統中的一組介面提供一個統一的高層介面"
+---
+
+# Facade Pattern（外觀模式）
+
+<ELI5>
+想像你到一間**飯店**住宿。你不需要自己打電話給計程車公司叫車、自己上訂餐網站訂餐、自己聯絡洗衣店送洗衣服。你只要打給**飯店櫃台**，說「幫我叫車」、「幫我送洗」、「幫我訂晚餐」，櫃台會幫你搞定所有事。
+
+你不需要知道背後有幾個系統在運作，櫃台把所有複雜的流程包裝成簡單的服務窗口。
+
+Facade Pattern 就是程式世界裡的「飯店櫃台」 — 在一堆複雜的子系統前面放一個簡單的統一入口。
+</ELI5>
+
+## 是什麼？
+
+Facade Pattern 為子系統中的**一組複雜介面**提供一個**統一的高層介面**。它定義了一個更高層次的介面，讓子系統更容易使用，而不改變子系統本身。
+
+<Callout type="info" title="GoF 分類">
+Facade 屬於**結構型模式（Structural Pattern）**，重點在於如何組合類別和物件以形成更大的結構。
+</Callout>
+
+## 什麼時候用？
+
+- 子系統有**很多類別和方法**，Client 只需要其中一部分常用功能
+- 你想為複雜的第三方函式庫或 Legacy 系統提供**簡化的 API**
+- 你想**降低 Client 和子系統之間的耦合**
+
+## 什麼時候不該用？
+
+<Callout type="warning" title="過度設計警告">
+如果子系統本身已經很簡潔，再加一層 Facade 只會多一層不必要的間接呼叫。另外，Facade 不應該變成一個「什麼都做」的 God Class — 如果 Facade 的方法越來越多，代表你需要拆分成多個 Facade。
+</Callout>
+
+## 執行流程
+
+<StepDiagram data='[{"title":"辨識子系統","description":"列出 Client 需要互動的所有子系統元件","icon":"1"},{"title":"找出常用操作","description":"分析 Client 最常執行的操作流程","icon":"2"},{"title":"設計 Facade 介面","description":"將常用操作封裝成簡潔的方法","icon":"3"},{"title":"實作 Facade","description":"Facade 內部協調各子系統元件完成工作","icon":"4"},{"title":"Client 使用 Facade","description":"Client 透過 Facade 操作，必要時仍可直接存取子系統","icon":"5"}]' />
+
+## 程式碼範例
+
+### C# 版本
+
+```csharp
+// 子系統：庫存檢查
+public class InventoryService
+{
+    public bool IsInStock(string productId)
+    {
+        Console.WriteLine($"Checking inventory for {productId}...");
+        return true;
+    }
+}
+
+// 子系統：付款處理
+public class PaymentService
+{
+    public bool ProcessPayment(string orderId, decimal amount)
+    {
+        Console.WriteLine($"Processing payment ${amount} for order {orderId}...");
+        return true;
+    }
+}
+
+// 子系統：物流出貨
+public class ShippingService
+{
+    public string Ship(string orderId, string address)
+    {
+        Console.WriteLine($"Shipping order {orderId} to {address}...");
+        return $"TRACK-{orderId}-001";
+    }
+}
+
+// 子系統：通知
+public class NotificationService
+{
+    public void SendEmail(string to, string message)
+    {
+        Console.WriteLine($"Email to {to}: {message}");
+    }
+}
+
+// Facade：訂單處理
+public class OrderFacade
+{
+    private readonly InventoryService _inventory = new();
+    private readonly PaymentService _payment = new();
+    private readonly ShippingService _shipping = new();
+    private readonly NotificationService _notification = new();
+
+    public string PlaceOrder(string productId, decimal amount,
+                             string address, string email)
+    {
+        if (!_inventory.IsInStock(productId))
+            throw new Exception("Product out of stock");
+
+        var orderId = Guid.NewGuid().ToString()[..8];
+
+        if (!_payment.ProcessPayment(orderId, amount))
+            throw new Exception("Payment failed");
+
+        var trackingId = _shipping.Ship(orderId, address);
+        _notification.SendEmail(email, $"Order {orderId} shipped! Tracking: {trackingId}");
+
+        return orderId;
+    }
+}
+
+// 使用：一行搞定整個下單流程
+var facade = new OrderFacade();
+var orderId = facade.PlaceOrder("PROD-001", 299.99m, "台北市信義區", "user@example.com");
+```
+
+### TypeScript 版本
+
+```typescript
+// 子系統
+class InventoryService {
+  isInStock(productId: string): boolean {
+    console.log(`Checking inventory for ${productId}...`);
+    return true;
+  }
+}
+
+class PaymentService {
+  processPayment(orderId: string, amount: number): boolean {
+    console.log(`Processing payment $${amount} for order ${orderId}...`);
+    return true;
+  }
+}
+
+class ShippingService {
+  ship(orderId: string, address: string): string {
+    console.log(`Shipping order ${orderId} to ${address}...`);
+    return `TRACK-${orderId}-001`;
+  }
+}
+
+class NotificationService {
+  sendEmail(to: string, message: string): void {
+    console.log(`Email to ${to}: ${message}`);
+  }
+}
+
+// Facade
+class OrderFacade {
+  private inventory = new InventoryService();
+  private payment = new PaymentService();
+  private shipping = new ShippingService();
+  private notification = new NotificationService();
+
+  placeOrder(productId: string, amount: number,
+             address: string, email: string): string {
+    if (!this.inventory.isInStock(productId))
+      throw new Error("Product out of stock");
+
+    const orderId = crypto.randomUUID().slice(0, 8);
+
+    if (!this.payment.processPayment(orderId, amount))
+      throw new Error("Payment failed");
+
+    const trackingId = this.shipping.ship(orderId, address);
+    this.notification.sendEmail(email,
+      `Order ${orderId} shipped! Tracking: ${trackingId}`);
+
+    return orderId;
+  }
+}
+
+// 使用
+const facade = new OrderFacade();
+const orderId = facade.placeOrder("PROD-001", 299.99, "台北市信義區", "user@example.com");
+```
+
+### Python 版本
+
+```python
+import uuid
+
+# 子系統
+class InventoryService:
+    def is_in_stock(self, product_id: str) -> bool:
+        print(f"Checking inventory for {product_id}...")
+        return True
+
+class PaymentService:
+    def process_payment(self, order_id: str, amount: float) -> bool:
+        print(f"Processing payment ${amount} for order {order_id}...")
+        return True
+
+class ShippingService:
+    def ship(self, order_id: str, address: str) -> str:
+        print(f"Shipping order {order_id} to {address}...")
+        return f"TRACK-{order_id}-001"
+
+class NotificationService:
+    def send_email(self, to: str, message: str) -> None:
+        print(f"Email to {to}: {message}")
+
+# Facade
+class OrderFacade:
+    def __init__(self):
+        self._inventory = InventoryService()
+        self._payment = PaymentService()
+        self._shipping = ShippingService()
+        self._notification = NotificationService()
+
+    def place_order(self, product_id: str, amount: float,
+                    address: str, email: str) -> str:
+        if not self._inventory.is_in_stock(product_id):
+            raise Exception("Product out of stock")
+
+        order_id = str(uuid.uuid4())[:8]
+
+        if not self._payment.process_payment(order_id, amount):
+            raise Exception("Payment failed")
+
+        tracking_id = self._shipping.ship(order_id, address)
+        self._notification.send_email(
+            email, f"Order {order_id} shipped! Tracking: {tracking_id}")
+
+        return order_id
+
+# 使用
+facade = OrderFacade()
+order_id = facade.place_order("PROD-001", 299.99, "台北市信義區", "user@example.com")
+```
+
+### Java 版本
+
+```java
+import java.util.UUID;
+
+// 子系統
+public class InventoryService {
+    public boolean isInStock(String productId) {
+        System.out.println("Checking inventory for " + productId + "...");
+        return true;
+    }
+}
+
+public class PaymentService {
+    public boolean processPayment(String orderId, double amount) {
+        System.out.println("Processing payment $" + amount + " for order " + orderId);
+        return true;
+    }
+}
+
+public class ShippingService {
+    public String ship(String orderId, String address) {
+        System.out.println("Shipping order " + orderId + " to " + address);
+        return "TRACK-" + orderId + "-001";
+    }
+}
+
+public class NotificationService {
+    public void sendEmail(String to, String message) {
+        System.out.println("Email to " + to + ": " + message);
+    }
+}
+
+// Facade
+public class OrderFacade {
+    private InventoryService inventory = new InventoryService();
+    private PaymentService payment = new PaymentService();
+    private ShippingService shipping = new ShippingService();
+    private NotificationService notification = new NotificationService();
+
+    public String placeOrder(String productId, double amount,
+                             String address, String email) {
+        if (!inventory.isInStock(productId))
+            throw new RuntimeException("Product out of stock");
+
+        String orderId = UUID.randomUUID().toString().substring(0, 8);
+
+        if (!payment.processPayment(orderId, amount))
+            throw new RuntimeException("Payment failed");
+
+        String trackingId = shipping.ship(orderId, address);
+        notification.sendEmail(email,
+            "Order " + orderId + " shipped! Tracking: " + trackingId);
+
+        return orderId;
+    }
+}
+
+// 使用
+OrderFacade facade = new OrderFacade();
+String orderId = facade.placeOrder("PROD-001", 299.99, "台北市信義區", "user@example.com");
+```
+
+## 結構圖
+
+<Diagram data='{"nodes":[{"id":"client","label":"Client","type":"muted"},{"id":"facade","label":"Facade (OrderFacade)","type":"highlight"},{"id":"inventory","label":"InventoryService","type":"default"},{"id":"payment","label":"PaymentService","type":"default"},{"id":"shipping","label":"ShippingService","type":"default"},{"id":"notification","label":"NotificationService","type":"default"}],"edges":[{"from":"client","to":"facade","label":"uses"},{"from":"facade","to":"inventory","label":"coordinates"},{"from":"facade","to":"payment","label":"coordinates"},{"from":"facade","to":"shipping","label":"coordinates"},{"from":"facade","to":"notification","label":"coordinates"}]}' />
+
+## 實戰補充
+
+<Callout type="tip" title="資深開發者經驗">
+Facade 是你每天都在寫但可能不自覺的模式。任何 Service Layer、SDK Wrapper、API Gateway 本質上都是 Facade。在微服務架構中，BFF（Backend For Frontend）就是 Facade — 前端只呼叫一個 endpoint，BFF 背後幫你協調多個微服務。設計 Facade 時要注意保持**「薄包裝」**：Facade 只做協調，不放業務邏輯。如果 Facade 的程式碼越寫越多，代表它承擔了太多責任，需要拆分。
+</Callout>
+
+## 理解測驗
+
+<Quiz data='{"question":"Facade Pattern 的核心目的是什麼？","options":["讓子系統跑得更快","為複雜的子系統提供一個簡化的統一入口","取代子系統的所有功能","讓子系統的類別數量減少"],"answer":1,"explanation":"Facade 不會改變子系統，而是在前面加一個簡化的入口。Client 仍然可以直接使用子系統，Facade 只是提供更方便的途徑。"}' />
+
+<Quiz data='{"question":"以下哪個不是 Facade Pattern 的特徵？","options":["提供統一的高層介面","Client 不能直接存取子系統","降低 Client 與子系統的耦合","簡化常用操作的呼叫流程"],"answer":1,"explanation":"Facade 不會阻止 Client 直接使用子系統。它只是提供一個更方便的入口，Client 在需要更細緻的控制時仍可直接操作子系統。"}' />
+
+<Quiz data='{"question":"以下哪個場景最適合用 Facade Pattern？","options":["你需要為物件動態添加功能","你需要將多個微服務的呼叫整合成前端的單一 API","你需要在執行時切換演算法","你需要將物件組合成樹狀結構"],"answer":1,"explanation":"整合多個微服務呼叫成單一 API（BFF 模式）是 Facade 的經典應用，將複雜的多步驟流程封裝成簡單的介面。"}' />
+
+## 重點整理
+
+<Callout type="tip" title="一句話記住">
+**Facade Pattern = 在複雜子系統前面放一個簡單的「櫃台」，讓 Client 不用面對複雜的內部細節。**
+</Callout>
+
+| 概念 | 說明 |
+|------|------|
+| **Facade（外觀）** | 統一的高層介面，協調子系統完成工作 |
+| **Subsystem（子系統）** | 背後實際運作的多個類別 |
+| **核心好處** | 降低 Client 與子系統的耦合，簡化使用 |
+| **Client 的自由** | Client 可以用 Facade，也可以直接使用子系統 |
+| **代價** | Facade 可能變成 God Class，需要注意職責控制 |

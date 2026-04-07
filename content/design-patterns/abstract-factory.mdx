@@ -1,0 +1,306 @@
+---
+title: "Abstract Factory Pattern"
+order: 4
+description: "提供介面來建立一系列相關的物件，不需指定具體類別"
+---
+
+# Abstract Factory Pattern（抽象工廠模式）
+
+<ELI5>
+想像你去 **IKEA** 買家具，他們有不同的風格套組：北歐風、工業風、日式風。當你選了「北歐風」，你拿到的桌子、椅子、沙發全都是北歐風的，彼此搭配得很好。你不需要一件一件挑，整套風格一次搞定。
+
+如果你自己東拼西湊，可能買了工業風的桌子配北歐風的椅子，看起來就怪怪的。IKEA 的風格套組確保**同一系列的產品一定互相搭配**。
+
+Abstract Factory 就是這個概念：**提供一整套相關產品的建立介面，保證產出的產品彼此相容。**
+</ELI5>
+
+## 是什麼？
+
+Abstract Factory Pattern 提供一個介面來建立**一系列相關或相依的物件**，而不需要指定它們的具體類別。每個具體工廠負責產出一整套風格一致的產品。
+
+<Callout type="info" title="GoF 分類">
+Abstract Factory 屬於**建立型模式（Creational Pattern）**，重點在於建立一系列相關物件，確保產品之間的一致性。
+</Callout>
+
+## 什麼時候用？
+
+- 你的系統需要支援多種「產品家族」（例如不同平台的 UI 元件）
+- 一系列相關的物件必須一起使用，不能混搭
+- 你想在不改動客戶端程式碼的情況下切換整套產品
+
+## 什麼時候不該用？
+
+<Callout type="warning" title="過度設計警告">
+如果你的產品不存在「家族」概念（產品之間沒有相依性），用 Abstract Factory 只會增加不必要的介面和類別。單一產品的建立用 Factory Method 就夠了，不需要升級到 Abstract Factory。
+</Callout>
+
+## 執行流程
+
+<StepDiagram data='[{"title":"定義產品介面","description":"為每種產品定義各自的介面（如 IButton、ITextBox）","icon":"1"},{"title":"定義抽象工廠","description":"宣告建立每種產品的方法（CreateButton、CreateTextBox）","icon":"2"},{"title":"實作具體產品","description":"每個家族各自實作所有產品介面","icon":"3"},{"title":"實作具體工廠","description":"每個具體工廠產出同一家族的所有產品","icon":"4"},{"title":"客戶端透過抽象工廠操作","description":"切換工廠就切換整套產品，客戶端程式碼不用改","icon":"5"}]' />
+
+## 程式碼範例
+
+### C# 版本
+
+```csharp
+// 1. 產品介面
+public interface IButton
+{
+    string Render();
+}
+
+public interface ITextBox
+{
+    string Render();
+}
+
+// 2. Windows 家族
+public class WindowsButton : IButton
+{
+    public string Render() => "[Windows Button] 扁平化風格按鈕";
+}
+
+public class WindowsTextBox : ITextBox
+{
+    public string Render() => "[Windows TextBox] 方角輸入框";
+}
+
+// 3. macOS 家族
+public class MacButton : IButton
+{
+    public string Render() => "[Mac Button] 圓角漸層按鈕";
+}
+
+public class MacTextBox : ITextBox
+{
+    public string Render() => "[Mac TextBox] 圓角輸入框";
+}
+
+// 4. 抽象工廠
+public interface IUIFactory
+{
+    IButton CreateButton();
+    ITextBox CreateTextBox();
+}
+
+// 5. 具體工廠
+public class WindowsUIFactory : IUIFactory
+{
+    public IButton CreateButton() => new WindowsButton();
+    public ITextBox CreateTextBox() => new WindowsTextBox();
+}
+
+public class MacUIFactory : IUIFactory
+{
+    public IButton CreateButton() => new MacButton();
+    public ITextBox CreateTextBox() => new MacTextBox();
+}
+
+// 6. 使用
+IUIFactory factory = new MacUIFactory();
+var button = factory.CreateButton();
+var textBox = factory.CreateTextBox();
+Console.WriteLine(button.Render());  // [Mac Button] 圓角漸層按鈕
+Console.WriteLine(textBox.Render()); // [Mac TextBox] 圓角輸入框
+```
+
+### TypeScript 版本
+
+```typescript
+// 1. 產品介面
+interface Button {
+  render(): string;
+}
+
+interface TextBox {
+  render(): string;
+}
+
+// 2. Windows 家族
+class WindowsButton implements Button {
+  render(): string { return "[Windows Button] 扁平化風格按鈕"; }
+}
+
+class WindowsTextBox implements TextBox {
+  render(): string { return "[Windows TextBox] 方角輸入框"; }
+}
+
+// 3. macOS 家族
+class MacButton implements Button {
+  render(): string { return "[Mac Button] 圓角漸層按鈕"; }
+}
+
+class MacTextBox implements TextBox {
+  render(): string { return "[Mac TextBox] 圓角輸入框"; }
+}
+
+// 4. 抽象工廠
+interface UIFactory {
+  createButton(): Button;
+  createTextBox(): TextBox;
+}
+
+// 5. 具體工廠
+class WindowsUIFactory implements UIFactory {
+  createButton(): Button { return new WindowsButton(); }
+  createTextBox(): TextBox { return new WindowsTextBox(); }
+}
+
+class MacUIFactory implements UIFactory {
+  createButton(): Button { return new MacButton(); }
+  createTextBox(): TextBox { return new MacTextBox(); }
+}
+
+// 6. 使用
+const factory: UIFactory = new MacUIFactory();
+console.log(factory.createButton().render());  // [Mac Button] 圓角漸層按鈕
+console.log(factory.createTextBox().render()); // [Mac TextBox] 圓角輸入框
+```
+
+### Python 版本
+
+```python
+from abc import ABC, abstractmethod
+
+# 1. 產品介面
+class Button(ABC):
+    @abstractmethod
+    def render(self) -> str:
+        pass
+
+class TextBox(ABC):
+    @abstractmethod
+    def render(self) -> str:
+        pass
+
+# 2. Windows 家族
+class WindowsButton(Button):
+    def render(self) -> str:
+        return "[Windows Button] 扁平化風格按鈕"
+
+class WindowsTextBox(TextBox):
+    def render(self) -> str:
+        return "[Windows TextBox] 方角輸入框"
+
+# 3. macOS 家族
+class MacButton(Button):
+    def render(self) -> str:
+        return "[Mac Button] 圓角漸層按鈕"
+
+class MacTextBox(TextBox):
+    def render(self) -> str:
+        return "[Mac TextBox] 圓角輸入框"
+
+# 4. 抽象工廠
+class UIFactory(ABC):
+    @abstractmethod
+    def create_button(self) -> Button:
+        pass
+
+    @abstractmethod
+    def create_text_box(self) -> TextBox:
+        pass
+
+# 5. 具體工廠
+class WindowsUIFactory(UIFactory):
+    def create_button(self) -> Button:
+        return WindowsButton()
+
+    def create_text_box(self) -> TextBox:
+        return WindowsTextBox()
+
+class MacUIFactory(UIFactory):
+    def create_button(self) -> Button:
+        return MacButton()
+
+    def create_text_box(self) -> TextBox:
+        return MacTextBox()
+
+# 6. 使用
+factory: UIFactory = MacUIFactory()
+print(factory.create_button().render())   # [Mac Button] 圓角漸層按鈕
+print(factory.create_text_box().render()) # [Mac TextBox] 圓角輸入框
+```
+
+### Java 版本
+
+```java
+// 1. 產品介面
+public interface Button { String render(); }
+public interface TextBox { String render(); }
+
+// 2. Windows 家族
+public class WindowsButton implements Button {
+    public String render() { return "[Windows Button] 扁平化風格按鈕"; }
+}
+public class WindowsTextBox implements TextBox {
+    public String render() { return "[Windows TextBox] 方角輸入框"; }
+}
+
+// 3. macOS 家族
+public class MacButton implements Button {
+    public String render() { return "[Mac Button] 圓角漸層按鈕"; }
+}
+public class MacTextBox implements TextBox {
+    public String render() { return "[Mac TextBox] 圓角輸入框"; }
+}
+
+// 4. 抽象工廠
+public interface UIFactory {
+    Button createButton();
+    TextBox createTextBox();
+}
+
+// 5. 具體工廠
+public class WindowsUIFactory implements UIFactory {
+    public Button createButton() { return new WindowsButton(); }
+    public TextBox createTextBox() { return new WindowsTextBox(); }
+}
+
+public class MacUIFactory implements UIFactory {
+    public Button createButton() { return new MacButton(); }
+    public TextBox createTextBox() { return new MacTextBox(); }
+}
+
+// 6. 使用
+UIFactory factory = new MacUIFactory();
+System.out.println(factory.createButton().render());
+System.out.println(factory.createTextBox().render());
+```
+
+## 結構圖
+
+<Diagram data='{"nodes":[{"id":"client","label":"Client","type":"muted"},{"id":"abstract-factory","label":"UIFactory (interface)","type":"highlight"},{"id":"concrete-factory","label":"WindowsUIFactory / MacUIFactory","type":"default"},{"id":"abstract-product-a","label":"Button (interface)","type":"default"},{"id":"abstract-product-b","label":"TextBox (interface)","type":"default"},{"id":"concrete-products","label":"WindowsButton, MacButton, ...","type":"default"}],"edges":[{"from":"client","to":"abstract-factory","label":"uses"},{"from":"concrete-factory","to":"abstract-factory","label":"implements"},{"from":"abstract-factory","to":"abstract-product-a","label":"creates"},{"from":"abstract-factory","to":"abstract-product-b","label":"creates"},{"from":"concrete-products","to":"abstract-product-a","label":"implements"},{"from":"concrete-products","to":"abstract-product-b","label":"implements"}]}' />
+
+## 實戰補充
+
+<Callout type="tip" title="資深開發者經驗">
+**跨平台 UI**：React Native、Flutter 底層都運用了類似 Abstract Factory 的概念 — 同一套 API，在不同平台渲染不同的原生元件。
+
+**資料庫 Provider 切換**：ADO.NET 的 `DbProviderFactory` 就是 Abstract Factory。切換 `SqlClientFactory` 和 `NpgsqlFactory`，就能在 SQL Server 和 PostgreSQL 之間切換，業務程式碼完全不用改。
+
+**與 Factory Method 的差別**：Factory Method 建立「一種」產品，Abstract Factory 建立「一整套」產品。如果你只需要建立單一物件，Factory Method 就夠了。
+</Callout>
+
+## 理解測驗
+
+<Quiz data='{"question":"Abstract Factory 和 Factory Method 最大的差異是什麼？","options":["Abstract Factory 比較快","Abstract Factory 建立一整套相關產品，Factory Method 只建立一種產品","Abstract Factory 不需要介面","Factory Method 比較難實作"],"answer":1,"explanation":"Abstract Factory 的特色是建立「產品家族」— 一整套相關且相容的產品。Factory Method 專注於建立單一種類的產品。"}' />
+
+<Quiz data='{"question":"為什麼 Abstract Factory 能確保產品之間的一致性？","options":["因為所有產品都用同一個 class","因為每個具體工廠只產出同一家族的產品，不會混搭","因為產品之間有繼承關係","因為使用了 Singleton Pattern"],"answer":1,"explanation":"每個具體工廠（如 MacUIFactory）只會建立同一家族的產品（MacButton、MacTextBox），從結構上保證不會混搭不同家族的產品。"}' />
+
+<Quiz data='{"question":"以下哪個場景最適合用 Abstract Factory？","options":["建立一個簡單的日誌記錄器","應用程式需要支援多種資料庫，每種資料庫有對應的 Connection、Command、Reader","把字串轉成數字","讀取 CSV 檔案"],"answer":1,"explanation":"多種資料庫各有一整套相關物件（Connection、Command、Reader），且必須使用同一家族的元件，正是 Abstract Factory 的經典場景。"}' />
+
+## 重點整理
+
+<Callout type="tip" title="一句話記住">
+**Abstract Factory = 一次建立一整套風格一致的產品，切換工廠就切換整套。**
+</Callout>
+
+| 概念 | 說明 |
+|------|------|
+| **AbstractFactory（抽象工廠）** | 定義建立每種產品的方法介面 |
+| **ConcreteFactory（具體工廠）** | 產出同一家族的所有產品 |
+| **AbstractProduct（抽象產品）** | 每種產品的介面 |
+| **ConcreteProduct（具體產品）** | 特定家族的產品實作 |
+| **核心好處** | 保證產品家族一致性 + 切換整套產品只需換工廠 |
+| **代價** | 新增產品種類時，所有工廠都要改（介面擴增） |

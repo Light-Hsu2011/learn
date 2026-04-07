@@ -1,0 +1,308 @@
+---
+title: "Composite Pattern"
+order: 9
+description: "將物件組合成樹狀結構，讓客戶端可以一致地處理個別物件和組合"
+---
+
+# Composite Pattern（組合模式）
+
+<ELI5>
+想像你電腦裡的**檔案總管**：資料夾裡面可以放檔案，也可以放其他資料夾。當你對一個資料夾按「刪除」，裡面所有東西（不管是檔案還是子資料夾）都會一起被刪掉。
+
+你不需要區分「這是檔案還是資料夾」才能操作，因為它們對你來說都是「可以刪除、可以移動、可以重新命名」的東西。
+
+Composite Pattern 就是這個概念 — 讓「單一物件」和「一群物件的集合」擁有相同的操作方式，你不用費心去區分它們。
+</ELI5>
+
+## 是什麼？
+
+Composite Pattern 將物件組合成**樹狀結構**來表達「部分—整體」的階層關係。它讓客戶端可以用**一致的方式**處理個別物件（Leaf）和組合物件（Composite），不需要區分兩者。
+
+<Callout type="info" title="GoF 分類">
+Composite 屬於**結構型模式（Structural Pattern）**，重點在於如何組合類別和物件以形成更大的結構。
+</Callout>
+
+## 什麼時候用？
+
+- 你的資料結構天生就是**樹狀的**（檔案系統、組織架構、UI 元件樹、菜單）
+- 你希望客戶端不用區分「葉節點」和「容器節點」
+- 你需要對整棵樹執行遞迴操作（計算總價、渲染全部元件）
+
+## 什麼時候不該用？
+
+<Callout type="warning" title="過度設計警告">
+如果你的資料結構是**平坦的列表**而非樹狀，不要強行套 Composite。另外，當 Leaf 和 Composite 的操作差異很大時（例如 Leaf 有但 Composite 沒有的行為），統一介面反而會造成混淆。
+</Callout>
+
+## 執行流程
+
+<StepDiagram data='[{"title":"定義 Component 介面","description":"宣告 Leaf 和 Composite 共用的操作方法","icon":"1"},{"title":"實作 Leaf","description":"Leaf 是樹的末端節點，直接實作操作邏輯","icon":"2"},{"title":"實作 Composite","description":"Composite 持有子節點列表，操作時遞迴呼叫子節點","icon":"3"},{"title":"組裝樹狀結構","description":"將 Leaf 和 Composite 組合成樹","icon":"4"},{"title":"統一操作","description":"Client 對根節點呼叫操作，遞迴傳播到所有子節點","icon":"5"}]' />
+
+## 程式碼範例
+
+### C# 版本
+
+```csharp
+// Component 介面
+public interface IFileSystemItem
+{
+    string Name { get; }
+    long GetSize();
+    string Display(int indent = 0);
+}
+
+// Leaf：檔案
+public class File : IFileSystemItem
+{
+    public string Name { get; }
+    private readonly long _size;
+
+    public File(string name, long size) { Name = name; _size = size; }
+
+    public long GetSize() => _size;
+
+    public string Display(int indent = 0)
+        => $"{new string(' ', indent)}{Name} ({_size} bytes)";
+}
+
+// Composite：資料夾
+public class Folder : IFileSystemItem
+{
+    public string Name { get; }
+    private readonly List<IFileSystemItem> _children = new();
+
+    public Folder(string name) { Name = name; }
+
+    public void Add(IFileSystemItem item) => _children.Add(item);
+
+    public long GetSize() => _children.Sum(c => c.GetSize());
+
+    public string Display(int indent = 0)
+    {
+        var result = $"{new string(' ', indent)}[{Name}]";
+        foreach (var child in _children)
+            result += "\n" + child.Display(indent + 2);
+        return result;
+    }
+}
+
+// 使用
+var root = new Folder("src");
+var docs = new Folder("docs");
+docs.Add(new File("readme.md", 1200));
+docs.Add(new File("guide.md", 3400));
+root.Add(docs);
+root.Add(new File("index.ts", 500));
+
+Console.WriteLine(root.Display());
+Console.WriteLine($"Total size: {root.GetSize()} bytes");
+```
+
+### TypeScript 版本
+
+```typescript
+// Component 介面
+interface FileSystemItem {
+  name: string;
+  getSize(): number;
+  display(indent?: number): string;
+}
+
+// Leaf
+class File implements FileSystemItem {
+  constructor(public name: string, private size: number) {}
+
+  getSize(): number {
+    return this.size;
+  }
+
+  display(indent = 0): string {
+    return `${" ".repeat(indent)}${this.name} (${this.size} bytes)`;
+  }
+}
+
+// Composite
+class Folder implements FileSystemItem {
+  private children: FileSystemItem[] = [];
+
+  constructor(public name: string) {}
+
+  add(item: FileSystemItem): void {
+    this.children.push(item);
+  }
+
+  getSize(): number {
+    return this.children.reduce((sum, child) => sum + child.getSize(), 0);
+  }
+
+  display(indent = 0): string {
+    const lines = [`${" ".repeat(indent)}[${this.name}]`];
+    this.children.forEach((child) => lines.push(child.display(indent + 2)));
+    return lines.join("\n");
+  }
+}
+
+// 使用
+const root = new Folder("src");
+const docs = new Folder("docs");
+docs.add(new File("readme.md", 1200));
+docs.add(new File("guide.md", 3400));
+root.add(docs);
+root.add(new File("index.ts", 500));
+
+console.log(root.display());
+console.log(`Total size: ${root.getSize()} bytes`);
+```
+
+### Python 版本
+
+```python
+from abc import ABC, abstractmethod
+
+# Component 介面
+class FileSystemItem(ABC):
+    @abstractmethod
+    def get_size(self) -> int:
+        pass
+
+    @abstractmethod
+    def display(self, indent: int = 0) -> str:
+        pass
+
+# Leaf
+class File(FileSystemItem):
+    def __init__(self, name: str, size: int):
+        self.name = name
+        self._size = size
+
+    def get_size(self) -> int:
+        return self._size
+
+    def display(self, indent: int = 0) -> str:
+        return f"{' ' * indent}{self.name} ({self._size} bytes)"
+
+# Composite
+class Folder(FileSystemItem):
+    def __init__(self, name: str):
+        self.name = name
+        self._children: list[FileSystemItem] = []
+
+    def add(self, item: FileSystemItem) -> None:
+        self._children.append(item)
+
+    def get_size(self) -> int:
+        return sum(child.get_size() for child in self._children)
+
+    def display(self, indent: int = 0) -> str:
+        lines = [f"{' ' * indent}[{self.name}]"]
+        for child in self._children:
+            lines.append(child.display(indent + 2))
+        return "\n".join(lines)
+
+# 使用
+root = Folder("src")
+docs = Folder("docs")
+docs.add(File("readme.md", 1200))
+docs.add(File("guide.md", 3400))
+root.add(docs)
+root.add(File("index.ts", 500))
+
+print(root.display())
+print(f"Total size: {root.get_size()} bytes")
+```
+
+### Java 版本
+
+```java
+import java.util.ArrayList;
+import java.util.List;
+
+// Component 介面
+public interface FileSystemItem {
+    String getName();
+    long getSize();
+    String display(int indent);
+}
+
+// Leaf
+public class File implements FileSystemItem {
+    private String name;
+    private long size;
+
+    public File(String name, long size) { this.name = name; this.size = size; }
+
+    public String getName() { return name; }
+    public long getSize() { return size; }
+
+    public String display(int indent) {
+        return " ".repeat(indent) + name + " (" + size + " bytes)";
+    }
+}
+
+// Composite
+public class Folder implements FileSystemItem {
+    private String name;
+    private List<FileSystemItem> children = new ArrayList<>();
+
+    public Folder(String name) { this.name = name; }
+
+    public String getName() { return name; }
+
+    public void add(FileSystemItem item) { children.add(item); }
+
+    public long getSize() {
+        return children.stream().mapToLong(FileSystemItem::getSize).sum();
+    }
+
+    public String display(int indent) {
+        StringBuilder sb = new StringBuilder(" ".repeat(indent) + "[" + name + "]");
+        for (FileSystemItem child : children) {
+            sb.append("\n").append(child.display(indent + 2));
+        }
+        return sb.toString();
+    }
+}
+
+// 使用
+Folder root = new Folder("src");
+Folder docs = new Folder("docs");
+docs.add(new File("readme.md", 1200));
+docs.add(new File("guide.md", 3400));
+root.add(docs);
+root.add(new File("index.ts", 500));
+
+System.out.println(root.display(0));
+System.out.println("Total size: " + root.getSize() + " bytes");
+```
+
+## 結構圖
+
+<Diagram data='{"nodes":[{"id":"client","label":"Client","type":"muted"},{"id":"component","label":"Component (FileSystemItem)","type":"highlight"},{"id":"leaf","label":"Leaf (File)","type":"default"},{"id":"composite","label":"Composite (Folder)","type":"default"}],"edges":[{"from":"client","to":"component","label":"uses"},{"from":"leaf","to":"component","label":"implements"},{"from":"composite","to":"component","label":"implements"},{"from":"composite","to":"component","label":"contains children"}]}' />
+
+## 實戰補充
+
+<Callout type="tip" title="資深開發者經驗">
+Composite 在前端框架中無處不在 — React 的元件樹就是典型的 Composite 結構。每個元件可以包含子元件，渲染時從根節點遞迴往下。在後端，組織架構（部門包含子部門和員工）、權限系統（權限群組包含子群組和個別權限）、電商的商品分類都是 Composite 的經典應用。注意要小心**循環引用**：如果 A 資料夾包含 B，B 又包含 A，遞迴操作會無限迴圈。
+</Callout>
+
+## 理解測驗
+
+<Quiz data='{"question":"Composite Pattern 的核心目的是什麼？","options":["讓程式跑得更快","讓客戶端可以用一致的方式處理個別物件和組合物件","減少類別的數量","讓物件可以動態添加功能"],"answer":1,"explanation":"Composite 的核心價值是統一介面，讓 Client 不需要區分 Leaf 和 Composite，可以用相同的方式操作兩者。"}' />
+
+<Quiz data='{"question":"以下哪個不是 Composite Pattern 的適用場景？","options":["檔案系統（資料夾和檔案）","公司組織架構（部門和員工）","一個平坦的商品列表","UI 元件樹（容器和控制項）"],"answer":2,"explanation":"平坦的列表沒有樹狀的「部分—整體」關係，不需要 Composite Pattern。Composite 適合天生就是階層結構的資料。"}' />
+
+<Quiz data='{"question":"在 Composite Pattern 中，Composite 節點的 getSize() 是怎麼運作的？","options":["回傳固定值","回傳子節點數量","遞迴加總所有子節點的 getSize() 結果","呼叫父節點的 getSize()"],"answer":2,"explanation":"Composite 的操作是遞迴的：它呼叫每個子節點的 getSize()，子節點如果也是 Composite 就繼續往下遞迴，直到 Leaf 回傳實際值。"}' />
+
+## 重點整理
+
+<Callout type="tip" title="一句話記住">
+**Composite Pattern = 讓「一個」和「一群」擁有相同的操作介面，形成可遞迴的樹狀結構。**
+</Callout>
+
+| 概念 | 說明 |
+|------|------|
+| **Component（共用介面）** | Leaf 和 Composite 共同實作的介面 |
+| **Leaf（葉節點）** | 樹的末端，直接執行操作 |
+| **Composite（組合節點）** | 持有子節點，操作時遞迴委派 |
+| **核心好處** | Client 不用區分個體和集合，統一操作 |
+| **代價** | 統一介面可能讓 Leaf 被迫實作不合理的方法（如 add） |

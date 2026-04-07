@@ -1,0 +1,199 @@
+---
+title: "Adapter Pattern"
+order: 7
+description: "將一個類別的介面轉換成客戶端期望的另一種介面"
+---
+
+# Adapter Pattern（適配器模式）
+
+<ELI5>
+想像你帶著台灣的電器去日本旅行，插頭是**兩腳扁型**，但日本的插座有些是**三孔的**。你不可能把電器的插頭剪掉重做，也不可能把飯店的牆壁拆了換插座。
+
+這時候你只需要一個**轉接頭**，一邊接你的插頭，另一邊插進牆壁的插座。轉接頭不會改變電器，也不會改變插座，它只是讓兩邊能「接上」。
+
+Adapter Pattern 就是程式世界裡的轉接頭 — 當兩個已經存在的東西介面不合，你不去改它們，而是在中間加一個轉換層。
+</ELI5>
+
+## 是什麼？
+
+Adapter Pattern 將一個類別的**既有介面**轉換成客戶端期望的**目標介面**，讓原本因為介面不相容而無法合作的類別能夠一起工作。
+
+<Callout type="info" title="GoF 分類">
+Adapter 屬於**結構型模式（Structural Pattern）**，重點在於如何組合類別和物件以形成更大的結構。
+</Callout>
+
+## 什麼時候用？
+
+- 你想使用一個既有的類別，但它的介面跟你需要的不一樣
+- 你正在整合第三方 API 或 Legacy 系統，無法修改對方的程式碼
+- 你想建立一個可重用的類別，需要跟多個不相關的類別協作
+
+## 什麼時候不該用？
+
+<Callout type="warning" title="過度設計警告">
+如果你可以直接修改來源類別的介面，或者兩邊的介面差異極小（只是方法名稱不同），直接重構比加 Adapter 更乾淨。Adapter 最適合用在**你無法修改的既有程式碼**上。
+</Callout>
+
+## 執行流程
+
+<StepDiagram data='[{"title":"辨識不相容介面","description":"Client 期望介面 A，但既有類別提供介面 B","icon":"1"},{"title":"定義目標介面","description":"定義 Client 真正需要的方法簽名","icon":"2"},{"title":"建立 Adapter","description":"Adapter 實作目標介面，內部持有 Adaptee 的實例","icon":"3"},{"title":"轉換呼叫","description":"Adapter 的方法內部將呼叫轉譯為 Adaptee 的方法","icon":"4"},{"title":"Client 使用","description":"Client 透過目標介面使用 Adapter，完全不知道背後是 Adaptee","icon":"5"}]' />
+
+## 程式碼範例
+
+### C# 版本
+
+```csharp
+// 既有的第三方 XML 分析服務（Adaptee）
+public class LegacyXmlParser
+{
+    public string ParseXmlToString(string xml)
+        => $"Parsed XML: {xml.Length} characters processed";
+}
+
+// Client 期望的目標介面
+public interface IDataParser
+{
+    string Parse(string data);
+}
+
+// Adapter：讓 LegacyXmlParser 符合 IDataParser
+public class XmlParserAdapter : IDataParser
+{
+    private readonly LegacyXmlParser _legacyParser;
+
+    public XmlParserAdapter(LegacyXmlParser legacyParser)
+    {
+        _legacyParser = legacyParser;
+    }
+
+    public string Parse(string data)
+        => _legacyParser.ParseXmlToString(data);
+}
+
+// 使用
+IDataParser parser = new XmlParserAdapter(new LegacyXmlParser());
+Console.WriteLine(parser.Parse("<root><item>Hello</item></root>"));
+```
+
+### TypeScript 版本
+
+```typescript
+// 既有的第三方 XML 分析服務（Adaptee）
+class LegacyXmlParser {
+  parseXmlToString(xml: string): string {
+    return `Parsed XML: ${xml.length} characters processed`;
+  }
+}
+
+// Client 期望的目標介面
+interface DataParser {
+  parse(data: string): string;
+}
+
+// Adapter
+class XmlParserAdapter implements DataParser {
+  constructor(private legacyParser: LegacyXmlParser) {}
+
+  parse(data: string): string {
+    return this.legacyParser.parseXmlToString(data);
+  }
+}
+
+// 使用
+const parser: DataParser = new XmlParserAdapter(new LegacyXmlParser());
+console.log(parser.parse("<root><item>Hello</item></root>"));
+```
+
+### Python 版本
+
+```python
+from abc import ABC, abstractmethod
+
+# 既有的第三方 XML 分析服務（Adaptee）
+class LegacyXmlParser:
+    def parse_xml_to_string(self, xml: str) -> str:
+        return f"Parsed XML: {len(xml)} characters processed"
+
+# Client 期望的目標介面
+class DataParser(ABC):
+    @abstractmethod
+    def parse(self, data: str) -> str:
+        pass
+
+# Adapter
+class XmlParserAdapter(DataParser):
+    def __init__(self, legacy_parser: LegacyXmlParser):
+        self._legacy_parser = legacy_parser
+
+    def parse(self, data: str) -> str:
+        return self._legacy_parser.parse_xml_to_string(data)
+
+# 使用
+parser: DataParser = XmlParserAdapter(LegacyXmlParser())
+print(parser.parse("<root><item>Hello</item></root>"))
+```
+
+### Java 版本
+
+```java
+// 既有的第三方 XML 分析服務（Adaptee）
+public class LegacyXmlParser {
+    public String parseXmlToString(String xml) {
+        return "Parsed XML: " + xml.length() + " characters processed";
+    }
+}
+
+// Client 期望的目標介面
+public interface DataParser {
+    String parse(String data);
+}
+
+// Adapter
+public class XmlParserAdapter implements DataParser {
+    private final LegacyXmlParser legacyParser;
+
+    public XmlParserAdapter(LegacyXmlParser legacyParser) {
+        this.legacyParser = legacyParser;
+    }
+
+    public String parse(String data) {
+        return legacyParser.parseXmlToString(data);
+    }
+}
+
+// 使用
+DataParser parser = new XmlParserAdapter(new LegacyXmlParser());
+System.out.println(parser.parse("<root><item>Hello</item></root>"));
+```
+
+## 結構圖
+
+<Diagram data='{"nodes":[{"id":"client","label":"Client","type":"muted"},{"id":"target","label":"Target Interface (IDataParser)","type":"highlight"},{"id":"adapter","label":"Adapter (XmlParserAdapter)","type":"default"},{"id":"adaptee","label":"Adaptee (LegacyXmlParser)","type":"default"}],"edges":[{"from":"client","to":"target","label":"uses"},{"from":"adapter","to":"target","label":"implements"},{"from":"adapter","to":"adaptee","label":"wraps & delegates"}]}' />
+
+## 實戰補充
+
+<Callout type="tip" title="資深開發者經驗">
+在 .NET 生態系中，Adapter 最常見的場景是**整合第三方 SDK**。例如你的系統定義了 `IEmailSender` 介面，但要接 SendGrid、Mailgun 等不同服務商。每個服務商的 SDK 介面都不同，各寫一個 Adapter 就能無縫切換。搭配 DI Container 註冊，切換服務商只需要改一行設定。另一個常見場景是 Legacy 系統對接：舊系統回傳 XML，新系統期望 JSON DTO，中間放一個 Adapter 做轉換。
+</Callout>
+
+## 理解測驗
+
+<Quiz data='{"question":"Adapter Pattern 的核心目的是什麼？","options":["讓程式跑得更快","將不相容的介面轉換成客戶端期望的介面","減少類別的數量","讓所有類別都使用相同的介面"],"answer":1,"explanation":"Adapter 的核心價值在於介面轉換，讓原本不相容的類別可以一起工作，而不需要修改任何一方的原始程式碼。"}' />
+
+<Quiz data='{"question":"以下哪個場景最適合用 Adapter Pattern？","options":["你正在從零開始設計一個全新系統","你需要整合一個第三方支付 SDK，但它的介面跟你系統定義的不同","你想要讓一個方法執行得更快","你想為物件動態添加功能"],"answer":1,"explanation":"Adapter 最適合用在「已經存在但介面不合」的情境。第三方 SDK 無法修改，用 Adapter 包一層就能接上你的系統。"}' />
+
+<Quiz data='{"question":"Adapter 和被適配物件（Adaptee）之間的關係是什麼？","options":["Adapter 繼承 Adaptee","Adapter 持有 Adaptee 的實例並委派呼叫","Adaptee 持有 Adapter 的實例","兩者互相引用"],"answer":1,"explanation":"Object Adapter（最常見的形式）透過組合而非繼承，持有 Adaptee 的實例，在自己的方法中將呼叫轉譯給 Adaptee。"}' />
+
+## 重點整理
+
+<Callout type="tip" title="一句話記住">
+**Adapter Pattern = 在不相容的介面之間加一個轉接頭，讓它們能合作。**
+</Callout>
+
+| 概念 | 說明 |
+|------|------|
+| **Target（目標介面）** | Client 期望使用的介面 |
+| **Adaptee（被適配者）** | 既有的、介面不相容的類別 |
+| **Adapter（適配器）** | 實作目標介面，內部委派給 Adaptee |
+| **核心好處** | 不修改既有程式碼就能整合不同系統 |
+| **代價** | 多一層間接呼叫，過多 Adapter 會讓系統變複雜 |

@@ -1,0 +1,143 @@
+---
+title: "215. Kth Largest Element in an Array"
+order: 49
+description: "用大小為 K 的 Min Heap 維護前 K 大的元素"
+---
+
+# Kth Largest Element in an Array
+
+<ELI5>
+想像你是一個選秀節目的評審，有幾百個參賽者。你只有 K 張「晉級卡」。
+
+你的策略：維持一組 K 個最強的候選人。每來一個新參賽者，如果他比目前最弱的候選人強，就把最弱的淘汰、讓他補上。最後，那個「最弱的候選人」就是第 K 強的人。
+
+Min Heap（最小堆）就是你的「淘汰機制」— 堆頂永遠是最弱的候選人，一眼就知道誰該被替換。
+</ELI5>
+
+## 題目描述
+
+給定一個整數陣列 nums 和整數 k，回傳陣列中第 k 大的元素。注意是排序後的第 k 大，不是第 k 個不重複元素。
+
+```
+輸入: nums = [3,2,1,5,6,4], k = 2
+輸出: 5
+
+輸入: nums = [3,2,3,1,2,4,5,5,6], k = 4
+輸出: 4
+```
+
+## 解題思路
+
+<StepDiagram data='[{"title":"建立大小 K 的 Min Heap","description":"先放入前 K 個元素","icon":"1"},{"title":"遍歷剩餘元素","description":"每個元素和堆頂比較","icon":"2"},{"title":"比堆頂大就替換","description":"移除堆頂，加入新元素","icon":"3"},{"title":"堆頂就是答案","description":"遍歷完成後，堆頂就是第 K 大","icon":"4"}]' />
+
+## 程式碼
+
+### C#
+
+```csharp
+public class Solution {
+    public int FindKthLargest(int[] nums, int k) {
+        // C# PriorityQueue 是 Min Heap
+        var minHeap = new PriorityQueue<int, int>();
+
+        foreach (int num in nums) {
+            minHeap.Enqueue(num, num);
+            if (minHeap.Count > k) {
+                minHeap.Dequeue(); // 移除最小的
+            }
+        }
+        return minHeap.Peek(); // 堆頂 = 第 K 大
+    }
+}
+```
+
+### TypeScript
+
+```typescript
+function findKthLargest(nums: number[], k: number): number {
+    // TypeScript 沒有內建 Heap，用排序模擬
+    // 實際面試中可能要手寫 Heap 或用 QuickSelect
+    const minHeap: number[] = [];
+
+    for (const num of nums) {
+        minHeap.push(num);
+        minHeap.sort((a, b) => a - b); // 模擬 min heap
+        if (minHeap.length > k) {
+            minHeap.shift(); // 移除最小的
+        }
+    }
+    return minHeap[0];
+}
+
+// 更高效的 QuickSelect 解法
+function findKthLargestQuickSelect(nums: number[], k: number): number {
+    const target = nums.length - k;
+
+    function quickSelect(left: number, right: number): number {
+        const pivot = nums[right];
+        let p = left;
+        for (let i = left; i < right; i++) {
+            if (nums[i] <= pivot) {
+                [nums[i], nums[p]] = [nums[p], nums[i]];
+                p++;
+            }
+        }
+        [nums[p], nums[right]] = [nums[right], nums[p]];
+
+        if (p === target) return nums[p];
+        if (p < target) return quickSelect(p + 1, right);
+        return quickSelect(left, p - 1);
+    }
+
+    return quickSelect(0, nums.length - 1);
+}
+```
+
+### Python
+
+```python
+import heapq
+
+def findKthLargest(nums: list[int], k: int) -> int:
+    # Python heapq 是 min heap
+    min_heap = []
+
+    for num in nums:
+        heapq.heappush(min_heap, num)
+        if len(min_heap) > k:
+            heapq.heappop(min_heap)  # 移除最小的
+
+    return min_heap[0]  # 堆頂 = 第 K 大
+
+# 更高效：直接用 nlargest
+def findKthLargestPythonic(nums: list[int], k: int) -> int:
+    return heapq.nlargest(k, nums)[-1]
+```
+
+## 複雜度分析
+
+| | Time | Space |
+|--|------|-------|
+| Min Heap | O(n log k) | O(k) |
+| QuickSelect | O(n) 平均, O(n²) 最壞 | O(1) |
+| 排序 | O(n log n) | O(1) |
+
+## 圖解
+
+<Diagram data='{"nodes":[{"id":"arr","label":"[3,2,1,5,6,4] k=2","type":"muted"},{"id":"h1","label":"Heap: [2,3]","type":"default"},{"id":"h2","label":"加入 5 → [3,5] (移除 2)","type":"default"},{"id":"h3","label":"加入 6 → [5,6] (移除 3)","type":"default"},{"id":"h4","label":"加入 4 → [5,6] (4<5 不替換)","type":"highlight"},{"id":"result","label":"堆頂 5 = 第 2 大","type":"highlight"}],"edges":[{"from":"arr","to":"h1","label":"前 2 個"},{"from":"h1","to":"h2","label":""},{"from":"h2","to":"h3","label":""},{"from":"h3","to":"h4","label":""},{"from":"h4","to":"result","label":""}]}' />
+
+## 進階觀點
+
+<Callout type="tip" title="面試追問">
+**三種方法比較**：排序 O(n log n)、Min Heap O(n log k)、QuickSelect O(n) 平均。面試官通常期望你知道三種方法並能分析取捨。
+
+**QuickSelect**：基於快速排序的分割思想，平均 O(n) 但最壞 O(n^2)。可以用隨機 pivot 優化。面試高頻追問。
+
+**變體題**：LC 347 Top K Frequent Elements（用 Heap 找前 K 高頻）、LC 973 K Closest Points to Origin。
+</Callout>
+
+## 理解測驗
+
+<Quiz data='{"question":"為什麼用 Min Heap 而不是 Max Heap？","options":["Min Heap 比較快","Min Heap 大小為 K 時，堆頂就是第 K 大的元素","Max Heap 不支援刪除","因為要找最小值"],"answer":1,"explanation":"Min Heap 維護最大的 K 個元素，堆頂是這 K 個中最小的 = 第 K 大。每次新元素比堆頂大就替換，確保堆中始終是前 K 大。"}' />
+
+<Quiz data='{"question":"QuickSelect 的平均時間複雜度為什麼是 O(n)？","options":["因為只排序一半","因為每次分割後只需處理一半（n + n/2 + n/4 + ... = 2n）","因為用了特殊的資料結構","因為 k 通常很小"],"answer":1,"explanation":"QuickSelect 每次分割後只遞迴處理包含目標的那一半。工作量是 n + n/2 + n/4 + ... ≈ 2n = O(n)。"}' />

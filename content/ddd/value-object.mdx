@@ -1,0 +1,260 @@
+---
+title: "Value Object（值物件）"
+order: 3
+description: "用值定義的不可變物件，取代原始型別讓程式碼更安全"
+---
+
+# Value Object（值物件）
+
+<ELI5>
+想像你有兩張**百元鈔票**。你會在意哪一張是哪一張嗎？不會！因為對你來說，兩張都是 100 元，完全一樣，可以互換。
+
+鈔票的序號不重要，重要的是**面額**。Value Object 就是這樣 — 它沒有身分證，只要值一樣就是同一個東西。
+
+再舉個例子：你跟朋友都住在「台北市信義區松仁路 100 號」。這兩個地址是「同一個地址」嗎？當然是！因為地址是用它的內容（值）來判斷的，不需要什麼 ID。
+</ELI5>
+
+## 是什麼？
+
+Value Object 是用**值**來定義的不可變物件。兩個 Value Object 如果所有屬性值都相同，就視為相等。它沒有唯一識別（ID），也不追蹤生命週期。
+
+<Callout type="info" title="DDD 建構塊">
+Value Object 是 DDD 中最被低估的模式。大量使用 Value Object 取代原始型別（string、int、decimal），能顯著提升程式碼的型別安全性和可讀性。
+</Callout>
+
+## 核心觀念
+
+- **不可變性（Immutability）**：Value Object 建立後就不能修改，要改就建一個新的
+- **值相等（Value Equality）**：比較所有屬性值，全部一樣就相等
+- **自我驗證（Self-Validation）**：在建構時就驗證值的合法性，不合法就拋例外
+- **消除 Primitive Obsession**：用 `Money` 取代 `decimal`，用 `Email` 取代 `string`，讓型別系統幫你擋住錯誤
+- **無副作用操作**：Value Object 的方法回傳新的 Value Object，不修改自身
+
+## 常見誤區
+
+<Callout type="warning" title="常見誤區">
+**誤區一**：因為 Value Object 「沒有 ID」就覺得不重要。實際上好的 DDD 程式碼中 Value Object 的數量通常遠多於 Entity。
+
+**誤區二**：讓 Value Object 變成 mutable（可變的）。一旦可以修改，就失去了 Value Object 最核心的特性：安全的共享和值相等。
+
+**誤區三**：把 Value Object 存到資料庫時給它一個獨立的 ID 和獨立的表。Value Object 應該被內嵌（embedded）在 Entity 的表中，或用 JSON 欄位存儲。
+</Callout>
+
+## 設計流程
+
+<StepDiagram data='[{"title":"識別原始型別濫用","description":"找出程式碼中用 string、int、decimal 表示業務概念的地方","icon":"1"},{"title":"設計 Value Object","description":"定義屬性和建構式，加入驗證邏輯","icon":"2"},{"title":"實作不可變性","description":"所有屬性設為唯讀，修改操作回傳新物件","icon":"3"},{"title":"實作值相等","description":"覆寫 Equals 和 GetHashCode，比較所有屬性","icon":"4"},{"title":"替換原始型別","description":"把 Entity 中的 string/int 替換為對應的 Value Object","icon":"5"}]' />
+
+## 程式碼範例
+
+### C# 版本
+
+```csharp
+// Value Object 基底類別
+public abstract class ValueObject
+{
+    protected abstract IEnumerable<object> GetEqualityComponents();
+
+    public override bool Equals(object? obj)
+    {
+        if (obj is not ValueObject other) return false;
+        return GetEqualityComponents()
+            .SequenceEqual(other.GetEqualityComponents());
+    }
+
+    public override int GetHashCode()
+    {
+        return GetEqualityComponents()
+            .Aggregate(0, (hash, component) =>
+                HashCode.Combine(hash, component));
+    }
+}
+
+// 具體 Value Object：金額
+public class Money : ValueObject
+{
+    public decimal Amount { get; }
+    public string Currency { get; }
+
+    public Money(decimal amount, string currency)
+    {
+        if (amount < 0) throw new ArgumentException("Amount cannot be negative.");
+        if (string.IsNullOrWhiteSpace(currency)) throw new ArgumentException("Currency is required.");
+        Amount = amount;
+        Currency = currency.ToUpperInvariant();
+    }
+
+    // 無副作用：回傳新物件
+    public Money Add(Money other)
+    {
+        if (Currency != other.Currency)
+            throw new InvalidOperationException("Cannot add different currencies.");
+        return new Money(Amount + other.Amount, Currency);
+    }
+
+    public static Money Zero(string currency = "TWD") => new(0, currency);
+
+    protected override IEnumerable<object> GetEqualityComponents()
+    {
+        yield return Amount;
+        yield return Currency;
+    }
+}
+
+// 具體 Value Object：Email
+public class Email : ValueObject
+{
+    public string Value { get; }
+
+    public Email(string value)
+    {
+        if (!value.Contains('@'))
+            throw new ArgumentException("Invalid email format.");
+        Value = value.ToLowerInvariant();
+    }
+
+    protected override IEnumerable<object> GetEqualityComponents()
+    {
+        yield return Value;
+    }
+}
+
+// 使用
+var price1 = new Money(100, "TWD");
+var price2 = new Money(100, "TWD");
+Console.WriteLine(price1.Equals(price2)); // true — 值相等
+
+var total = price1.Add(new Money(50, "TWD")); // 回傳新的 Money(150, "TWD")
+```
+
+### TypeScript 版本
+
+```typescript
+// Value Object：金額
+class Money {
+  private constructor(
+    public readonly amount: number,
+    public readonly currency: string,
+  ) {}
+
+  static create(amount: number, currency: string): Money {
+    if (amount < 0) throw new Error("Amount cannot be negative.");
+    if (!currency) throw new Error("Currency is required.");
+    return new Money(amount, currency.toUpperCase());
+  }
+
+  static zero(currency = "TWD"): Money {
+    return new Money(0, currency);
+  }
+
+  add(other: Money): Money {
+    if (this.currency !== other.currency) {
+      throw new Error("Cannot add different currencies.");
+    }
+    return Money.create(this.amount + other.amount, this.currency);
+  }
+
+  equals(other: Money): boolean {
+    return this.amount === other.amount && this.currency === other.currency;
+  }
+}
+
+// Value Object：Email
+class Email {
+  public readonly value: string;
+
+  constructor(value: string) {
+    if (!value.includes("@")) throw new Error("Invalid email format.");
+    this.value = value.toLowerCase();
+  }
+
+  equals(other: Email): boolean {
+    return this.value === other.value;
+  }
+}
+
+// 使用
+const price1 = Money.create(100, "TWD");
+const price2 = Money.create(100, "TWD");
+console.log(price1.equals(price2)); // true
+```
+
+### Python 版本
+
+```python
+from dataclasses import dataclass
+
+# Value Object 用 frozen=True 實現不可變性
+@dataclass(frozen=True)
+class Money:
+    amount: float
+    currency: str
+
+    def __post_init__(self):
+        if self.amount < 0:
+            raise ValueError("Amount cannot be negative.")
+        if not self.currency:
+            raise ValueError("Currency is required.")
+        # frozen=True 下要用 object.__setattr__
+        object.__setattr__(self, "currency", self.currency.upper())
+
+    def add(self, other: "Money") -> "Money":
+        if self.currency != other.currency:
+            raise ValueError("Cannot add different currencies.")
+        return Money(self.amount + other.amount, self.currency)
+
+    @staticmethod
+    def zero(currency: str = "TWD") -> "Money":
+        return Money(0, currency)
+
+@dataclass(frozen=True)
+class Email:
+    value: str
+
+    def __post_init__(self):
+        if "@" not in self.value:
+            raise ValueError("Invalid email format.")
+        object.__setattr__(self, "value", self.value.lower())
+
+# 使用
+price1 = Money(100, "TWD")
+price2 = Money(100, "TWD")
+print(price1 == price2)  # True — frozen dataclass 自動比較所有欄位
+
+total = price1.add(Money(50, "TWD"))  # Money(150, "TWD")
+```
+
+## 概念圖
+
+<Diagram data='{"nodes":[{"id":"vo","label":"Value Object","type":"highlight"},{"id":"immutable","label":"不可變性","type":"default"},{"id":"equality","label":"值相等","type":"default"},{"id":"validation","label":"自我驗證","type":"default"},{"id":"entity","label":"Entity","type":"muted"},{"id":"primitive","label":"原始型別 (string, int)","type":"muted"}],"edges":[{"from":"vo","to":"immutable","label":"必須具備"},{"from":"vo","to":"equality","label":"比較方式"},{"from":"vo","to":"validation","label":"建構時驗證"},{"from":"entity","to":"vo","label":"包含"},{"from":"vo","to":"primitive","label":"取代"}]}' />
+
+## 實戰補充
+
+<Callout type="tip" title="資深開發者筆記">
+C# 9+ 的 `record` 語法天生就是為 Value Object 設計的：自動產生值相等、不可變、`ToString()`。可以把基底類別省掉，直接用 `public record Money(decimal Amount, string Currency);`。
+
+EF Core 存儲 Value Object 的方式：使用 `OwnsOne` 或 `ComplexProperty` 把 Value Object 的欄位嵌入 Entity 的表中，不要為 Value Object 建獨立的表。
+
+一個實用的判斷法則：如果你發現兩個東西「內容一樣就算一樣」，它就是 Value Object；如果需要「追蹤它是哪一個」，它就是 Entity。
+</Callout>
+
+## 理解測驗
+
+<Quiz data='{"question":"Value Object 和 Entity 最關鍵的區別是什麼？","options":["Value Object 比較小，Entity 比較大","Value Object 用值比較相等性，Entity 用 ID 比較相等性","Value Object 不能有方法，Entity 可以","Value Object 存在資料庫，Entity 不存"],"answer":1,"explanation":"核心區別在於相等性判斷方式：Value Object 看值（所有屬性一樣就相等），Entity 看 ID（ID 一樣就相等）。"}' />
+
+<Quiz data='{"question":"為什麼 Value Object 必須是不可變的？","options":["因為這樣比較省記憶體","因為可變的 Value Object 在被共享時可能導致意外的副作用","因為程式語言的限制","因為資料庫不支持更新"],"answer":1,"explanation":"如果 Value Object 是 mutable，當多個 Entity 共享同一個 Value Object 時，一個 Entity 修改它會影響到其他 Entity，造成難以追蹤的 Bug。"}' />
+
+<Quiz data='{"question":"以下哪個最適合用 Value Object 表示？","options":["使用者帳號","訂單","地址（街道 + 城市 + 郵遞區號）","購物車"],"answer":2,"explanation":"地址由其內容（街道、城市、郵遞區號）定義，內容一樣就是同一個地址，不需要唯一 ID，是典型的 Value Object。使用者帳號、訂單、購物車都需要追蹤身份，是 Entity。"}' />
+
+## 重點整理
+
+<Callout type="tip" title="一句話記住">
+**Value Object = 沒有身分證的物件，值一樣就相等，建了就不能改。**
+</Callout>
+
+| 概念 | 說明 |
+|------|------|
+| **不可變性** | 建立後不能修改，要改就建新的 |
+| **值相等** | 所有屬性一樣就相等 |
+| **自我驗證** | 建構時檢查合法性 |
+| **核心好處** | 消除 Primitive Obsession，提升型別安全 |
+| **儲存方式** | 嵌入 Entity 的表，不建獨立表 |

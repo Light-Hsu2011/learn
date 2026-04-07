@@ -1,0 +1,97 @@
+---
+title: "392. Is Subsequence"
+order: 11
+description: "用雙指針逐字元匹配判斷 s 是否為 t 的子序列"
+---
+
+# Is Subsequence
+
+<ELI5>
+想像你在一本很厚的書裡面找一組特定的字母，而且要按順序找到。比如你要找 "ace"：先翻到第一個 'a'，然後繼續往後翻找 'c'，再繼續找 'e'。只要按順序都找到了，就代表 s 是 t 的子序列。
+
+不需要連續！只需要順序對就好，就像在人群中按順序點名。
+</ELI5>
+
+## 題目描述
+
+給定字串 `s` 和 `t`，判斷 `s` 是否為 `t` 的子序列。子序列是從 `t` 中刪除一些（或零個）字元且不改變剩餘字元順序得到的。
+
+```
+輸入：s = "abc", t = "ahbgdc"
+輸出：true
+
+輸入：s = "axc", t = "ahbgdc"
+輸出：false
+```
+
+## 解題思路
+
+<StepDiagram data='[{"title":"雙指針初始化","description":"i 指向 s 的開頭，j 指向 t 的開頭","icon":"1"},{"title":"遍歷 t","description":"j 逐一往右移動","icon":"2"},{"title":"匹配","description":"若 s[i] == t[j]，i 也往右移（匹配成功）","icon":"3"},{"title":"判斷結果","description":"若 i == s.length，表示 s 全部匹配完成","icon":"4"}]' />
+
+## 程式碼
+
+### C#
+
+```csharp
+public class Solution {
+    public bool IsSubsequence(string s, string t) {
+        int i = 0, j = 0;
+        while (i < s.Length && j < t.Length) {
+            if (s[i] == t[j]) i++; // 匹配成功，s 指針前進
+            j++; // t 指針永遠前進
+        }
+        return i == s.Length;
+    }
+}
+```
+
+### TypeScript
+
+```typescript
+function isSubsequence(s: string, t: string): boolean {
+    let i = 0, j = 0;
+    while (i < s.length && j < t.length) {
+        if (s[i] === t[j]) i++;
+        j++;
+    }
+    return i === s.length;
+}
+```
+
+### Python
+
+```python
+def isSubsequence(s: str, t: str) -> bool:
+    i = j = 0
+    while i < len(s) and j < len(t):
+        if s[i] == t[j]:
+            i += 1
+        j += 1
+    return i == len(s)
+```
+
+## 複雜度分析
+
+| | Time | Space |
+|--|------|-------|
+| 本解法 | O(n) | O(1) |
+
+n 為 t 的長度，最多遍歷 t 一次。
+
+## 圖解
+
+<Diagram data='{"nodes":[{"id":"s","label":"s: a c e","type":"default"},{"id":"t","label":"t: a h b g d c e","type":"default"},{"id":"match","label":"雙指針匹配","type":"highlight"},{"id":"result","label":"i=3 == s.length → true","type":"muted"}],"edges":[{"from":"s","to":"match","label":"i 指針"},{"from":"t","to":"match","label":"j 指針"},{"from":"match","to":"result","label":"全部匹配完"}]}' />
+
+## 進階觀點
+
+<Callout type="tip" title="面試追問">
+- **Follow-up：如果有大量 s 要判斷同一個 t？** 預處理 t，建一個字元→索引列表的 HashMap，對每個 s 用二分搜尋加速，單次查詢 O(m log n)。
+- **跟 LCS 的關係？** 如果 LCS(s, t) 的長度等於 s 的長度，則 s 是 t 的子序列。
+- **空字串是任何字串的子序列嗎？** 是的，空字串是所有字串的子序列。
+</Callout>
+
+## 理解測驗
+
+<Quiz data='{"question":"為什麼 j 指針每次都前進，但 i 指針只在匹配時前進？","options":["因為 t 比 s 長","因為 j 遍歷 t 的每個字元，i 只在找到匹配時才消耗 s 的下一個字元","因為要避免無限迴圈","因為 s 是排序的"],"answer":1,"explanation":"t 的每個字元都要看過（j 前進），但只有匹配到 s 的當前字元時才推進 i。"}' />
+
+<Quiz data='{"question":"s = \"\", t = \"abc\" 的結果是什麼？","options":["true","false","error"],"answer":0,"explanation":"空字串是任何字串的子序列。i = 0 == s.length = 0，直接回傳 true。"}' />

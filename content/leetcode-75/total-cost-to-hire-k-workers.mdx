@@ -1,0 +1,179 @@
+---
+title: "2462. Total Cost to Hire K Workers"
+order: 52
+description: "雙 Min Heap 從兩端模擬每次取最便宜的工人"
+---
+
+# Total Cost to Hire K Workers
+
+<ELI5>
+想像你在辦一場活動，需要從一排排隊的應徵者中雇用 K 個人。規則是：每次你只能看排頭的幾個人和排尾的幾個人（各看 candidates 個），然後從這些可見的人中挑最便宜的。挑走之後，排隊的人會自動補上來。
+
+這就像超市結帳有兩條隊伍，你每次從兩條隊伍的最前面挑最便宜的商品結帳。用兩個 Min Heap 分別管理左邊和右邊的候選人就行了。
+</ELI5>
+
+## 題目描述
+
+給定一個成本陣列 `costs`，一個整數 `k`（要雇用人數）和整數 `candidates`。每輪從前 `candidates` 個或後 `candidates` 個中選成本最低的工人雇用，回傳雇用 `k` 人的總成本。
+
+```
+輸入：costs = [17,12,10,2,7,2,11,20,8], k = 3, candidates = 4
+輸出：11
+解釋：第 1 輪挑 costs[3]=2，第 2 輪挑 costs[5]=2，第 3 輪挑 costs[2]=7，總成本=11
+```
+
+## 解題思路
+
+<StepDiagram data='[{"title":"初始化雙 Heap","description":"左 Heap 放前 candidates 個，右 Heap 放後 candidates 個","icon":"1"},{"title":"避免重疊","description":"用左右指標確保同一個人不會同時在兩個 Heap 中","icon":"2"},{"title":"每輪取最小","description":"比較兩個 Heap 頂端，取較小的那個","icon":"3"},{"title":"補充候選人","description":"從被取走的那一側補入下一個候選人","icon":"4"},{"title":"重複 K 次","description":"重複 K 輪，累加總成本","icon":"5"}]' />
+
+## 程式碼
+
+### C#
+```csharp
+public class Solution {
+    public long TotalCost(int[] costs, int k, int candidates) {
+        int n = costs.Length;
+        var leftHeap = new PriorityQueue<int, int>();
+        var rightHeap = new PriorityQueue<int, int>();
+        int left = 0, right = n - 1;
+        
+        // 初始化：各放 candidates 個
+        for (int i = 0; i < candidates && left <= right; i++) {
+            leftHeap.Enqueue(costs[left], costs[left]);
+            left++;
+        }
+        for (int i = 0; i < candidates && left <= right; i++) {
+            rightHeap.Enqueue(costs[right], costs[right]);
+            right--;
+        }
+        
+        long totalCost = 0;
+        for (int i = 0; i < k; i++) {
+            int leftMin = leftHeap.Count > 0 ? leftHeap.Peek() : int.MaxValue;
+            int rightMin = rightHeap.Count > 0 ? rightHeap.Peek() : int.MaxValue;
+            
+            if (leftMin <= rightMin) {
+                totalCost += leftHeap.Dequeue();
+                if (left <= right) {
+                    leftHeap.Enqueue(costs[left], costs[left]);
+                    left++;
+                }
+            } else {
+                totalCost += rightHeap.Dequeue();
+                if (left <= right) {
+                    rightHeap.Enqueue(costs[right], costs[right]);
+                    right--;
+                }
+            }
+        }
+        return totalCost;
+    }
+}
+```
+
+### TypeScript
+```typescript
+function totalCost(costs: number[], k: number, candidates: number): number {
+    const n = costs.length;
+    // 使用排序陣列模擬 min heap
+    const leftHeap: number[] = [];
+    const rightHeap: number[] = [];
+    let left = 0, right = n - 1;
+    
+    // 初始化
+    for (let i = 0; i < candidates && left <= right; i++) {
+        leftHeap.push(costs[left++]);
+    }
+    for (let i = 0; i < candidates && left <= right; i++) {
+        rightHeap.push(costs[right--]);
+    }
+    leftHeap.sort((a, b) => a - b);
+    rightHeap.sort((a, b) => a - b);
+    
+    let totalCost = 0;
+    for (let i = 0; i < k; i++) {
+        const lMin = leftHeap.length > 0 ? leftHeap[0] : Infinity;
+        const rMin = rightHeap.length > 0 ? rightHeap[0] : Infinity;
+        
+        if (lMin <= rMin) {
+            totalCost += leftHeap.shift()!;
+            if (left <= right) {
+                // 插入並保持排序
+                const val = costs[left++];
+                const idx = leftHeap.findIndex(x => x > val);
+                leftHeap.splice(idx === -1 ? leftHeap.length : idx, 0, val);
+            }
+        } else {
+            totalCost += rightHeap.shift()!;
+            if (left <= right) {
+                const val = costs[right--];
+                const idx = rightHeap.findIndex(x => x > val);
+                rightHeap.splice(idx === -1 ? rightHeap.length : idx, 0, val);
+            }
+        }
+    }
+    return totalCost;
+}
+```
+
+### Python
+```python
+import heapq
+
+def totalCost(costs: list[int], k: int, candidates: int) -> int:
+    n = len(costs)
+    left_heap, right_heap = [], []
+    left, right = 0, n - 1
+    
+    # 初始化雙 heap
+    for _ in range(candidates):
+        if left <= right:
+            heapq.heappush(left_heap, costs[left])
+            left += 1
+    for _ in range(candidates):
+        if left <= right:
+            heapq.heappush(right_heap, costs[right])
+            right -= 1
+    
+    total = 0
+    for _ in range(k):
+        l_min = left_heap[0] if left_heap else float('inf')
+        r_min = right_heap[0] if right_heap else float('inf')
+        
+        if l_min <= r_min:
+            total += heapq.heappop(left_heap)
+            if left <= right:
+                heapq.heappush(left_heap, costs[left])
+                left += 1
+        else:
+            total += heapq.heappop(right_heap)
+            if left <= right:
+                heapq.heappush(right_heap, costs[right])
+                right -= 1
+    
+    return total
+```
+
+## 複雜度分析
+
+| | Time | Space |
+|--|------|-------|
+| 本解法 | O((k + candidates) log candidates) | O(candidates) |
+
+## 圖解
+
+<Diagram data='{"nodes":[{"id":"left","label":"Left Heap (前 candidates 個)","type":"highlight"},{"id":"right","label":"Right Heap (後 candidates 個)","type":"highlight"},{"id":"compare","label":"比較兩 Heap 最小值","type":"default"},{"id":"pick","label":"取較小者，累加成本","type":"default"},{"id":"refill","label":"從對應方向補充候選人","type":"muted"}],"edges":[{"from":"left","to":"compare","label":"peek"},{"from":"right","to":"compare","label":"peek"},{"from":"compare","to":"pick","label":"取 min"},{"from":"pick","to":"refill","label":"補充"},{"from":"refill","to":"left","label":"左側補"},{"from":"refill","to":"right","label":"右側補"}]}' />
+
+## 進階觀點
+
+<Callout type="tip" title="面試追問">
+- 為什麼要用兩個 Heap 而不是一個？因為左右兩側候選人的「補充來源」不同，合成一個 Heap 無法正確追蹤補充方向。
+- 左右指標重疊時怎麼辦？停止補充即可，兩個 Heap 的剩餘元素繼續比較。
+- 如果 `2 * candidates >= n`，所有人都在初始候選中，等價於直接選最小的 K 個。
+</Callout>
+
+## 理解測驗
+
+<Quiz data='{"question":"為什麼需要兩個 Min Heap 而不是一個？","options":["一個 Heap 放不下所有元素","因為左側和右側的補充來源不同，需要分開追蹤","兩個 Heap 比較快","題目要求用兩個"],"answer":1,"explanation":"左 Heap 從左邊補充新候選人，右 Heap 從右邊補充。如果合併成一個 Heap，就無法正確決定從哪一側補充新人。"}' />
+
+<Quiz data='{"question":"當 left > right 時代表什麼？","options":["有錯誤發生","所有候選人都已被分配到左或右 Heap 中，不再補充","需要重新初始化 Heap","陣列已經排序完成"],"answer":1,"explanation":"left > right 代表中間沒有剩餘未分配的人了，此時只需消耗 Heap 中已有的候選人即可。"}' />

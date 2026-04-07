@@ -1,0 +1,191 @@
+---
+title: "單元測試最佳實踐"
+order: 3
+description: "AAA 模式、測試命名、單一斷言原則，寫出可維護的測試"
+---
+
+# 單元測試最佳實踐
+
+<ELI5>
+想像你在寫食譜。好的食譜有清楚的結構：先列**食材**（Arrange），再寫**步驟**（Act），最後說明**成品應該長什麼樣**（Assert）。如果食譜把所有東西混在一起寫，沒人看得懂。
+
+測試程式碼也是一樣——它不只是「讓電腦跑過去就好」的東西，它是寫給**未來的你和你的隊友**看的文件。好的測試讀起來像一個故事：「在這個情況下，做這個動作，應該得到這個結果。」
+
+如果你的測試需要花 5 分鐘才能看懂在測什麼，那它就是一個壞測試。
+</ELI5>
+
+## 是什麼？
+
+單元測試最佳實踐是一組經過社群驗證的原則和模式，幫助你寫出**可讀、可維護、可信賴**的測試程式碼。
+
+<Callout type="info" title="測試也是程式碼">
+測試程式碼和產品程式碼一樣重要。它需要被維護、被重構、被閱讀。對測試程式碼的品質要求不該低於產品程式碼。
+</Callout>
+
+## 核心觀念
+
+- **AAA 模式（Arrange-Act-Assert）**：每個測試分成三個區塊——準備、執行、驗證
+- **測試命名慣例**：`MethodName_Scenario_ExpectedResult`，一看就知道在測什麼
+- **單一斷言原則**：每個測試只驗證一件事，失敗時立刻知道哪裡出問題
+- **FIRST 原則**：Fast、Isolated、Repeatable、Self-Validating、Timely
+- **不要測試實作細節**：測試行為（What），不要測試怎麼做（How）
+
+## 常見誤區
+
+<Callout type="warning" title="壞測試的警訊">
+- **測試名稱是 Test1、Test2**：沒有描述性的名稱，失敗時完全不知道在幹嘛
+- **一個測試驗證十件事**：失敗時不知道是哪個斷言出問題
+- **測試之間有依賴順序**：測試 B 依賴測試 A 的結果，一旦 A 失敗全部連鎖爆炸
+- **在測試中寫複雜邏輯**：測試本身不該有 if-else 或迴圈，應該是直線式的流程
+</Callout>
+
+## AAA 模式流程
+
+<StepDiagram data='[{"title":"Arrange（準備）","description":"建立受測物件、設定測試資料、準備 Test Double","icon":"1"},{"title":"Act（執行）","description":"呼叫受測方法，通常只有一行","icon":"2"},{"title":"Assert（驗證）","description":"驗證結果是否符合預期，理想上只有一個 Assert","icon":"3"}]' />
+
+## 程式碼範例
+
+### C#（xUnit）
+
+```csharp
+public class OrderTests
+{
+    // 好的命名：Method_Scenario_Expected
+    [Fact]
+    public void CalculateTotal_WithDiscount_ReturnsDiscountedPrice()
+    {
+        // Arrange
+        var order = new Order();
+        order.AddItem(new Item("Book", 100m));
+        var discount = 0.1m; // 10% off
+
+        // Act
+        var total = order.CalculateTotal(discount);
+
+        // Assert
+        Assert.Equal(90m, total);
+    }
+
+    [Fact]
+    public void CalculateTotal_EmptyOrder_ReturnsZero()
+    {
+        // Arrange
+        var order = new Order();
+
+        // Act
+        var total = order.CalculateTotal(0m);
+
+        // Assert
+        Assert.Equal(0m, total);
+    }
+
+    // 壞的範例（不要這樣寫）
+    // [Fact]
+    // public void Test1()  ← 名字沒意義
+    // {
+    //     var order = new Order();
+    //     order.AddItem(new Item("A", 100));
+    //     Assert.Equal(100, order.CalculateTotal(0));
+    //     order.AddItem(new Item("B", 200));  ← 一個測試做太多事
+    //     Assert.Equal(300, order.CalculateTotal(0));
+    //     Assert.NotNull(order.Items);  ← 跟主題無關的斷言
+    // }
+}
+```
+
+### TypeScript（Jest）
+
+```typescript
+describe("Order", () => {
+  // 好的命名：清楚描述場景與預期
+  describe("calculateTotal", () => {
+    it("returns discounted price when discount is applied", () => {
+      // Arrange
+      const order = new Order();
+      order.addItem({ name: "Book", price: 100 });
+      const discount = 0.1;
+
+      // Act
+      const total = order.calculateTotal(discount);
+
+      // Assert
+      expect(total).toBe(90);
+    });
+
+    it("returns zero for empty order", () => {
+      // Arrange
+      const order = new Order();
+
+      // Act
+      const total = order.calculateTotal(0);
+
+      // Assert
+      expect(total).toBe(0);
+    });
+  });
+});
+```
+
+### Python（pytest）
+
+```python
+class TestOrder:
+    # 好的命名：method_scenario_expected
+    def test_calculate_total_with_discount_returns_discounted_price(self):
+        # Arrange
+        order = Order()
+        order.add_item(Item("Book", 100))
+        discount = 0.1
+
+        # Act
+        total = order.calculate_total(discount)
+
+        # Assert
+        assert total == 90
+
+    def test_calculate_total_empty_order_returns_zero(self):
+        # Arrange
+        order = Order()
+
+        # Act
+        total = order.calculate_total(0)
+
+        # Assert
+        assert total == 0
+```
+
+## 觀念圖
+
+<Diagram data='{"nodes":[{"id":"aaa","label":"AAA 模式","type":"highlight"},{"id":"naming","label":"命名慣例","type":"highlight"},{"id":"first","label":"FIRST 原則","type":"highlight"},{"id":"fast","label":"Fast (快速)","type":"default"},{"id":"isolated","label":"Isolated (隔離)","type":"default"},{"id":"repeatable","label":"Repeatable (可重複)","type":"default"},{"id":"self","label":"Self-Validating (自驗證)","type":"default"},{"id":"timely","label":"Timely (及時)","type":"default"}],"edges":[{"from":"first","to":"fast","label":"毫秒級完成"},{"from":"first","to":"isolated","label":"不依賴其他測試"},{"from":"first","to":"repeatable","label":"任何環境結果相同"},{"from":"first","to":"self","label":"自動判斷通過/失敗"},{"from":"first","to":"timely","label":"與產品程式碼同步寫"},{"from":"aaa","to":"naming","label":"搭配使用"},{"from":"naming","to":"first","label":"共同提升品質"}]}' />
+
+## 實戰補充
+
+<Callout type="tip" title="資深開發者的經驗">
+- **AAA 之間用空行分隔**：視覺上一目瞭然，不需要寫註解標記 Arrange/Act/Assert。
+- **測試名稱是最好的文件**：當測試失敗時，你第一眼看到的就是測試名稱。投資在好名字上，未來的你會感謝自己。
+- **Builder Pattern 管理測試資料**：當 Arrange 區塊太長時，用 Test Data Builder 來簡化。例如 `new OrderBuilder().WithItem("Book", 100).WithDiscount(0.1).Build()`。
+- **一個測試一個失敗原因**：如果你需要問「這個測試到底在測什麼？」，代表它測太多了。
+</Callout>
+
+## 理解測驗
+
+<Quiz data='{"question":"AAA 模式中的三個 A 分別代表什麼？","options":["Add-Apply-Approve","Arrange-Act-Assert","Analyze-Attempt-Accept","Always-Assert-After"],"answer":1,"explanation":"AAA 代表 Arrange（準備測試資料）、Act（執行受測方法）、Assert（驗證結果），是單元測試最基本的結構。"}' />
+
+<Quiz data='{"question":"以下哪個測試名稱最符合最佳實踐？","options":["Test1","TestAdd","Add_NegativeNumber_ThrowsException","MyTest_Works"],"answer":2,"explanation":"Add_NegativeNumber_ThrowsException 遵循 MethodName_Scenario_ExpectedResult 命名慣例，一看就知道在測什麼情境和預期結果。"}' />
+
+<Quiz data='{"question":"FIRST 原則中的 I（Isolated）是什麼意思？","options":["測試只在本機執行","測試之間不互相依賴，每個測試獨立運行","測試只測一個方法","測試不需要網路"],"answer":1,"explanation":"Isolated 代表每個測試是獨立的，不依賴其他測試的執行順序或結果。任何測試都可以單獨跑、隨機順序跑。"}' />
+
+## 重點整理
+
+<Callout type="tip" title="一句話記住">
+**好的測試 = 好的文件。用 AAA 結構化、用好名字說故事、用 FIRST 原則驗證品質。**
+</Callout>
+
+| 概念 | 說明 |
+|------|------|
+| **AAA 模式** | Arrange-Act-Assert，每個測試三段式結構 |
+| **命名慣例** | `MethodName_Scenario_Expected`，名字即文件 |
+| **單一斷言** | 每個測試只驗證一件事 |
+| **FIRST** | Fast / Isolated / Repeatable / Self-Validating / Timely |
+| **核心好處** | 測試可讀、失敗時立刻知道原因 |
+| **代價** | 需要紀律和團隊共識來維持一致性 |

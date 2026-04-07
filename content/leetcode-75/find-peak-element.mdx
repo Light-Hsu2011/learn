@@ -1,0 +1,105 @@
+---
+title: "162. Find Peak Element"
+order: 55
+description: "二分搜尋利用相鄰元素的遞增遞減趨勢找到峰值"
+---
+
+# Find Peak Element
+
+<ELI5>
+想像你在爬一座山（你看不到全貌），你只知道自己腳下和左右兩步的高度。怎麼找到山頂？
+
+很簡單：看看右邊比你高還是低。如果右邊更高，代表山頂在右邊（因為你還在上坡），就往右走。如果右邊更低，代表山頂在左邊或就是你站的地方。每次都走到中間看一看，就能用二分搜尋的速度找到山頂。
+
+關鍵在於：陣列兩端都是「負無窮」，所以只要往上坡的方向走，一定能找到某個山頂。
+</ELI5>
+
+## 題目描述
+
+給定一個整數陣列 `nums`，找到一個峰值元素（比左右鄰居都大）的索引。陣列可能有多個峰值，回傳任意一個即可。假設 `nums[-1] = nums[n] = -∞`。
+
+```
+輸入：nums = [1,2,3,1]
+輸出：2
+解釋：nums[2] = 3 是峰值
+
+輸入：nums = [1,2,1,3,5,6,4]
+輸出：5（或 1，任意峰值皆可）
+```
+
+## 解題思路
+
+<StepDiagram data='[{"title":"設定範圍","description":"left = 0, right = n - 1","icon":"1"},{"title":"取中間值","description":"mid = left + (right - left) / 2","icon":"2"},{"title":"比較右鄰居","description":"若 nums[mid] < nums[mid+1]，峰值在右側","icon":"3"},{"title":"縮小範圍","description":"往上坡方向移動，保證最終收斂到峰值","icon":"4"},{"title":"left == right","description":"收斂時的位置就是峰值","icon":"5"}]' />
+
+## 程式碼
+
+### C#
+```csharp
+public class Solution {
+    public int FindPeakElement(int[] nums) {
+        int left = 0, right = nums.Length - 1;
+        while (left < right) {
+            int mid = left + (right - left) / 2;
+            if (nums[mid] < nums[mid + 1]) {
+                left = mid + 1; // 上坡，峰值在右側
+            } else {
+                right = mid; // 下坡或相等，峰值在左側（含 mid）
+            }
+        }
+        return left;
+    }
+}
+```
+
+### TypeScript
+```typescript
+function findPeakElement(nums: number[]): number {
+    let left = 0, right = nums.length - 1;
+    while (left < right) {
+        const mid = Math.floor((left + right) / 2);
+        if (nums[mid] < nums[mid + 1]) {
+            left = mid + 1; // 上坡，往右找
+        } else {
+            right = mid; // 下坡，往左找（含 mid）
+        }
+    }
+    return left;
+}
+```
+
+### Python
+```python
+def findPeakElement(nums: list[int]) -> int:
+    left, right = 0, len(nums) - 1
+    while left < right:
+        mid = (left + right) // 2
+        if nums[mid] < nums[mid + 1]:
+            left = mid + 1  # 上坡，峰值在右邊
+        else:
+            right = mid  # 下坡，峰值在左邊或就是 mid
+    return left
+```
+
+## 複雜度分析
+
+| | Time | Space |
+|--|------|-------|
+| 本解法 | O(log n) | O(1) |
+
+## 圖解
+
+<Diagram data='{"nodes":[{"id":"arr","label":"nums 陣列","type":"default"},{"id":"mid","label":"取 mid","type":"highlight"},{"id":"uphill","label":"nums[mid] < nums[mid+1]","type":"default"},{"id":"downhill","label":"nums[mid] > nums[mid+1]","type":"default"},{"id":"goright","label":"left = mid + 1","type":"muted"},{"id":"goleft","label":"right = mid","type":"muted"},{"id":"peak","label":"left == right → 峰值","type":"highlight"}],"edges":[{"from":"arr","to":"mid","label":"二分"},{"from":"mid","to":"uphill","label":"比較"},{"from":"mid","to":"downhill","label":"比較"},{"from":"uphill","to":"goright","label":"往右"},{"from":"downhill","to":"goleft","label":"往左"},{"from":"goright","to":"peak","label":"收斂"},{"from":"goleft","to":"peak","label":"收斂"}]}' />
+
+## 進階觀點
+
+<Callout type="tip" title="面試追問">
+- 為什麼這題能用 Binary Search？關鍵是邊界條件 `nums[-1] = nums[n] = -∞`，這保證了只要往上坡方向走，一定會遇到峰值（不可能一路上坡到負無窮）。
+- 如果陣列嚴格遞增怎麼辦？最後一個元素就是峰值（因為右邊是 -∞）。
+- 2D 版本：**Find Peak Element II (1901)**，可以用 O(m log n) 或 O(n log m) 解。
+</Callout>
+
+## 理解測驗
+
+<Quiz data='{"question":"為什麼 nums[mid] < nums[mid+1] 時要往右移動？","options":["因為右邊的值更小","因為右邊正在上坡，保證右側存在峰值","因為左邊一定沒有峰值","這只是慣例"],"answer":1,"explanation":"如果 nums[mid] < nums[mid+1]，代表從 mid 到 mid+1 是上坡。由於 nums[n] = -∞，上坡之後必定會下坡，所以右側一定存在峰值。"}' />
+
+<Quiz data='{"question":"為什麼用 left < right 而不是 left <= right？","options":["沒有區別","因為 left == right 時已經收斂到答案，不需要再判斷","為了避免無窮迴圈","因為陣列可能為空"],"answer":1,"explanation":"當 left == right 時，兩個指標指向同一個位置，就是峰值的位置，不需要再進入迴圈。"}' />

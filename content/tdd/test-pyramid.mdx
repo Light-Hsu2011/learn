@@ -1,0 +1,168 @@
+---
+title: "測試金字塔"
+order: 4
+description: "Unit → Integration → E2E 的比例與策略，找到測試的甜蜜點"
+---
+
+# 測試金字塔
+
+<ELI5>
+想像一座真正的金字塔。**底部最寬大**，用很多小石塊堆起來，既快又便宜；**中間**用比較大的石塊，數量少一些；**頂端**用幾塊巨石收尾，每塊都很貴但能看到全貌。
+
+測試金字塔也是這樣：底部是大量的**單元測試**（小、快、便宜），中間是適量的**整合測試**（中等大小），頂端是少量的**端對端測試**（大、慢、貴但最接近使用者體驗）。
+
+如果你把金字塔倒過來——大量 E2E、很少單元測試——那就像用巨石蓋地基，既慢又容易崩塌。這就是惡名昭彰的「冰淇淋甜筒反模式」。
+</ELI5>
+
+## 是什麼？
+
+測試金字塔（Test Pyramid）是 Mike Cohn 在《Succeeding with Agile》中提出的模型，描述不同層級測試的理想比例和策略。
+
+<Callout type="info" title="指導原則，不是教條">
+測試金字塔是一個**思考模型**，不是精確的比例公式。重點是「底層多、頂層少」的原則，具體數字依專案調整。
+</Callout>
+
+## 核心觀念
+
+- **Unit Test（底層）**：測試單一函式或類別，毫秒級完成，數量最多
+- **Integration Test（中層）**：測試元件之間的互動，如 API + Database，秒級完成
+- **E2E Test（頂層）**：模擬使用者操作完整流程，分鐘級完成，數量最少
+- **速度與信心度的 Trade-off**：底層快但信心低，頂層慢但信心高
+- **Testing Trophy**：Kent C. Dodds 提出的變體，強調 Integration Test 的價值最高
+
+## 常見誤區
+
+<Callout type="warning" title="失衡的測試策略">
+- **冰淇淋甜筒反模式**：只寫 E2E 不寫單元測試，CI 跑一次要 30 分鐘，開發者不敢跑
+- **只寫單元測試**：每個函式都測了，但元件接起來就爆——因為沒有整合測試
+- **追求 100% 覆蓋率**：覆蓋率是指標，不是目標。100% 覆蓋率不代表 0 個 Bug
+- **每層使用相同的工具**：不同層級適合不同工具，不要用 E2E 工具寫單元測試
+</Callout>
+
+## 金字塔層級
+
+<StepDiagram data='[{"title":"Unit Test（底層）","description":"大量、快速、便宜。測試單一單元的邏輯，毫秒級完成。佔比約 70%","icon":"1"},{"title":"Integration Test（中層）","description":"適量、中速。測試元件間的互動與整合，秒級完成。佔比約 20%","icon":"2"},{"title":"E2E Test（頂層）","description":"少量、慢速、昂貴。模擬完整使用者流程，分鐘級完成。佔比約 10%","icon":"3"}]' />
+
+## 程式碼範例
+
+### C#（xUnit）
+
+```csharp
+// Unit Test — 快速，只測邏輯
+public class PriceCalculatorTests
+{
+    [Fact]
+    public void CalculateDiscount_VipCustomer_Gets20PercentOff()
+    {
+        var calculator = new PriceCalculator();
+        var result = calculator.CalculateDiscount(100m, CustomerType.Vip);
+        Assert.Equal(80m, result);
+    }
+}
+
+// Integration Test — 測 API + Database 的互動
+public class OrderApiTests : IClassFixture<WebApplicationFactory<Program>>
+{
+    private readonly HttpClient _client;
+
+    public OrderApiTests(WebApplicationFactory<Program> factory)
+    {
+        _client = factory.CreateClient();
+    }
+
+    [Fact]
+    public async Task CreateOrder_ValidRequest_ReturnsCreated()
+    {
+        var content = JsonContent.Create(new { ProductId = 1, Quantity = 2 });
+        var response = await _client.PostAsync("/api/orders", content);
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+    }
+}
+
+// E2E Test — 用 Playwright 模擬使用者
+// (通常放在獨立的測試專案)
+// [Fact]
+// public async Task User_CanCompleteCheckout()
+// {
+//     await page.GotoAsync("https://localhost:5001");
+//     await page.ClickAsync("[data-testid='add-to-cart']");
+//     await page.ClickAsync("[data-testid='checkout']");
+//     await Expect(page.Locator(".success-message")).ToBeVisibleAsync();
+// }
+```
+
+### TypeScript（Jest）
+
+```typescript
+// Unit Test — 只測純邏輯
+describe("PriceCalculator", () => {
+  it("gives VIP 20% discount", () => {
+    const calculator = new PriceCalculator();
+    expect(calculator.calculateDiscount(100, "vip")).toBe(80);
+  });
+});
+
+// Integration Test — 測 API endpoint
+describe("POST /api/orders", () => {
+  it("creates order and returns 201", async () => {
+    const response = await request(app)
+      .post("/api/orders")
+      .send({ productId: 1, quantity: 2 });
+
+    expect(response.status).toBe(201);
+    expect(response.body.id).toBeDefined();
+  });
+});
+```
+
+### Python（pytest）
+
+```python
+# Unit Test — 只測純邏輯
+def test_calculate_discount_vip_gets_20_percent_off():
+    calculator = PriceCalculator()
+    result = calculator.calculate_discount(100, CustomerType.VIP)
+    assert result == 80
+
+# Integration Test — 測 API + Database
+def test_create_order_valid_request(client, db):
+    response = client.post("/api/orders", json={
+        "product_id": 1,
+        "quantity": 2
+    })
+    assert response.status_code == 201
+    assert db.query(Order).count() == 1
+```
+
+## 概念圖
+
+<Diagram data='{"nodes":[{"id":"pyramid","label":"測試金字塔","type":"highlight"},{"id":"unit","label":"Unit Test (70%)","type":"default"},{"id":"integration","label":"Integration Test (20%)","type":"default"},{"id":"e2e","label":"E2E Test (10%)","type":"default"},{"id":"trophy","label":"Testing Trophy","type":"muted"},{"id":"icecream","label":"冰淇淋甜筒 (反模式)","type":"muted"}],"edges":[{"from":"pyramid","to":"unit","label":"底層：大量、快速"},{"from":"pyramid","to":"integration","label":"中層：適量"},{"from":"pyramid","to":"e2e","label":"頂層：少量、慢速"},{"from":"trophy","to":"integration","label":"強調整合測試價值"},{"from":"icecream","to":"e2e","label":"頂重底輕，危險"}]}' />
+
+## 實戰補充
+
+<Callout type="tip" title="資深開發者的經驗">
+- **Testing Trophy 的觀點**：Kent C. Dodds 認為 Integration Test 的投資報酬率最高，因為它能捕捉到真實的使用者流程，又不像 E2E 那麼慢。
+- **每層的回饋速度不同**：Unit Test 在開發時即時回饋（秒級），Integration Test 在 CI 回饋（分鐘級），E2E 在部署前回饋（十分鐘級）。
+- **團隊規模影響比例**：小團隊可能偏向 Testing Trophy（更多 Integration），大團隊需要更嚴格的 Unit Test 保護。
+- **Flaky Test 是殺手**：E2E 層最容易出現不穩定的測試。如果 E2E 每次都隨機失敗，團隊會開始忽略測試結果。
+</Callout>
+
+## 理解測驗
+
+<Quiz data='{"question":"測試金字塔建議哪一層的測試數量最多？","options":["E2E Test","Integration Test","Unit Test","Manual Test"],"answer":2,"explanation":"測試金字塔底層是 Unit Test，數量最多、速度最快、成本最低。頂層的 E2E Test 數量最少。"}' />
+
+<Quiz data='{"question":"什麼是冰淇淋甜筒反模式？","options":["完全沒有測試","只有 Unit Test 沒有其他層","E2E 測試最多、Unit Test 最少的倒金字塔","每個測試都手動執行"],"answer":2,"explanation":"冰淇淋甜筒反模式是指大量 E2E、少量 Unit Test 的倒金字塔形狀，導致測試套件慢、脆弱、維護成本高。"}' />
+
+<Quiz data='{"question":"Testing Trophy 和傳統測試金字塔的主要差異是什麼？","options":["Testing Trophy 不需要 Unit Test","Testing Trophy 強調 Integration Test 的投資報酬率最高","Testing Trophy 只用 E2E","Testing Trophy 不需要任何自動化測試"],"answer":1,"explanation":"Kent C. Dodds 的 Testing Trophy 認為 Integration Test 的價值最高，因為它能以適中的成本捕捉到最多的真實問題。"}' />
+
+## 重點整理
+
+<Callout type="tip" title="一句話記住">
+**測試金字塔 = 底層多（Unit）、中層適量（Integration）、頂層少（E2E），用速度換信心。**
+</Callout>
+
+| 層級 | 速度 | 信心度 | 成本 | 建議比例 |
+|------|------|--------|------|----------|
+| **Unit Test** | 毫秒 | 低（只測單元） | 低 | ~70% |
+| **Integration Test** | 秒 | 中（測互動） | 中 | ~20% |
+| **E2E Test** | 分鐘 | 高（測全流程） | 高 | ~10% |

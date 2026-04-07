@@ -1,0 +1,133 @@
+---
+title: "1372. Longest ZigZag Path in a Binary Tree"
+order: 37
+description: "DFS 追蹤左右交替方向，計算最長 ZigZag 路徑"
+---
+
+# Longest ZigZag Path in a Binary Tree
+
+<ELI5>
+想像你在一棵樹上玩「蛇行遊戲」：每次到一個分岔口，你必須交替選擇左和右。如果上次走左邊，這次就必須走右邊；上次走右邊，這次就走左邊。
+
+你想知道最長能走幾步？如果中途被迫轉向同一邊（例如連續兩次左轉），那這條路就斷了，你得從這個節點重新開始計算。
+
+DFS 時我們追蹤兩個資訊：「如果這步走左，目前的長度」和「如果走右，目前的長度」。
+</ELI5>
+
+## 題目描述
+
+給定一棵二元樹的根節點 root，回傳最長 ZigZag 路徑的長度。ZigZag 路徑定義為：從任意節點開始，交替走左右方向。路徑長度等於邊數。
+
+```
+輸入:         1
+             / \
+            1   1
+             \   \
+              1   1
+             / \
+            1   1
+               \
+                1
+輸出: 3
+解釋: 右→左→右（3 條邊）
+```
+
+## 解題思路
+
+<StepDiagram data='[{"title":"DFS 帶方向資訊","description":"對每個節點追蹤「往左的 ZigZag 長度」和「往右的 ZigZag 長度」","icon":"1"},{"title":"走左子樹","description":"左子樹繼承「往右的長度 +1」（因為上一步走左，下一步要走右才延續）","icon":"2"},{"title":"走右子樹","description":"右子樹繼承「往左的長度 +1」","icon":"3"},{"title":"方向不對則重置","description":"如果方向不匹配，從 0 重新開始","icon":"4"},{"title":"更新全域最大值","description":"每個節點都更新答案","icon":"5"}]' />
+
+## 程式碼
+
+### C#
+
+```csharp
+public class Solution {
+    private int maxLen = 0;
+
+    public int LongestZigZag(TreeNode root) {
+        Dfs(root, 0, 0);
+        return maxLen;
+    }
+
+    // left: 以此節點為終點、最後一步走左的 ZigZag 長度
+    // right: 以此節點為終點、最後一步走右的 ZigZag 長度
+    private void Dfs(TreeNode node, int left, int right) {
+        if (node == null) return;
+
+        maxLen = Math.Max(maxLen, Math.Max(left, right));
+
+        // 往左走：延續 right+1（上步走右，這步走左 = zigzag）
+        //         重置 left 為 0（因為往左走時，若下一步再走左就斷了）
+        Dfs(node.left, right + 1, 0);
+
+        // 往右走：延續 left+1，重置 right
+        Dfs(node.right, 0, left + 1);
+    }
+}
+```
+
+### TypeScript
+
+```typescript
+function longestZigZag(root: TreeNode | null): number {
+    let maxLen = 0;
+
+    function dfs(node: TreeNode | null, left: number, right: number): void {
+        if (!node) return;
+
+        maxLen = Math.max(maxLen, left, right);
+
+        dfs(node.left, right + 1, 0);  // 走左：延續上步走右的長度
+        dfs(node.right, 0, left + 1);  // 走右：延續上步走左的長度
+    }
+
+    dfs(root, 0, 0);
+    return maxLen;
+}
+```
+
+### Python
+
+```python
+def longestZigZag(root: Optional[TreeNode]) -> int:
+    max_len = 0
+
+    def dfs(node, left, right):
+        nonlocal max_len
+        if not node:
+            return
+
+        max_len = max(max_len, left, right)
+
+        dfs(node.left, right + 1, 0)   # 走左：延續上步走右的長度
+        dfs(node.right, 0, left + 1)   # 走右：延續上步走左的長度
+
+    dfs(root, 0, 0)
+    return max_len
+```
+
+## 複雜度分析
+
+| | Time | Space |
+|--|------|-------|
+| 本解法 | O(n) | O(h) |
+
+## 圖解
+
+<Diagram data='{"nodes":[{"id":"r","label":"root(0,0)","type":"default"},{"id":"l1","label":"左子(1,0)","type":"default"},{"id":"r2","label":"右子(0,2)","type":"default"},{"id":"l3","label":"左子(3,0)","type":"highlight"},{"id":"r4","label":"右子(0,1)","type":"default"}],"edges":[{"from":"r","to":"l1","label":"走左"},{"from":"r","to":"r2","label":"走右"},{"from":"l1","to":"r2","label":"走右 zigzag"},{"from":"r2","to":"l3","label":"走左 zigzag"},{"from":"l3","to":"r4","label":"走右 zigzag"}]}' />
+
+## 進階觀點
+
+<Callout type="tip" title="面試追問">
+**為什麼用兩個參數 left/right 而不是一個方向？** 每個節點可以是某條 ZigZag 路徑的中間點，同時需要知道「從左來」和「從右來」的長度，才能正確延續。
+
+**常見錯誤**：只追蹤一個方向，忘了每個節點都可以作為新 ZigZag 路徑的起點。
+
+**變體題**：LC 543 Diameter of Binary Tree（最長路徑，不限方向交替）。
+</Callout>
+
+## 理解測驗
+
+<Quiz data='{"question":"走到左子節點時，為什麼 right 參數傳 0？","options":["因為右子樹不存在","因為走了左子後，若想從這個左子再走左，ZigZag 就斷了，需要重置","因為 0 代表起點","因為程式語言要求"],"answer":1,"explanation":"ZigZag 要求交替方向。走左子後，下一步「走左」不是 ZigZag，所以 right（代表下次走右的延續長度）重置為 0。"}' />
+
+<Quiz data='{"question":"一棵只有右子鏈的樹（1→2→3→4），最長 ZigZag 長度是多少？","options":["3","0","1","4"],"answer":1,"explanation":"全部都是右轉，沒有交替方向，所以 ZigZag 長度為 0。ZigZag 至少需要一次方向交替。"}' />

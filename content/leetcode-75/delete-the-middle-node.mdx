@@ -1,0 +1,121 @@
+---
+title: "2095. Delete the Middle Node of a Linked List"
+order: 29
+description: "用快慢指針找到中點的前一個節點，刪除中間節點"
+---
+
+# Delete the Middle Node of a Linked List
+
+<ELI5>
+想像一排小朋友手牽手排隊。你想找出正中間那個人，但你不知道隊伍有多長。
+
+有個聰明的方法：派兩個人從隊伍頭出發。一個人每次走一步（慢指針），另一個每次走兩步（快指針）。當走得快的到隊尾時，走得慢的剛好在中間！
+
+然後你只要把中間那個人的左右鄰居牽在一起，中間人就被「跳過」了。
+</ELI5>
+
+## 題目描述
+
+給定一個 Linked List 的 head，刪除中間節點並回傳修改後的 head。中間節點定義為第 ⌊n/2⌋ 個節點（0-indexed）。
+
+```
+輸入: [1,3,4,7,1,2,6]
+輸出: [1,3,4,1,2,6]
+解釋: 中間節點是 index 3 的 7
+
+輸入: [1,2,3,4]
+輸出: [1,2,4]
+解釋: 中間節點是 index 2 的 3
+```
+
+## 解題思路
+
+<StepDiagram data='[{"title":"建立 dummy 節點","description":"dummy.next = head，處理邊界情況","icon":"1"},{"title":"初始化快慢指針","description":"slow = dummy, fast = head","icon":"2"},{"title":"移動指針","description":"slow 走 1 步，fast 走 2 步","icon":"3"},{"title":"fast 到尾","description":"此時 slow.next 就是中間節點","icon":"4"},{"title":"刪除中間","description":"slow.next = slow.next.next","icon":"5"}]' />
+
+## 程式碼
+
+### C#
+
+```csharp
+public class Solution {
+    public ListNode DeleteMiddle(ListNode head) {
+        if (head.next == null) return null; // 只有一個節點
+
+        // slow 從 dummy 開始，這樣停下時 slow.next 就是中點
+        var dummy = new ListNode(0, head);
+        var slow = dummy;
+        var fast = head;
+
+        while (fast != null && fast.next != null) {
+            slow = slow.next;
+            fast = fast.next.next;
+        }
+
+        slow.next = slow.next.next; // 跳過中間節點
+        return dummy.next;
+    }
+}
+```
+
+### TypeScript
+
+```typescript
+function deleteMiddle(head: ListNode | null): ListNode | null {
+    if (!head || !head.next) return null; // 空或只有一個節點
+
+    const dummy = new ListNode(0, head);
+    let slow: ListNode = dummy;
+    let fast: ListNode | null = head;
+
+    while (fast && fast.next) {
+        slow = slow.next!;
+        fast = fast.next.next;
+    }
+
+    slow.next = slow.next!.next; // 跳過中間節點
+    return dummy.next;
+}
+```
+
+### Python
+
+```python
+def deleteMiddle(head: Optional[ListNode]) -> Optional[ListNode]:
+    if not head.next:
+        return None  # 只有一個節點
+
+    dummy = ListNode(0, head)
+    slow = dummy
+    fast = head
+
+    while fast and fast.next:
+        slow = slow.next
+        fast = fast.next.next
+
+    slow.next = slow.next.next  # 跳過中間節點
+    return dummy.next
+```
+
+## 複雜度分析
+
+| | Time | Space |
+|--|------|-------|
+| 本解法 | O(n) | O(1) |
+
+## 圖解
+
+<Diagram data='{"nodes":[{"id":"d","label":"dummy","type":"muted"},{"id":"n1","label":"1","type":"default"},{"id":"n2","label":"3","type":"default"},{"id":"n3","label":"4","type":"highlight"},{"id":"n4","label":"7 (刪除)","type":"muted"},{"id":"n5","label":"1","type":"default"},{"id":"n6","label":"2","type":"default"},{"id":"n7","label":"6","type":"default"}],"edges":[{"from":"d","to":"n1","label":""},{"from":"n1","to":"n2","label":""},{"from":"n2","to":"n3","label":"slow"},{"from":"n3","to":"n4","label":"刪除"},{"from":"n3","to":"n5","label":"跳過"},{"from":"n5","to":"n6","label":""},{"from":"n6","to":"n7","label":""}]}' />
+
+## 進階觀點
+
+<Callout type="tip" title="面試追問">
+**為什麼 slow 從 dummy 開始？** 因為我們需要停在中間節點的「前一個」，才能執行刪除。如果 slow 從 head 開始，停下時就已經是中間節點本身了。
+
+**變體題**：LC 876 Middle of the Linked List（找中點不刪除）、LC 19 Remove Nth Node From End（刪倒數第 n 個）。
+</Callout>
+
+## 理解測驗
+
+<Quiz data='{"question":"為什麼需要 dummy 節點？","options":["為了讓 Linked List 更長","為了讓 slow 停在中間節點的前一個位置","為了避免 null pointer","為了提升效能"],"answer":1,"explanation":"slow 從 dummy 出發，比從 head 出發慢一步，這樣 fast 到尾時 slow.next 恰好是中間節點。"}' />
+
+<Quiz data='{"question":"對於 [1,2] 這個 Linked List，中間節點是哪個？","options":["1（index 0）","2（index 1）","沒有中間節點","1 和 2 都是"],"answer":1,"explanation":"n=2，中間節點是 ⌊2/2⌋ = index 1，也就是節點 2。刪除後只剩 [1]。"}' />

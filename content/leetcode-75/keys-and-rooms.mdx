@@ -1,0 +1,122 @@
+---
+title: "841. Keys and Rooms"
+order: 43
+description: "用 DFS 或 BFS 檢查從房間 0 出發能否到達所有房間"
+---
+
+# Keys and Rooms
+
+<ELI5>
+想像你進入一棟有很多房間的大樓。一開始只有 0 號房間是開著的，裡面有一些鑰匙可以打開其他房間。每間你進去的房間可能也有鑰匙，可以開更多房間。
+
+問題是：你最終能不能打開所有房間？
+
+這就是圖的「可達性」問題 — 從起點出發，能不能走到所有節點？用 DFS 或 BFS 探索所有可到達的房間，最後數一數有沒有遺漏。
+</ELI5>
+
+## 題目描述
+
+有 n 個房間（0 到 n-1），一開始你在房間 0。每個房間有一組鑰匙 `rooms[i]`，可以打開對應的房間。回傳是否能進入所有房間。
+
+```
+輸入: rooms = [[1],[2],[3],[]]
+輸出: true
+解釋: 0→1→2→3，全部可達
+
+輸入: rooms = [[1,3],[3,0,1],[2],[0]]
+輸出: false
+解釋: 無法進入房間 2
+```
+
+## 解題思路
+
+<StepDiagram data='[{"title":"從房間 0 開始","description":"標記房間 0 為已訪問","icon":"1"},{"title":"DFS/BFS 探索","description":"拿到鑰匙後，嘗試進入未訪問的房間","icon":"2"},{"title":"標記已訪問","description":"進入新房間就標記，避免重複","icon":"3"},{"title":"檢查結果","description":"已訪問的房間數 == 總房間數？","icon":"4"}]' />
+
+## 程式碼
+
+### C#
+
+```csharp
+public class Solution {
+    public bool CanVisitAllRooms(IList<IList<int>> rooms) {
+        var visited = new HashSet<int> { 0 };
+        var stack = new Stack<int>();
+        stack.Push(0);
+
+        while (stack.Count > 0) {
+            int room = stack.Pop();
+            foreach (int key in rooms[room]) {
+                if (visited.Add(key)) { // 如果是新房間
+                    stack.Push(key);
+                }
+            }
+        }
+        return visited.Count == rooms.Count;
+    }
+}
+```
+
+### TypeScript
+
+```typescript
+function canVisitAllRooms(rooms: number[][]): boolean {
+    const visited = new Set<number>([0]);
+    const stack: number[] = [0];
+
+    while (stack.length > 0) {
+        const room = stack.pop()!;
+        for (const key of rooms[room]) {
+            if (!visited.has(key)) {
+                visited.add(key);
+                stack.push(key);
+            }
+        }
+    }
+    return visited.size === rooms.length;
+}
+```
+
+### Python
+
+```python
+def canVisitAllRooms(rooms: list[list[int]]) -> bool:
+    visited = {0}
+    stack = [0]
+
+    while stack:
+        room = stack.pop()
+        for key in rooms[room]:
+            if key not in visited:
+                visited.add(key)
+                stack.append(key)
+
+    return len(visited) == len(rooms)
+```
+
+## 複雜度分析
+
+| | Time | Space |
+|--|------|-------|
+| 本解法 | O(n + e) | O(n) |
+
+n 是房間數，e 是鑰匙總數（邊數）。
+
+## 圖解
+
+<Diagram data='{"nodes":[{"id":"r0","label":"Room 0 [1]","type":"highlight"},{"id":"r1","label":"Room 1 [2]","type":"highlight"},{"id":"r2","label":"Room 2 [3]","type":"highlight"},{"id":"r3","label":"Room 3 []","type":"highlight"}],"edges":[{"from":"r0","to":"r1","label":"key 1"},{"from":"r1","to":"r2","label":"key 2"},{"from":"r2","to":"r3","label":"key 3"}]}' />
+
+## 進階觀點
+
+<Callout type="tip" title="面試追問">
+**DFS vs BFS**：兩者都可以，複雜度相同。DFS 用 Stack（或遞迴），BFS 用 Queue。面試可能要求兩種都寫。
+
+**本質上是有向圖的可達性**：rooms[i] 定義了從節點 i 出發的有向邊。問題等價於「從節點 0 出發是否能到達所有節點」。
+
+**變體題**：LC 547 Number of Provinces（無向圖連通分量）、LC 1466 Reorder Routes（有向圖方向問題）。
+</Callout>
+
+## 理解測驗
+
+<Quiz data='{"question":"這題的本質是什麼圖論問題？","options":["最短路徑","最小生成樹","從起點出發的可達性（DFS/BFS 遍歷）","拓撲排序"],"answer":2,"explanation":"每個房間是節點，鑰匙是有向邊。問題就是從節點 0 出發能否到達所有節點，標準的圖遍歷問題。"}' />
+
+<Quiz data='{"question":"為什麼需要 visited 集合？","options":["為了排序","為了避免重複訪問同一個房間導致無限迴圈","為了計算最短路徑","因為題目要求"],"answer":1,"explanation":"鑰匙可能重複指向同一個房間，不標記已訪問的房間會導致重複處理甚至無限迴圈。"}' />
