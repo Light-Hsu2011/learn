@@ -3,13 +3,19 @@
 import { useState } from "react";
 
 interface QuizProps {
-  question: string;
-  options: string[];
-  answer: number;
+  question?: string;
+  options?: string[];
+  answer?: number;
   explanation?: string;
+  data?: string;
 }
 
-export function Quiz({ question, options, answer, explanation }: QuizProps) {
+export function Quiz(props: QuizProps) {
+  const parsed = props.data ? JSON.parse(props.data) : {};
+  const question = props.question ?? parsed.question ?? "";
+  const options: string[] = props.options ?? parsed.options ?? [];
+  const answer = props.answer ?? parsed.answer ?? 0;
+  const explanation = props.explanation ?? parsed.explanation;
   const [selected, setSelected] = useState<number | null>(null);
 
   const isCorrect = selected === answer;

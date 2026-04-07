@@ -5,10 +5,13 @@ interface Step {
 }
 
 interface StepDiagramProps {
-  steps: Step[];
+  steps?: Step[];
+  data?: string;
 }
 
-export function StepDiagram({ steps }: StepDiagramProps) {
+export function StepDiagram({ steps: stepsProp, data }: StepDiagramProps) {
+  const steps: Step[] = stepsProp ?? (data ? JSON.parse(data) : []);
+  if (steps.length === 0) return null;
   return (
     <div className="my-6 space-y-0">
       {steps.map((step, i) => (

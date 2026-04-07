@@ -11,9 +11,10 @@ interface DiagramEdge {
 }
 
 interface DiagramProps {
-  nodes: DiagramNode[];
-  edges: DiagramEdge[];
+  nodes?: DiagramNode[];
+  edges?: DiagramEdge[];
   direction?: "horizontal" | "vertical";
+  data?: string;
 }
 
 const nodeStyles = {
@@ -22,7 +23,11 @@ const nodeStyles = {
   muted: "bg-gray-100 dark:bg-gray-900 border-gray-200 dark:border-gray-700 text-gray-500",
 };
 
-export function Diagram({ nodes, edges, direction = "horizontal" }: DiagramProps) {
+export function Diagram({ nodes: nodesProp, edges: edgesProp, direction = "horizontal", data }: DiagramProps) {
+  const parsed = data ? JSON.parse(data) : {};
+  const nodes: DiagramNode[] = nodesProp ?? parsed.nodes ?? [];
+  const edges: DiagramEdge[] = edgesProp ?? parsed.edges ?? [];
+  if (nodes.length === 0) return null;
   const isH = direction === "horizontal";
 
   return (
