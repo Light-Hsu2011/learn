@@ -62,6 +62,9 @@ export default async function TopicPage({ params }: Props) {
                     <p className="text-sm text-gray-500">{lesson.description}</p>
                   )}
                 </div>
+                <span className="text-xs text-gray-400 whitespace-nowrap">
+                  {lesson.readingTime} min
+                </span>
                 <LessonStatus lessonId={`${topic}/${lesson.slug}`} />
               </div>
             </Link>

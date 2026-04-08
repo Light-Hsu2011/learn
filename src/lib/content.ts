@@ -9,6 +9,7 @@ export interface LessonMeta {
   title: string;
   description: string;
   order: number;
+  readingTime: number;
 }
 
 export function getLessons(topicSlug: string): LessonMeta[] {
@@ -24,11 +25,14 @@ export function getLessons(topicSlug: string): LessonMeta[] {
       const slug = file.replace(/\.mdx$/, "");
       const content = fs.readFileSync(path.join(topicDir, file), "utf-8");
       const { data } = matter(content);
+      const wordCount = content.replace(/<[^>]*>/g, "").replace(/```[\s\S]*?```/g, "").length;
+      const readingTime = Math.max(1, Math.round(wordCount / 500));
       return {
         slug,
         title: (data.title as string) || slug,
         description: (data.description as string) || "",
         order: (data.order as number) || 999,
+        readingTime,
       };
     })
     .sort((a, b) => a.order - b.order);

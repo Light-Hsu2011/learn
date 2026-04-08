@@ -2,14 +2,30 @@ import { topics } from "@/lib/topics";
 import { getLessons } from "@/lib/content";
 import Link from "next/link";
 import { ProgressBar } from "@/components/progress-bar";
+import { ContinueLearning } from "@/components/continue-learning";
+import { LessonSearch } from "@/components/lesson-search";
 
 export default function HomePage() {
+  const allSearchItems = topics.flatMap((topic) => {
+    const lessons = getLessons(topic.slug);
+    return lessons.map((lesson) => ({
+      topicSlug: topic.slug,
+      topicIcon: topic.icon,
+      slug: lesson.slug,
+      title: lesson.title,
+      description: lesson.description,
+    }));
+  });
+
   return (
     <div className="max-w-4xl mx-auto px-6 py-10">
       <h1 className="text-4xl font-bold mb-2">Senior Dev 學習路線</h1>
-      <p className="text-lg text-gray-500 mb-10">
+      <p className="text-lg text-gray-500 mb-8">
         5 大主題，互動式學習，小學生也能懂
       </p>
+
+      <ContinueLearning />
+      <LessonSearch items={allSearchItems} />
 
       <div className="space-y-4">
         {topics.map((topic) => {

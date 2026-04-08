@@ -1,4 +1,5 @@
 const STORAGE_KEY = "learn-progress";
+const LAST_VIEWED_KEY = "learn-last-viewed";
 
 export function getProgress(): Record<string, boolean> {
   if (typeof window === "undefined") return {};
@@ -23,6 +24,21 @@ export function setLessonComplete(lessonId: string, complete: boolean) {
 
 export function isLessonComplete(lessonId: string): boolean {
   return getProgress()[lessonId] === true;
+}
+
+export function setLastViewed(topicSlug: string, lessonSlug: string, lessonTitle: string) {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(LAST_VIEWED_KEY, JSON.stringify({ topicSlug, lessonSlug, lessonTitle }));
+}
+
+export function getLastViewed(): { topicSlug: string; lessonSlug: string; lessonTitle: string } | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = localStorage.getItem(LAST_VIEWED_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
 }
 
 export function getTopicProgress(topicSlug: string, totalLessons: number): number {
