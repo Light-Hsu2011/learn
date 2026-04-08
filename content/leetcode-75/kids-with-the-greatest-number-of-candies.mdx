@@ -26,7 +26,7 @@ description: "找出陣列最大值後逐一比較每個孩子加上額外糖果
 
 ## 解題思路
 
-<StepDiagram data='[{"title":"找最大值","description":"掃一遍找出 candies 中的最大值 maxCandy","icon":"1"},{"title":"逐一比較","description":"對每個 candies[i]，判斷 candies[i] + extraCandies >= maxCandy","icon":"2"},{"title":"回傳結果","description":"收集所有布林值為結果陣列","icon":"3"}]' />
+<StepDiagram data='[{"title":"找最大值","description":"用一次 O(n) 掃描找出 candies 中的最大值 maxCandy，作為門檻","icon":"1"},{"title":"逐一比較","description":"第二次遍歷，對每個 candies[i] 計算 candies[i] + extraCandies，若 ≥ maxCandy 則為 true","icon":"2"},{"title":"回傳結果","description":"收集所有布林值組成結果陣列，長度與 candies 相同","icon":"3"}]' />
 
 ## 程式碼
 
@@ -64,18 +64,26 @@ def kidsWithCandies(candies: list[int], extraCandies: int) -> list[bool]:
 |--|------|-------|
 | 本解法 | O(n) | O(n) |
 
-找最大值 O(n) + 比較 O(n) = O(n)。輸出陣列 O(n)。
+找最大值需遍歷一次 O(n)，逐一比較再遍歷一次 O(n)，合計 O(2n) = O(n)。輸出陣列與輸入等長，空間 O(n)。
+
+## 邊界情況
+
+- **所有孩子糖果數相同**：例如 `[5,5,5]`, `extraCandies=0`，每個孩子加上 0 後仍等於最大值 5，全部為 true
+- **extraCandies = 0**：只有原本就是最大值的孩子才會是 true
+- **只有一個孩子**：該孩子一定是最多的，回傳 `[true]`
 
 ## 圖解
 
 <Diagram data='{"nodes":[{"id":"input","label":"candies: [2,3,5,1,3]","type":"default"},{"id":"max","label":"maxCandy = 5","type":"highlight"},{"id":"compare","label":"逐一比較 c+3 >= 5","type":"highlight"},{"id":"output","label":"[true,true,true,false,true]","type":"muted"}],"edges":[{"from":"input","to":"max","label":"掃描一遍"},{"from":"max","to":"compare","label":"以 5 為門檻"},{"from":"compare","to":"output","label":"產生結果"}]}' />
 
+圖表展示兩步驟流程：第一步掃描找到 maxCandy=5，第二步以 5 為門檻逐一判斷。例如 candies[0]=2+3=5 ≥ 5 為 true，candies[3]=1+3=4 不足 5 為 false。
+
 ## 進階觀點
 
 <Callout type="tip" title="面試追問">
-- **如果 extraCandies 可以分給不同孩子？** 那就變成分配問題，複雜度大幅提升。
-- **能否一次遍歷完成？** 可以，但需要先知道最大值，所以至少需要兩次遍歷（或先排序）。
-- **這題的本質？** 就是一個 threshold 判斷，核心在於認識到只需跟最大值比較。
+- **如果 extraCandies 可以分給不同孩子？** 那就變成 combinatorial optimization 問題，需要考慮所有分配方式。若要最大化滿足條件的孩子數，可以用 greedy：優先把糖果分給差距最小的孩子。
+- **能否一次遍歷完成？** 不行。必須先知道 maxCandy 才能判斷，而 maxCandy 要掃完整個陣列才知道，所以至少需要兩次遍歷。排序可以一次得到最大值但代價是 O(n log n)，不划算。
+- **這題的本質？** 就是一個 threshold 判斷。核心 insight 是：額外糖果只給一個孩子，所以只需跟全局最大值比較，不需考慮其他孩子的變化。
 </Callout>
 
 ## 理解測驗

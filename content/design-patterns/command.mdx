@@ -28,11 +28,13 @@ Command 屬於**行為型模式（Behavioral Pattern）**，重點在於將「�
 
 ## 什麼時候用？
 
-- 你需要 Undo/Redo 功能
-- 你想把操作放入佇列（Queue）延遲執行或批次處理
-- 你想記錄操作歷史（Audit Log）
-- 你需要支援交易（Transaction）——一組操作要嘛全做，要嘛全不做
-- UI 的按鈕和選單項目需要綁定可替換的操作
+用以下 if/then 條件判斷：
+
+- **如果**你需要 Undo/Redo 功能 → 用 Command，每個操作封裝為物件並記錄歷史
+- **如果**操作需要排隊、延遲執行或批次處理 → 用 Command 放入 Queue
+- **如果**你需要操作的完整稽核紀錄（Audit Log，指記錄誰在什麼時間做了什麼操作的日誌）→ 用 Command 序列化存檔
+- **如果**一組操作必須全部成功或全部回滾（Transaction 語意）→ 用 Command + Memento
+- **如果**操作很簡單且不需要撤銷或排隊 → 直接呼叫方法就好
 
 ## 什麼時候不該用？
 
@@ -43,6 +45,8 @@ Command 屬於**行為型模式（Behavioral Pattern）**，重點在於將「�
 ## 執行流程
 
 <StepDiagram data='[{"title":"定義 Command 介面","description":"宣告 Execute 和可選的 Undo 方法","icon":"1"},{"title":"實作具體 Command","description":"每個命令封裝接收者和操作參數","icon":"2"},{"title":"建立 Invoker","description":"持有命令參考，負責觸發執行","icon":"3"},{"title":"建立 Receiver","description":"實際執行業務邏輯的物件","icon":"4"},{"title":"Client 組裝","description":"建立命令、設定接收者、交給 Invoker","icon":"5"}]' />
+
+流程解讀：Command 的四個角色各司其職。Command 介面定義「做什麼」的合約（Execute/Undo）。ConcreteCommand 封裝了 Receiver（誰來做）和參數（用什麼資料做）。Invoker 不關心命令內容，只負責在正確時機觸發。Receiver 是真正執行業務邏輯的物件。這種分離讓「發出請求」和「執行請求」完全解耦。
 
 ## 程式碼範例
 
@@ -306,6 +310,8 @@ System.out.println(editor); // 「Hello」
 
 <Diagram data='{"nodes":[{"id":"client","label":"Client","type":"muted"},{"id":"invoker","label":"Invoker (CommandHistory)","type":"highlight"},{"id":"command","label":"Command Interface","type":"default"},{"id":"concrete","label":"ConcreteCommand (InsertText)","type":"default"},{"id":"receiver","label":"Receiver (TextEditor)","type":"default"}],"edges":[{"from":"client","to":"invoker","label":"triggers"},{"from":"invoker","to":"command","label":"executes"},{"from":"concrete","to":"command","label":"implements"},{"from":"concrete","to":"receiver","label":"calls"}]}' />
 
+結構解讀：Client 把 ConcreteCommand 交給 Invoker，Invoker 在適當時機呼叫 `Execute()`。ConcreteCommand 內部持有 Receiver 的參考，`Execute()` 實際上是呼叫 Receiver 的方法。Invoker 完全不知道 Receiver 的存在，只認識 Command Interface。這讓同一個 Invoker 可以執行任何類型的命令。
+
 ## 實戰補充
 
 <Callout type="tip" title="資深開發者經驗">
@@ -326,10 +332,29 @@ System.out.println(editor); // 「Hello」
 
 <Quiz data='{"question":"以下哪個場景最不適合用 Command Pattern？","options":["文字編輯器的 Undo/Redo","交易系統的操作記錄","簡單的 console.log 輸出","遊戲中的動作重播"],"answer":2,"explanation":"簡單的 console.log 不需要撤銷、排隊或記錄，用 Command Pattern 是過度設計。其他場景都需要把操作當作資料來處理。"}' />
 
+## 面試常見問題
+
+**Q: Command Pattern 的 Undo 和 Memento Pattern 的 Undo 有什麼差別？何時用哪個？**
+
+A: Command Undo 透過「反向操作」回復（如 Insert 的 Undo 是 Delete）。Memento Undo 透過「狀態快照」回復（恢復到之前保存的完整狀態）。選擇標準：如果每個操作都有明確的反向操作 → Command Undo 更省記憶體；如果操作複雜到難以定義反向操作 → Memento 更安全。實務中常搭配使用。
+
+**Q: CQRS 和 Command Pattern 是什麼關係？**
+
+A: CQRS（Command Query Responsibility Segregation）將「寫入操作（Command）」和「讀取操作（Query）」分開處理。Command Pattern 提供了封裝寫入操作的機制。在 .NET 中，MediatR 套件的 `IRequest` + `IRequestHandler` 就是 Command Pattern 在 CQRS 中的實踐。
+
+## 相關模式
+
+| 模式 | 關係 |
+|------|------|
+| **Memento** | 搭配使用 — Command 記錄「做了什麼」，Memento 記錄「之前的狀態」，兩者結合實現完整的 Undo 系統 |
+| **Composite** | Macro Command 就是 Composite + Command — 把多個 Command 組合成一個，一次執行或撤銷 |
+| **Strategy** | 都是把行為封裝成物件，但 Command 強調「請求的物件化」（可排隊、撤銷），Strategy 強調「演算法的替換」 |
+| **Chain of Responsibility** | 可搭配使用 — 命令沿著責任鏈傳遞，找到合適的處理者來執行 |
+
 ## 重點整理
 
 <Callout type="tip" title="一句話記住">
-**Command Pattern = 把「請求」變成「物件」，讓操作可以排隊、撤銷、記錄。**
+**Command Pattern = 點菜單：把請求寫在紙上，可以排隊、取消、重做。** 口訣：「請求變物件，排撤記三合一」
 </Callout>
 
 | 概念 | 說明 |

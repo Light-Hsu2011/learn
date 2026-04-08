@@ -30,7 +30,7 @@ description: "處理三種刪除情況：無子、單子、雙子節點"
 
 ## 解題思路
 
-<StepDiagram data='[{"title":"搜尋目標節點","description":"利用 BST 性質找到要刪除的節點","icon":"1"},{"title":"Case 1: 葉節點","description":"直接回傳 null","icon":"2"},{"title":"Case 2: 單子節點","description":"回傳唯一的子節點","icon":"3"},{"title":"Case 3: 雙子節點","description":"找右子樹最小值替換，再刪除那個最小節點","icon":"4"}]' />
+<StepDiagram data='[{"title":"搜尋目標節點","description":"key 小於 root.val 往左遞迴、大於往右遞迴，等於時進入刪除邏輯","icon":"1"},{"title":"Case 1: 葉節點","description":"左右子樹都為 null，直接回傳 null 讓父節點斷開連結","icon":"2"},{"title":"Case 2: 單子節點","description":"只有一邊子樹，回傳該子樹讓它直接頂替被刪節點的位置","icon":"3"},{"title":"Case 3: 雙子節點","description":"找右子樹最左節點（中序後繼），用其值覆蓋當前節點，再遞迴刪除那個後繼節點","icon":"4"}]' />
 
 ## 程式碼
 
@@ -122,18 +122,28 @@ def deleteNode(root: Optional[TreeNode], key: int) -> Optional[TreeNode]:
 |--|------|-------|
 | 本解法 | O(h) | O(h) |
 
-h 是樹高。平衡 BST 中 h = O(log n)。
+h 是樹高。平衡 BST 中 h = O(log n)。Time O(h) 是因為搜尋目標節點走 h 步，找後繼最多再走 h 步，刪後繼又走 h 步，總共 O(3h) = O(h)。Space O(h) 是遞迴 call stack 深度。
+
+## 邊界情況
+
+- **key 不在樹中**：遞迴到 null 回傳 null，整棵樹不變
+- **刪除根節點**：和刪除任何節點的邏輯相同，但回傳值會成為新的 root
+- **後繼是直接右子節點**：右子樹的最小值就是 root.right 本身（沒有左子），此時用 root.right.val 替換後刪除 root.right
 
 ## 圖解
 
 <Diagram data='{"nodes":[{"id":"n5","label":"5","type":"default"},{"id":"n3","label":"3 (刪除)","type":"muted"},{"id":"n6","label":"6","type":"default"},{"id":"n2","label":"2","type":"default"},{"id":"n4","label":"4 (後繼)","type":"highlight"},{"id":"n7","label":"7","type":"default"},{"id":"result","label":"5→[4,6]→[2,null,null,7]","type":"highlight"}],"edges":[{"from":"n5","to":"n3","label":"左"},{"from":"n5","to":"n6","label":"右"},{"from":"n3","to":"n2","label":"左"},{"from":"n3","to":"n4","label":"右"},{"from":"n6","to":"n7","label":"右"},{"from":"n4","to":"result","label":"替換 3"}]}' />
 
+圖表展示了刪除節點 3 的過程：節點 3 有左子 2 和右子 4（Case 3）。右子樹最小值是 4（中序後繼），用 4 的值覆蓋 3，再刪除原本的節點 4。最終 BST 性質不變。
+
 ## 進階觀點
 
 <Callout type="tip" title="面試追問">
-**中序後繼 vs 中序前驅**：也可以用左子樹的最大值（中序前驅）來替換，效果相同。面試中提到兩種方案會加分。
+**Q: 中序後繼和中序前驅有什麼差別？選哪個？**
+A: 中序後繼是右子樹最小值，中序前驅是左子樹最大值。兩者都能維持 BST 性質，效果相同。選擇任一即可，面試中提到兩種方案展示全面性。
 
-**為什麼用值替換而不是指針操作？** 值替換程式碼簡潔，但在某些場景（如節點有額外資料）不適用。面試可能要求用純指針操作。
+**Q: 值替換和純指針操作的取捨？**
+A: 值替換程式碼簡潔（5 行 vs 15+ 行），但假設節點只有一個值。如果節點有額外資料（如指向其他結構的引用），值替換會破壞外部引用。此時必須用純指針操作 — 把後繼節點「摘下來」放到被刪位置，調整左右子樹指針。
 
 **變體題**：LC 669 Trim a BST（刪除範圍外的節點）、LC 1038 BST to Greater Sum Tree。
 </Callout>

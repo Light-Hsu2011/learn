@@ -30,7 +30,7 @@ description: "用 DFS 或 BFS 檢查從房間 0 出發能否到達所有房間"
 
 ## 解題思路
 
-<StepDiagram data='[{"title":"從房間 0 開始","description":"標記房間 0 為已訪問","icon":"1"},{"title":"DFS/BFS 探索","description":"拿到鑰匙後，嘗試進入未訪問的房間","icon":"2"},{"title":"標記已訪問","description":"進入新房間就標記，避免重複","icon":"3"},{"title":"檢查結果","description":"已訪問的房間數 == 總房間數？","icon":"4"}]' />
+<StepDiagram data='[{"title":"從房間 0 開始","description":"將 0 加入 Stack 和 visited Set，作為 DFS 起點","icon":"1"},{"title":"DFS 探索","description":"pop 出一個房間，遍歷該房間的所有鑰匙，對未訪問的房間 push 到 Stack","icon":"2"},{"title":"標記已訪問","description":"用 HashSet.Add(key) 同時完成「是否新房間」的判斷和標記，一行搞定","icon":"3"},{"title":"檢查結果","description":"Stack 為空時 DFS 結束，比較 visited.Count 和 rooms.Count 是否相等","icon":"4"}]' />
 
 ## 程式碼
 
@@ -99,18 +99,31 @@ def canVisitAllRooms(rooms: list[list[int]]) -> bool:
 |--|------|-------|
 | 本解法 | O(n + e) | O(n) |
 
-n 是房間數，e 是鑰匙總數（邊數）。
+n 是房間數，e 是鑰匙總數（邊數）。Time O(n + e) 是因為每個房間最多入 Stack 一次、每把鑰匙最多被檢查一次。Space O(n) 是因為 visited Set 和 Stack 最多各存 n 個房間。
+
+## 邊界情況
+
+- **只有一個房間**：rooms = `[[]]`，起點就是唯一房間，visited.Count == 1 == rooms.Count，回傳 true
+- **房間 0 沒有鑰匙**：rooms = `[[], [0]]`，只能待在房間 0，無法到達房間 1，回傳 false
+- **存在環但有孤島**：如 rooms = `[[1], [0], []]`，0 和 1 互通但房間 2 無法到達，回傳 false
 
 ## 圖解
 
 <Diagram data='{"nodes":[{"id":"r0","label":"Room 0 [1]","type":"highlight"},{"id":"r1","label":"Room 1 [2]","type":"highlight"},{"id":"r2","label":"Room 2 [3]","type":"highlight"},{"id":"r3","label":"Room 3 []","type":"highlight"}],"edges":[{"from":"r0","to":"r1","label":"key 1"},{"from":"r1","to":"r2","label":"key 2"},{"from":"r2","to":"r3","label":"key 3"}]}' />
 
+圖表展示了 `[[1],[2],[3],[]]` 的完整可達路徑：從 Room 0 拿到 key 1 開 Room 1，再拿 key 2 開 Room 2，最後拿 key 3 開 Room 3。所有房間都標為 highlight 代表全部可達。
+
 ## 進階觀點
 
 <Callout type="tip" title="面試追問">
-**DFS vs BFS**：兩者都可以，複雜度相同。DFS 用 Stack（或遞迴），BFS 用 Queue。面試可能要求兩種都寫。
+**Q: DFS 和 BFS 在這題的差異？**
+A: 複雜度相同 O(n + e)。DFS 用 Stack 或遞迴，程式碼較短；BFS 用 Queue，遍歷順序不同但結果一樣。面試中選一種寫，口頭說明另一種即可。
 
-**本質上是有向圖的可達性**：rooms[i] 定義了從節點 i 出發的有向邊。問題等價於「從節點 0 出發是否能到達所有節點」。
+**Q: 這題的圖論本質是什麼？**
+A: 有向圖的可達性問題。`rooms[i]` 定義了從節點 i 出發的有向邊集合。問題等價於「從節點 0 出發，DFS/BFS 能否訪問到所有 n 個節點」。
+
+**Q: 如果要找出無法到達的房間列表怎麼做？**
+A: DFS 結束後遍歷 0 到 n-1，不在 visited Set 中的就是無法到達的房間。額外 O(n) 時間。
 
 **變體題**：LC 547 Number of Provinces（無向圖連通分量）、LC 1466 Reorder Routes（有向圖方向問題）。
 </Callout>

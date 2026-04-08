@@ -190,6 +190,18 @@ class OrderApplicationService:
 
 <Diagram data='{"nodes":[{"id":"controller","label":"Controller / Handler","type":"muted"},{"id":"appservice","label":"Application Service","type":"highlight"},{"id":"repo","label":"Repository","type":"default"},{"id":"aggregate","label":"Aggregate (Domain)","type":"default"},{"id":"event","label":"Domain Event Publisher","type":"default"},{"id":"db","label":"Database","type":"muted"}],"edges":[{"from":"controller","to":"appservice","label":"呼叫 Use Case"},{"from":"appservice","to":"repo","label":"載入 / 儲存"},{"from":"appservice","to":"aggregate","label":"呼叫業務方法"},{"from":"appservice","to":"event","label":"發布事件"},{"from":"repo","to":"db","label":"持久化"}]}' />
 
+此圖展示 Application Service 的「導演」角色：它接收 Controller 的請求，從 Repository 載入 Aggregate，呼叫 Aggregate 的業務方法，儲存結果，發布事件。注意 Application Service 不直接碰 Database，也不包含業務邏輯——它只做串接和協調。
+
+## Application Service vs Domain Service vs Infrastructure Service
+
+| 類型 | 職責 | 放在哪一層 | 範例 |
+|------|------|-----------|------|
+| **Application Service** | 協調用例流程：取出→操作→儲存→發事件 | Application 層 | `PlaceOrderHandler` |
+| **Domain Service** | 封裝跨 Aggregate 的業務規則，不屬於任何單一 Entity | Domain 層 | `TransferMoneyService`（從帳戶 A 轉到帳戶 B，涉及兩個 Aggregate） |
+| **Infrastructure Service** | 封裝基礎設施操作 | Infrastructure 層 | `SmtpEmailService`、`S3FileStorage` |
+
+判斷邏輯是否該在 Application Service 裡的方法：拿掉所有 if-else 後，Service 的方法是否還能正常運作？如果可以，那些 if-else 就是業務邏輯，搬到 Domain Model 或 Domain Service。
+
 ## 實戰補充
 
 <Callout type="info" title="資深開發者心得">
@@ -211,7 +223,7 @@ Application Service 協調用例流程，Domain Service 封裝跨 Aggregate 的�
 ## 重點整理
 
 <Callout type="tip" title="一句話記住">
-**Application Service = 導演，只喊 Action 不演戲——協調領域物件完成用例，但不包含業務邏輯。**
+**口訣：「取出、操作、儲存、發事件」—— Application Service 的四步萬能公式，多一步就是越權。**
 </Callout>
 
 | 概念 | 說明 |

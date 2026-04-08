@@ -39,10 +39,51 @@ description: "多管道通知的統一架構：Push、Email、SMS、In-App"
 - 去重：同一通知不重複發送
 - Rate Limiting：防止通知轟炸用戶
 
+## 多管道架構：工具選型與具體流程
+
+每種通知管道有不同的技術特性和成本結構，選擇對的工具直接影響系統的可靠性和費用：
+
+| 管道 | 推薦第三方服務 | 單則成本 | 送達延遲 | 適用場景 |
+|------|---------------|---------|---------|---------|
+| **Push Notification** | Firebase Cloud Messaging（FCM）/ Apple Push Notification Service（APNs） | 免費 | 100ms - 3s | 即時互動通知（留言回覆、按讚） |
+| **Email** | Amazon SES / SendGrid / Mailgun | $0.0001/封 | 1-30s | 行銷郵件、每日摘要、帳號驗證 |
+| **SMS** | Twilio / Amazon SNS | $0.01-0.05/則 | 1-10s | 二次驗證（2FA）、緊急通知 |
+| **In-App** | 自建（WebSocket / SSE） | 免費 | 50-200ms | 站內通知、未讀紅點 |
+
+### 各管道的具體發送流程
+
+**Push Notification 流程**：
+1. 用戶安裝 App 時，向 FCM/APNs 註冊取得 Device Token
+2. 後端儲存 `user_id → device_token[]` 的對應關係（一個用戶可能有多台裝置）
+3. 發送時，Worker 呼叫 FCM/APNs API，帶上 Device Token 和 Payload（標題、內容、動作 URL）
+4. FCM/APNs 回傳送達狀態。如果 Token 失效（用戶解除安裝），標記該 Token 為無效
+
+**Email 流程**：
+1. Template Service 根據模板 ID + 變數渲染出 HTML 郵件內容
+2. Email Worker 呼叫 SES/SendGrid API 發送，包含寄件人、收件人、主旨、HTML Body
+3. 透過 Webhook 接收 Bounce（退信）和 Complaint（投訴）事件，自動將該 Email 加入黑名單
+4. 維護 Suppression List（黑名單），避免繼續發信給退信或投訴的地址
+
+**SMS 流程**：
+1. SMS Worker 呼叫 Twilio API，帶上電話號碼和文字內容（限 160 字元）
+2. Twilio 回傳 Message SID，後續可查詢送達狀態
+3. 注意國際號碼格式（E.164 格式：`+886912345678`），錯誤格式會導致發送失敗
+
+**In-App 流程**：
+1. 用戶上線時建立 WebSocket 連線（或 SSE 長連線）
+2. 通知事件寫入 Redis Pub/Sub，由 WebSocket Server 推送給在線用戶
+3. 離線用戶的通知存入 DB，下次上線時拉取未讀通知列表
+
 ## 注意事項
 
 <Callout type="warning" title="實戰陷阱">
 **Rate Limiting 比你想的更重要。** 一個 Bug 觸發無限通知迴圈，可以在幾分鐘內發出數百萬封 Email，帳單金額驚人且用戶體驗崩壞。務必在多個層級設置限流：每用戶/每管道/每模板都要有上限。
+
+**具體限流數值參考**：
+- 每用戶每小時：Push ≤ 30 則、Email ≤ 5 封、SMS ≤ 3 則
+- 每模板每分鐘全局上限：10,000 則（防止模板 Bug 導致全量發送）
+- 每用戶每天所有管道總量：≤ 100 則
+- 超過限制的通知進入 Overflow Queue，等待人工審核或自動丟棄
 </Callout>
 
 ## 設計流程
@@ -136,11 +177,51 @@ async def send_with_retry(notification, max_retries=3):
 
 <Diagram data='{"nodes":[{"id":"api","label":"API Server","type":"highlight"},{"id":"router","label":"Notification Router","type":"default"},{"id":"dedup","label":"Dedup + Rate Limiter","type":"default"},{"id":"template","label":"Template Service","type":"default"},{"id":"queue","label":"Message Queue","type":"highlight"},{"id":"push","label":"Push Worker","type":"default"},{"id":"email","label":"Email Worker","type":"default"},{"id":"sms","label":"SMS Worker","type":"default"},{"id":"inapp","label":"In-App Worker","type":"default"},{"id":"analytics","label":"Analytics","type":"muted"},{"id":"prefs","label":"User Preferences DB","type":"muted"}],"edges":[{"from":"api","to":"router","label":"通知請求"},{"from":"router","to":"prefs","label":"查詢偏好"},{"from":"router","to":"dedup","label":"去重與限流"},{"from":"dedup","to":"template","label":"渲染模板"},{"from":"template","to":"queue","label":"按管道分發"},{"from":"queue","to":"push","label":"Push"},{"from":"queue","to":"email","label":"Email"},{"from":"queue","to":"sms","label":"SMS"},{"from":"queue","to":"inapp","label":"In-App"},{"from":"push","to":"analytics","label":"送達狀態"},{"from":"email","to":"analytics","label":"送達狀態"}]}' />
 
+上圖展示了通知系統的完整資料流。通知請求從 API Server 進入後，Notification Router 查詢用戶偏好決定發送管道，經過去重和限流檢查後，Template Service 渲染出各管道的最終內容，再按管道分別推入 Message Queue。每種管道有獨立的 Worker 消費隊列訊息並呼叫第三方服務發送，送達狀態回報到 Analytics 用於監控和優化。
+
 ## 延伸討論
 
 <Callout type="tip" title="進階優化">
-**通知聚合（Batching）**：與其每個事件發一封 Email，不如累積 5 分鐘的事件打包成一封摘要信。這大幅降低發送成本，也減少用戶的通知疲勞。實作方式是在 Queue 前加一個 Aggregation Buffer，根據用戶偏好的聚合時間窗口來合併通知。
+**通知聚合（Batching）**：與其每個事件發一封 Email，不如累積 5 分鐘的事件打包成一封摘要信。這大幅降低發送成本，也減少用戶的通知疲勞。
+
+**具體實作步驟**：
+1. 在 Queue 前加一個 Aggregation Buffer（用 Redis Sorted Set 實作，score 為時間戳）
+2. 通知進入 Buffer 時，根據 `user_id + channel + notification_type` 分組
+3. 一個定時 Worker 每 5 分鐘掃描 Buffer，將同組通知合併成一則摘要
+4. 合併規則範例：「小明和其他 12 人對你的貼文按讚」而非 13 則獨立通知
+5. 用戶可在偏好設定中調整聚合時間窗口（即時 / 5 分鐘 / 1 小時 / 每日摘要）
+
+**聚合的判斷標準**：
+- 同一用戶、同一管道、同類型通知在 5 分鐘內超過 3 則 → 觸發聚合
+- Critical 優先級通知永遠不聚合，立即發送
+- Email 管道的聚合窗口可以更長（1 小時），因為用戶對 Email 的即時性期望較低
 </Callout>
+
+### 面試常見問題與參考答案
+
+**Q1：如何確保通知不丟失（At-Least-Once Delivery）？**
+
+**A1**：三道防線確保不丟失：
+1. **Message Queue 持久化**：使用 Kafka 或 RabbitMQ 的持久化模式，訊息寫入磁碟後才回傳 ACK
+2. **Worker ACK 機制**：Worker 成功發送到第三方服務後才向 Queue 確認消費完成。如果 Worker 崩潰，訊息會重新投遞
+3. **Dead Letter Queue（DLQ）**：重試 3 次仍失敗的通知進入 DLQ，由監控系統告警，人工介入處理
+
+代價是可能重複發送（At-Least-Once 而非 Exactly-Once），所以需要搭配去重機制。
+
+**Q2：用戶偏好的資料模型怎麼設計？**
+
+**A2**：用一張 `notification_preferences` 表，每行記錄一個用戶對一種通知類型在一個管道上的設定：
+- `user_id` + `notification_type`（如 `comment_reply`）+ `channel`（如 `push`）→ `enabled`（開關）+ `quiet_hours_start/end`（免打擾時段）+ `aggregation_window`（聚合窗口）
+- 預設值：所有管道開啟、無免打擾時段、聚合窗口 5 分鐘
+- 查詢時用 Redis 快取（TTL 1 小時），避免每次通知都查 DB
+
+**Q3：如何監控通知系統的健康度？**
+
+**A3**：核心監控指標包含：
+- **送達率**：各管道的成功/失敗/bounce 比例，Email 送達率低於 95% 代表可能進了垃圾信
+- **端到端延遲**：P50 和 P99 的從觸發到送達時間，Critical 通知 P99 超過 3 秒要告警
+- **Queue 深度**：如果某管道的 Queue 持續增長，代表 Worker 消費速度跟不上
+- **DLQ 深度**：DLQ 有新增訊息代表有永久失敗的通知，需要人工處理
 
 ## 理解測驗
 
@@ -152,12 +233,18 @@ async def send_with_retry(notification, max_retries=3):
 
 ## 重點整理
 
+<Callout type="tip" title="一句話記住">
+**通知系統 = Router 決策管道 + Queue 解耦發送 + 去重限流保安全 + Retry+DLQ 保不丟。**
+
+記憶口訣：**「路由分管道，去重防轟炸，重試不放棄，死信留後路」**。
+</Callout>
+
 | 概念 | 說明 |
 |------|------|
-| **多管道發送** | Push、Email、SMS、In-App 各有 Worker，透過 Message Queue 解耦 |
-| **通知優先級** | Critical 即時發送，Low 可聚合批次處理 |
-| **去重機制** | 用 notification_key + 分散式快取避免重複發送 |
-| **Rate Limiting** | 每用戶/每管道/每模板分別設限，防止通知轟炸 |
-| **Retry 策略** | Exponential Backoff + Jitter，超過次數進 Dead Letter Queue |
-| **模板服務** | 統一管理通知內容，支援多語系與多管道格式 |
-| **用戶偏好** | 讓用戶控制接收管道、時段、頻率 |
+| **多管道發送** | Push（FCM/APNs）、Email（SES）、SMS（Twilio）、In-App（WebSocket），各有獨立 Worker |
+| **通知優先級** | Critical 即時發送不聚合，Low 可累積 5 分鐘後批次發送 |
+| **去重機制** | 用 `type + user_id + content_hash` 產生唯一 key，存入 Redis 設 24 小時 TTL |
+| **Rate Limiting** | 每用戶每小時 Push ≤ 30、Email ≤ 5、SMS ≤ 3，每模板每分鐘全局 ≤ 10,000 |
+| **Retry 策略** | Exponential Backoff + Jitter（`2^attempt + random(0,1)` 秒），3 次失敗進 DLQ |
+| **模板服務** | 統一管理通知內容，按管道渲染（Push 用短文、Email 用 HTML、SMS 限 160 字） |
+| **用戶偏好** | 控制管道開關、免打擾時段、聚合窗口，Redis 快取偏好設定避免頻繁查 DB |

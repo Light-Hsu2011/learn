@@ -27,12 +27,12 @@ Context Map 不是技術架構圖，而是**團隊協作關係圖**。每種映�
 
 ## 核心觀念
 
-- **Shared Kernel（共享核心）**：兩個 BC 共享一小部分模型，任何修改都需要雙方同意。適用於緊密合作的團隊
-- **Customer-Supplier（客戶-供應商）**：上游 BC 提供服務，下游 BC 消費服務。上游考慮下游的需求，但上游有最終決定權
-- **Conformist（跟隨者）**：下游 BC 完全採用上游的模型，不做任何轉換。適用於下游沒有議價能力的情況
-- **Anti-Corruption Layer（防腐層）**：下游 BC 在邊界建立轉換層，把上游的模型翻譯成自己的模型。保護自己不受上游變更影響
-- **Open Host Service（開放主機服務）**：上游提供公開的 API 和文件化的協議，讓多個下游 BC 整合
-- **Published Language（發布語言）**：用標準格式（如 JSON Schema、Protobuf）定義 BC 間交換的資料格式
+- **Shared Kernel（共享核心）**：兩個 BC 共享一小部分模型（如共用的 Value Object 或 Event），任何修改都需要雙方同意。適用於同一個團隊維護的緊密相關 BC。例如：Sales BC 和 Billing BC 共享 `Money` Value Object
+- **Customer-Supplier（客戶-供應商）**：上游 BC 提供服務，下游 BC 消費服務。上游在開發新功能時會考慮下游的需求，但最終決定權在上游。例如：商品目錄（上游）和搜尋服務（下游），搜尋服務依賴商品資料但無法要求商品團隊改 schema
+- **Conformist（跟隨者）**：下游 BC 完全採用上游的模型，不做任何轉換。適用於下游完全沒有議價能力的情況。例如：你的系統整合 Stripe 支付 API，你必須遵從 Stripe 定義的資料格式
+- **Anti-Corruption Layer（防腐層，ACL）**：下游 BC 在邊界建立轉換層，把上游的模型翻譯成自己的模型，保護自己不受上游變更影響。何時用：當上游的模型和你的 Domain Model 差異很大，或上游會頻繁變更 API 時。ACL 就是一個 Adapter
+- **Open Host Service（開放主機服務，OHS）**：上游提供公開的、版本化的 API（如 REST v1/v2）和文件化的協議，讓多個下游 BC 整合。何時用：當上游有多個不同的下游消費者時
+- **Published Language（發布語言）**：用標準格式（如 JSON Schema、Protobuf、AsyncAPI）定義 BC 間交換的資料格式。和 OHS 搭配使用，確保 API 契約明確且可驗證
 
 ## 常見誤區
 
@@ -207,6 +207,18 @@ class PaymentGatewayAdapter:
 
 <Diagram data='{"nodes":[{"id":"sales","label":"Sales BC","type":"highlight"},{"id":"shipping","label":"Shipping BC","type":"default"},{"id":"billing","label":"Billing BC","type":"default"},{"id":"payment","label":"第三方支付 (External)","type":"muted"},{"id":"inventory","label":"Inventory BC","type":"default"},{"id":"shared","label":"Shared Kernel (共用型別)","type":"muted"}],"edges":[{"from":"sales","to":"shipping","label":"Customer-Supplier"},{"from":"sales","to":"billing","label":"Customer-Supplier"},{"from":"billing","to":"payment","label":"ACL (Conformist)"},{"from":"sales","to":"inventory","label":"Domain Events"},{"from":"sales","to":"shared","label":"共享"},{"from":"shipping","to":"shared","label":"共享"}]}' />
 
+此圖展示一個典型電商系統的 Context Map：Sales BC 是核心，與 Shipping、Billing 是 Customer-Supplier 關係。Billing 整合第三方支付時用 ACL 保護自己。Sales 和 Inventory 透過 Domain Event 解耦。Sales 和 Shipping 共享少量型別（Shared Kernel）。每條連線的標籤代表一種映射模式。
+
+## 映射模式選擇決策表
+
+| 你和上游的關係 | 推薦模式 | 理由 |
+|---------------|---------|------|
+| 同一個團隊、緊密協作 | Shared Kernel | 溝通成本低，共享少量模型可以減少重複 |
+| 不同團隊、上游願意配合 | Customer-Supplier | 上游會考慮你的需求，但決定權在上游 |
+| 上游完全無法控制（第三方 API） | Conformist + ACL | 遵從對方格式，但用 ACL 保護自己的 Domain Model |
+| 你是平台，有很多消費者 | Open Host Service + Published Language | 提供標準化、版本化的 API |
+| 兩個 BC 完全獨立、無互動 | Separate Ways（各走各的） | 不需要任何映射 |
+
 ## 實戰補充
 
 <Callout type="tip" title="資深開發者筆記">
@@ -230,7 +242,7 @@ ACL 是必修課：只要你整合第三方系統（支付、物流、ERP），�
 ## 重點整理
 
 <Callout type="tip" title="一句話記住">
-**Context Mapping = BC 之間的外交關係圖，決定誰跟誰怎麼合作。**
+**口訣：「Context Map 是外交地圖——畫出誰聽誰的、誰保護自己、誰共享資源」。**
 </Callout>
 
 | 模式 | 說明 |

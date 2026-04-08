@@ -29,7 +29,7 @@ description: "經典 2D DP 比較兩個字串找出最長公共子序列長度"
 
 ## 解題思路
 
-<StepDiagram data='[{"title":"定義狀態","description":"dp[i][j] = text1[0..i-1] 和 text2[0..j-1] 的 LCS 長度","icon":"1"},{"title":"字元相同","description":"dp[i][j] = dp[i-1][j-1] + 1","icon":"2"},{"title":"字元不同","description":"dp[i][j] = max(dp[i-1][j], dp[i][j-1])","icon":"3"},{"title":"填表方向","description":"從左上到右下逐格填表","icon":"4"},{"title":"答案","description":"dp[m][n] 即為 LCS 長度","icon":"5"}]' />
+<StepDiagram data='[{"title":"定義狀態","description":"dp[i][j] = text1 前 i 個字元和 text2 前 j 個字元的 LCS 長度。dp[0][j] = dp[i][0] = 0（空字串的 LCS 為 0）","icon":"1"},{"title":"字元相同","description":"text1[i-1] == text2[j-1] 時，這對字元加入 LCS：dp[i][j] = dp[i-1][j-1] + 1。例如 text1=ace, text2=ace → dp[1][1] = dp[0][0]+1 = 1","icon":"2"},{"title":"字元不同","description":"text1[i-1] != text2[j-1] 時，這對字元無法同時使用：dp[i][j] = max(dp[i-1][j], dp[i][j-1])，取跳過 text1 或跳過 text2 的較大值","icon":"3"},{"title":"填表方向","description":"從左上到右下逐格填表，保證計算 dp[i][j] 時其依賴的三個格子都已填好","icon":"4"},{"title":"答案","description":"dp[m][n] 即為 text1 和 text2 的完整 LCS 長度","icon":"5"}]' />
 
 ## 程式碼
 
@@ -103,18 +103,30 @@ def longestCommonSubsequence(text1: str, text2: str) -> int:
 |--|------|-------|
 | 本解法 | O(m × n) | O(n)（空間優化後） |
 
+- **Time**：填一個 (m+1)×(n+1) 的表格，每格 O(1) 操作
+- **Space**：空間優化用一維陣列長度 n+1，加一個 prev 暫存變數
+
 ## 圖解
 
 <Diagram data='{"nodes":[{"id":"empty","label":"dp 表格 (m+1)×(n+1)","type":"default"},{"id":"match","label":"字元相同 → 左上+1","type":"highlight"},{"id":"differ","label":"字元不同 → max(上,左)","type":"muted"},{"id":"result","label":"dp[m][n] = LCS 長度","type":"highlight"}],"edges":[{"from":"empty","to":"match","label":"text1[i]==text2[j]"},{"from":"empty","to":"differ","label":"text1[i]!=text2[j]"},{"from":"match","to":"result","label":"填表"},{"from":"differ","to":"result","label":"填表"}]}' />
 
+圖表展示了 DP 的兩條轉移路徑：字元匹配走「左上角 +1」，不匹配走「上方或左方取 max」。
+每格只依賴左上、上方、左方三個值，所以可以用一維陣列加一個 prev 暫存變數來空間優化。
+
 ## 進階觀點
 
 <Callout type="tip" title="面試追問">
-- 如果要輸出實際的 LCS 字串（不只是長度），需要從 dp 表格反向追溯路徑。
-- **583. Delete Operation for Two Strings**：刪除操作數 = m + n - 2 × LCS。
-- **72. Edit Distance** 是 LCS 的延伸，增加了「替換」操作。
-- LCS 在 diff 工具、版本控制、DNA 序列比對中都有實際應用。
+- **如何輸出實際的 LCS 字串？** 保留完整的 2D dp 表格，從 dp[m][n] 開始反向追溯：字元相同時加入結果並走左上，不同時走上方或左方中值較大的。最後反轉字串得到 LCS。
+- **和 583. Delete Operation 的關係？** 兩個字串的最少刪除次數 = m + n - 2 × LCS。因為 LCS 是兩者共有的部分，其餘字元都要刪掉。
+- **和 72. Edit Distance 的關係？** Edit Distance 在 LCS 基礎上增加「替換」操作。LCS 只考慮保留和跳過，Edit Distance 多了一種「把 text1[i] 改成 text2[j]」的選項。
+- **實際應用？** diff 工具（比較兩個檔案的差異）、Git 版本控制（merge conflict 解析）、DNA 序列比對（Bioinformatics）都以 LCS 為核心演算法。
 </Callout>
+
+## 邊界情況
+
+- **其中一個字串為空**：LCS 長度為 0，dp 表格第一行和第一列全為 0
+- **兩個字串完全相同**：LCS 就是字串本身，長度等於字串長度
+- **兩個字串沒有任何公共字元**：LCS 長度為 0，dp 表格內部全為 0
 
 ## 理解測驗
 

@@ -210,6 +210,31 @@ print(order1 == order2)  # True
 
 <Diagram data='{"nodes":[{"id":"entity","label":"Entity（實體）","type":"highlight"},{"id":"identity","label":"Identity（唯一識別）","type":"default"},{"id":"lifecycle","label":"生命週期","type":"default"},{"id":"behavior","label":"業務行為","type":"default"},{"id":"vo","label":"Value Object（值物件）","type":"muted"},{"id":"aggregate","label":"Aggregate（聚合）","type":"muted"}],"edges":[{"from":"entity","to":"identity","label":"必須具備"},{"from":"entity","to":"lifecycle","label":"擁有"},{"from":"entity","to":"behavior","label":"封裝"},{"from":"entity","to":"vo","label":"包含（屬性）"},{"from":"aggregate","to":"entity","label":"由 Entity 組成"}]}' />
 
+此圖展示 Entity 的三大特徵（Identity、生命週期、業務行為）和它與其他 DDD 建構塊的關係。Entity 的屬性通常是 Value Object（如 Money、Email），而 Entity 本身又是組成 Aggregate 的核心元素。
+
+## Entity vs Value Object 決策樹
+
+問自己以下問題來判斷一個概念是 Entity 還是 Value Object：
+
+1. **這個東西需要被「追蹤」嗎？** 你需要說「就是那一個」而不是「任何一個都可以」嗎？
+   - 是 → 往 Entity 方向
+   - 否 → 往 Value Object 方向
+2. **兩個屬性完全相同的實例，是「同一個」嗎？**
+   - 不是（如兩個同名同齡的人是不同的人） → **Entity**
+   - 是（如兩張一百元是等值的） → **Value Object**
+3. **它的屬性會隨時間改變嗎？**
+   - 會（如訂單狀態從「建立」變「已付款」） → **Entity**
+   - 不會，要改就建新的 → **Value Object**
+
+常見範例對照：
+
+| Entity | Value Object |
+|--------|-------------|
+| User（使用者帳號） | Email（電子郵件地址） |
+| Order（訂單） | Money（金額） |
+| Product（商品） | Address（地址） |
+| BankAccount（銀行帳戶） | DateRange（日期區間） |
+
 ## 實戰補充
 
 <Callout type="tip" title="資深開發者筆記">
@@ -231,7 +256,7 @@ ID 的型別選擇：GUID 適合分散式系統（無需中央分配）；自增
 ## 重點整理
 
 <Callout type="tip" title="一句話記住">
-**Entity = 有身分證的物件，ID 不變就是同一個，而且它自己會做事（封裝業務邏輯）。**
+**口訣：「Entity 有身分證、有生命、會做事」—— 三個特徵缺一就不是 Entity。**
 </Callout>
 
 | 概念 | 說明 |

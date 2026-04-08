@@ -26,7 +26,7 @@ description: "用左右雙指針找到母音後交換位置"
 
 ## 解題思路
 
-<StepDiagram data='[{"title":"轉為陣列","description":"字串不可變，先轉為字元陣列","icon":"1"},{"title":"雙指針初始化","description":"left = 0, right = len-1","icon":"2"},{"title":"向內移動","description":"left 往右找母音，right 往左找母音","icon":"3"},{"title":"交換","description":"兩端都找到母音時交換，然後繼續","icon":"4"},{"title":"回傳","description":"陣列轉回字串","icon":"5"}]' />
+<StepDiagram data='[{"title":"轉為陣列","description":"字串不可變，呼叫 toCharArray/split 轉為可修改的字元陣列","icon":"1"},{"title":"雙指針初始化","description":"left = 0 指向最左端，right = len-1 指向最右端","icon":"2"},{"title":"向內移動","description":"left 跳過非母音字元往右走，right 跳過非母音字元往左走，直到各自停在母音上","icon":"3"},{"title":"交換","description":"left 和 right 都指向母音時，swap(arr[left], arr[right])，然後 left++ right--","icon":"4"},{"title":"回傳","description":"字元陣列用 join 或 new string 轉回字串","icon":"5"}]' />
 
 ## 程式碼
 
@@ -97,18 +97,26 @@ def reverseVowels(s: str) -> str:
 |--|------|-------|
 | 本解法 | O(n) | O(n) |
 
-雙指針各走一遍 O(n)，字元陣列 O(n)。
+left 和 right 合計最多走 n 步（每步至少移動一個指針），所以時間 O(n)。字元陣列複製整個字串，空間 O(n)。
+
+## 邊界情況
+
+- **沒有母音**：例如 `"bcdfg"`，雙指針找不到母音，直接交錯退出，字串不變
+- **全部是母音**：例如 `"aeiou"`，等同於完整反轉字串，結果 `"uoiea"`
+- **單一字元**：`"a"` 或 `"b"`，left 和 right 相等或交錯，直接回傳原字串
 
 ## 圖解
 
 <Diagram data='{"nodes":[{"id":"input","label":"h e l l o","type":"default"},{"id":"find","label":"left→e, right→o","type":"highlight"},{"id":"swap","label":"交換 e ↔ o","type":"highlight"},{"id":"result","label":"h o l l e","type":"muted"}],"edges":[{"from":"input","to":"find","label":"雙指針搜尋母音"},{"from":"find","to":"swap","label":"找到配對"},{"from":"swap","to":"result","label":"完成"}]}' />
 
+圖表展示 `"hello"` 的處理過程：left 跳過 h 停在 e（index 1），right 從 o 開始就是母音（index 4）。交換後得到 `"holle"`。此例只有一對母音需要交換，一輪就完成。
+
 ## 進階觀點
 
 <Callout type="tip" title="面試追問">
-- **為什麼用 HashSet 而不是 if 判斷？** 查找效率都是 O(1)，但 HashSet 程式碼更簡潔。
-- **如果要反轉子音呢？** 一樣的邏輯，只是判斷條件取反。
-- **跟「反轉字串」的關係？** 反轉字串是全部交換，這題是「有條件交換」的變體。
+- **為什麼用 HashSet 而不是 if 判斷？** 兩者查找都是 O(1)。HashSet 寫法更簡潔（`vowels.Contains(c)` vs 一串 `|| c == 'a' || c == 'e'...`），也更容易擴展（加新字元只需修改集合內容）。
+- **如果要反轉子音呢？** 完全一樣的雙指針邏輯，只要把 `vowels.Contains` 改成 `!vowels.Contains`，跳過母音、停在子音即可。
+- **跟「反轉字串」的關係？** 反轉字串是無條件交換所有字元，本題是「條件交換」的變體。雙指針框架相同，差別只在移動指針時是否跳過某些字元。
 </Callout>
 
 ## 理解測驗

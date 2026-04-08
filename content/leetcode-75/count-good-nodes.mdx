@@ -30,7 +30,7 @@ description: "DFS 遍歷時追蹤路徑上的最大值來判斷 good node"
 
 ## 解題思路
 
-<StepDiagram data='[{"title":"從根開始 DFS","description":"初始最大值為根節點的值","icon":"1"},{"title":"到達每個節點","description":"比較當前值和路徑最大值","icon":"2"},{"title":"判斷 Good Node","description":"當前值 >= 路徑最大值，計數 +1","icon":"3"},{"title":"更新最大值","description":"往子樹走時傳入 max(路徑最大值, 當前值)","icon":"4"},{"title":"匯總","description":"回傳左子樹 + 右子樹 + 自己的計數","icon":"5"}]' />
+<StepDiagram data='[{"title":"從根開始 DFS","description":"呼叫 dfs(root, root.val)，根節點永遠是 good node","icon":"1"},{"title":"到達每個節點","description":"比較 node.val 和 maxSoFar（從根到此的路徑最大值）","icon":"2"},{"title":"判斷 Good Node","description":"若 node.val ≥ maxSoFar，count 加 1；否則不計入","icon":"3"},{"title":"更新最大值","description":"計算 newMax = max(maxSoFar, node.val)，傳給左右子樹的遞迴呼叫","icon":"4"},{"title":"匯總","description":"回傳 count + dfs(left, newMax) + dfs(right, newMax) 累加所有子樹結果","icon":"5"}]' />
 
 ## 程式碼
 
@@ -94,18 +94,31 @@ def goodNodes(root: TreeNode) -> int:
 |--|------|-------|
 | 本解法 | O(n) | O(h) |
 
-h 是樹高，最壞 O(n)（skewed tree）。
+h 是樹高，最壞 O(n)（skewed tree）。Time O(n) 是因為每個節點恰好訪問一次、做一次比較和一次 max 運算。Space O(h) 是遞迴 call stack 深度，平衡樹 O(log n)，偏斜樹 O(n)。
+
+## 邊界情況
+
+- **只有根節點**：根永遠是 good node，回傳 1
+- **所有值遞減**：如 `[5,3,1]`，只有根是 good node，其他都比路徑最大值小
+- **所有值相同**：如 `[3,3,3,3]`，每個節點都 ≥ 路徑最大值，全部都是 good node
 
 ## 圖解
 
 <Diagram data='{"nodes":[{"id":"n3","label":"3 (max=3, good)","type":"highlight"},{"id":"n1","label":"1 (max=3, not good)","type":"muted"},{"id":"n4","label":"4 (max=4, good)","type":"highlight"},{"id":"n3b","label":"3 (max=3, good)","type":"highlight"},{"id":"n1b","label":"1 (max=4, not good)","type":"muted"},{"id":"n5","label":"5 (max=5, good)","type":"highlight"}],"edges":[{"from":"n3","to":"n1","label":"左"},{"from":"n3","to":"n4","label":"右"},{"from":"n1","to":"n3b","label":"左"},{"from":"n4","to":"n1b","label":"左"},{"from":"n4","to":"n5","label":"右"}]}' />
 
+圖表展示了每個節點的 maxSoFar 值和 good/not good 判定：根 3 是 good（無前驅）、左子 1 不是 good（1 小於 3）、右子 4 是 good（4 ≥ 3）、左下 3 是 good（3 ≥ 3）、5 是 good（5 ≥ 4）。共 4 個 good nodes。
+
 ## 進階觀點
 
 <Callout type="tip" title="面試追問">
-**為什麼根節點一定是 good node？** 因為根到自己的路徑上沒有其他節點，所以不存在比它大的值。
+**Q: 為什麼根節點一定是 good node？**
+A: good node 的定義是「路徑上沒有比自己大的節點」。根到自己的路徑只有自己，不存在更大的值，所以根永遠滿足條件。
 
-**Iterative DFS**：用 Stack 存 (node, maxSoFar) pair 也可以，面試可能要求非遞迴版本。
+**Q: 如何用 iterative DFS 解？**
+A: 用 Stack 存 `(node, maxSoFar)` tuple。每次 pop 出一個節點，判斷是否 good，然後把左右子節點連同更新後的 maxSoFar push 進 Stack。邏輯和遞迴完全對應。
+
+**Q: 時間能比 O(n) 更快嗎？**
+A: 不能。每個節點都必須被檢查才能判斷是否為 good node，所以下界就是 O(n)。
 
 **變體題**：LC 1026 Maximum Difference Between Node and Ancestor（路徑上的最大差值）。
 </Callout>

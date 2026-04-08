@@ -34,7 +34,7 @@ description: "用遞迴 DFS 計算二元樹的最大深度"
 
 ## 解題思路
 
-<StepDiagram data='[{"title":"Base Case","description":"節點為 null 時回傳 0","icon":"1"},{"title":"遞迴左子樹","description":"取得左子樹的最大深度","icon":"2"},{"title":"遞迴右子樹","description":"取得右子樹的最大深度","icon":"3"},{"title":"合併結果","description":"回傳 max(左, 右) + 1","icon":"4"}]' />
+<StepDiagram data='[{"title":"Base Case","description":"節點為 null 時回傳 0，代表空子樹深度為 0","icon":"1"},{"title":"遞迴左子樹","description":"呼叫 maxDepth(root.left) 取得左子樹的最大深度","icon":"2"},{"title":"遞迴右子樹","description":"呼叫 maxDepth(root.right) 取得右子樹的最大深度","icon":"3"},{"title":"合併結果","description":"取左右較大值再加 1（加上當前節點），回傳 max(left, right) + 1","icon":"4"}]' />
 
 ## 程式碼
 
@@ -79,20 +79,31 @@ def maxDepth(root: Optional[TreeNode]) -> int:
 |--|------|-------|
 | 本解法 | O(n) | O(h) |
 
-n 是節點數，h 是樹高（遞迴 call stack）。最壞情況（skewed tree）h = n。
+n 是節點數，h 是樹高（遞迴 call stack）。Time O(n) 是因為每個節點恰好被訪問一次、做常數操作。Space O(h) 是遞迴 call stack 的深度，平衡樹時 h = O(log n)，最壞（skewed tree，每個節點只有單邊子節點）h = n。
+
+## 邊界情況
+
+- **空樹**：root 為 null，直接回傳 0
+- **只有根節點**：左右都是 null，max(0, 0) + 1 = 1
+- **完全偏斜樹**：如 `1→2→3→4`（每個只有右子），深度等於節點數 4，call stack 也是 O(n)
 
 ## 圖解
 
 <Diagram data='{"nodes":[{"id":"n3","label":"3 → max(1,2)+1=3","type":"highlight"},{"id":"n9","label":"9 → max(0,0)+1=1","type":"default"},{"id":"n20","label":"20 → max(1,1)+1=2","type":"default"},{"id":"n15","label":"15 → 1","type":"muted"},{"id":"n7","label":"7 → 1","type":"muted"}],"edges":[{"from":"n3","to":"n9","label":"左"},{"from":"n3","to":"n20","label":"右"},{"from":"n20","to":"n15","label":"左"},{"from":"n20","to":"n7","label":"右"}]}' />
 
+圖表展示了從葉子向上匯總的過程：節點 15 和 7 深度為 1，節點 20 取 max(1,1)+1=2，節點 9 深度為 1，根節點 3 取 max(1,2)+1=3。
+
 ## 進階觀點
 
 <Callout type="tip" title="面試追問">
-**BFS 解法**：也可以用 BFS 逐層遍歷，層數就是深度。面試可能要求寫 iterative 版本。
+**Q: 如何用 BFS 解這題？**
+A: 用 Queue 逐層遍歷，每處理完一層 level++，最終 level 就是最大深度。BFS 的 Space 是 O(w)（w 為最大寬度），對平衡樹 w 可達 n/2。
 
-**DFS vs BFS 選擇**：求深度用 DFS 更自然（遞迴一行搞定），求層級相關資訊（如每層最大值）用 BFS 更直覺。
+**Q: 求最小深度（LC 111）和最大深度有什麼差異？**
+A: 最大深度直接取 max，但最小深度不能直接取 min — 如果某個節點只有一邊子樹，另一邊為 null（深度 0），不能取 0 作為最小深度。需要特判：只有一邊時取有子樹那邊的深度 + 1。
 
-**變體題**：LC 111 Minimum Depth（最小深度，注意邊界）、LC 110 Balanced Binary Tree（深度差不超過 1）。
+**Q: 有哪些常見變體題？**
+A: LC 111 Minimum Depth（最小深度，需特判單邊子樹）、LC 110 Balanced Binary Tree（每個節點左右子樹深度差不超過 1）。兩題都以 maxDepth 為基礎，稍作修改即可。
 </Callout>
 
 ## 理解測驗

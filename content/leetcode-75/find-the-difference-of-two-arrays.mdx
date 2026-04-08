@@ -28,7 +28,7 @@ description: "用 Set 差集找出兩個陣列各自獨有的元素"
 
 ## 解題思路
 
-<StepDiagram data='[{"title":"建 Set","description":"set1 = Set(nums1), set2 = Set(nums2)","icon":"1"},{"title":"差集 1","description":"找 set1 中不在 set2 的元素","icon":"2"},{"title":"差集 2","description":"找 set2 中不在 set1 的元素","icon":"3"},{"title":"回傳","description":"組成答案列表","icon":"4"}]' />
+<StepDiagram data='[{"title":"建 Set","description":"將兩個陣列分別轉成 HashSet，自動去除重複元素。例如 [1,2,3] → Set{1,2,3}","icon":"1"},{"title":"差集 1","description":"遍歷 set1 的每個元素，若不在 set2 中則加入結果。例如 1 不在 set2 → 收集","icon":"2"},{"title":"差集 2","description":"遍歷 set2 的每個元素，若不在 set1 中則加入結果。例如 4 不在 set1 → 收集","icon":"3"},{"title":"回傳","description":"將兩個差集結果組成二維列表回傳","icon":"4"}]' />
 
 ## 程式碼
 
@@ -74,18 +74,31 @@ def findDifference(nums1: list[int], nums2: list[int]) -> list[list[int]]:
 |--|------|-------|
 | 本解法 | O(n + m) | O(n + m) |
 
-建 Set 和遍歷各 O(n) 和 O(m)。
+建 Set 分別遍歷兩個陣列 O(n) 和 O(m)，差集遍歷 Set 各 O(n) 和 O(m)，每次查找 O(1)，因此總時間 O(n+m)。空間上兩個 Set 各存不重複元素，最壞 O(n+m)。
+
+## 邊界情況
+
+- **兩個陣列完全相同**：例如 nums1 = nums2 = `[1,2,3]`，差集都是空集，回傳 `[[], []]`
+- **兩個陣列完全不重疊**：例如 nums1 = `[1,2]`, nums2 = `[3,4]`，回傳 `[[1,2], [3,4]]`
+- **陣列有大量重複**：例如 nums1 = `[1,1,1]`, nums2 = `[1,1,1]`，Set 去重後都是 `{1}`，差集為空
 
 ## 圖解
 
 <Diagram data='{"nodes":[{"id":"n1","label":"nums1: {1,2,3}","type":"default"},{"id":"n2","label":"nums2: {2,4,6}","type":"default"},{"id":"diff1","label":"set1 - set2 = {1,3}","type":"highlight"},{"id":"diff2","label":"set2 - set1 = {4,6}","type":"highlight"},{"id":"result","label":"[[1,3],[4,6]]","type":"muted"}],"edges":[{"from":"n1","to":"diff1","label":"不在 set2 的"},{"from":"n2","to":"diff2","label":"不在 set1 的"},{"from":"diff1","to":"result","label":""},{"from":"diff2","to":"result","label":""}]}' />
 
+圖表展示差集運算：set1 和 set2 的交集是 `{2}`，set1 去掉交集剩 `{1,3}`，set2 去掉交集剩 `{4,6}`。兩個差集分別成為答案的兩個子列表。
+
 ## 進階觀點
 
 <Callout type="tip" title="面試追問">
-- **為什麼用 Set 而不是排序？** Set 查找 O(1)，總時間 O(n+m)。排序需要 O(n log n + m log m)。
-- **Python 的 set 差集運算子 `-` 做了什麼？** 等同於 `set1.difference(set2)`，回傳在 set1 但不在 set2 的元素。
-- **如果要保留重複元素（不去重）？** 那就不能用 Set 做差集，要用 Counter 或逐一檢查。
+- **Q: 為什麼用 Set 而不是排序？**
+  A: Set 的 contains 查找是 O(1)，差集遍歷一次即可，總時間 O(n+m)。排序法需要 O(n log n + m log m) 排序後再用雙指針合併，時間和程式碼複雜度都更高。
+
+- **Q: Python 的 set 差集運算子 `-` 做了什麼？**
+  A: `set1 - set2` 等同於 `set1.difference(set2)`，回傳一個新 Set，包含在 set1 中但不在 set2 中的所有元素。內部實作是遍歷 set1，逐一檢查是否在 set2 中。
+
+- **Q: 如果要保留重複元素（不去重）怎麼辦？**
+  A: 不能用 Set 做差集。改用 Counter（多重集合）：統計每個元素的出現次數，然後用 Counter 的減法運算。例如 Python 的 `Counter(nums1) - Counter(nums2)` 會保留差異次數。
 </Callout>
 
 ## 理解測驗

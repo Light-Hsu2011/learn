@@ -24,11 +24,11 @@ Red-Green-Refactor 不只是一個技巧，它是 TDD 的**基本節奏**。所�
 
 ## 核心觀念
 
-- **Red（紅燈）**：先寫一個會失敗的測試，明確定義你想要的行為
-- **Green（綠燈）**：用最少的程式碼讓測試通過，不多不少
-- **Refactor（重構）**：在測試保護下改善程式碼品質，消除重複和壞味道
-- **Baby Steps**：每次循環只處理一個小增量，降低風險
-- **測試即規格**：測試不只是驗證工具，它是你的活文件（Living Documentation）
+- **Red（紅燈）**：先寫一個會失敗的測試，明確定義你想要的行為。這個測試必須因為「功能尚未實作」而失敗，不是因為語法錯誤或編譯失敗。如果測試一開始就是綠燈，代表測試寫得不對或功能已經存在
+- **Green（綠燈）**：用最少的程式碼讓測試通過，不多不少。「最少」的意思是：可以回傳硬編碼值（hard-coded value），可以只處理當前測試案例，不要提前泛化
+- **Refactor（重構）**：在測試保護下改善程式碼品質，消除重複和壞味道。重構（Refactoring）是指「在不改變外部行為的前提下改善程式碼的內部結構」，典型操作包含 Extract Method、Rename Variable、Remove Duplication
+- **Baby Steps**：每次循環只處理一個小增量，降低風險。一個 Baby Step 的大小標準：你有信心在 5 分鐘內完成 Red-Green-Refactor 的完整循環。如果超過 10 分鐘還沒綠燈，代表步子太大了
+- **測試即規格**：測試不只是驗證工具，它是你的活文件（Living Documentation）。Living Documentation 是指隨程式碼一起更新、永遠反映系統當前行為的文件，測試就是最好的例子
 
 ## 常見誤區
 
@@ -42,6 +42,16 @@ Red-Green-Refactor 不只是一個技巧，它是 TDD 的**基本節奏**。所�
 ## 流程
 
 <StepDiagram data='[{"title":"Red — 寫失敗測試","description":"撰寫一個描述預期行為的測試，執行後確認它失敗（紅燈）","icon":"1"},{"title":"Green — 讓測試通過","description":"用最簡單、最少的程式碼讓測試通過（綠燈）","icon":"2"},{"title":"Refactor — 重構","description":"在所有測試通過的保護下，改善程式碼結構與可讀性","icon":"3"},{"title":"重複循環","description":"回到 Red 階段，為下一個小功能寫新測試","icon":"4"}]' />
+
+上圖展示了 TDD 的核心節奏：每一輪循環只處理一個小增量。Red 階段定義目標、Green 階段最小實現、Refactor 階段改善品質，然後進入下一輪。這個循環通常在 2-10 分鐘內完成一次。
+
+## 測試框架選擇
+
+| 語言 | 推薦框架 | 選擇理由 |
+|------|----------|----------|
+| **C#** | xUnit | .NET 社群主流，與 ASP.NET Core 深度整合。NUnit 也是成熟選擇，差異在：xUnit 每個測試方法建一個新實例（天然隔離），NUnit 共用實例（需手動管理狀態） |
+| **TypeScript** | Vitest | Vite 生態首選，原生支援 ESM、TypeScript 零配置。Jest 仍是最大社群，但配置 TypeScript 較繁瑣。選擇標準：用 Vite 建構就選 Vitest，用 Webpack/CRA 就選 Jest |
+| **Python** | pytest | 語法簡潔（用 `assert` 而非 `self.assertEqual`），plugin 生態豐富。unittest 是標準庫但較冗長 |
 
 ## 程式碼範例
 
@@ -147,13 +157,26 @@ class StringCalculator:
 
 <Diagram data='{"nodes":[{"id":"red","label":"Red (寫失敗測試)","type":"highlight"},{"id":"green","label":"Green (讓測試通過)","type":"highlight"},{"id":"refactor","label":"Refactor (重構)","type":"highlight"},{"id":"baby","label":"Baby Steps","type":"muted"},{"id":"living","label":"Living Documentation","type":"muted"}],"edges":[{"from":"red","to":"green","label":"寫最少程式碼"},{"from":"green","to":"refactor","label":"改善結構"},{"from":"refactor","to":"red","label":"下一個測試"},{"from":"baby","to":"red","label":"每次只加一點"},{"from":"living","to":"red","label":"測試即規格"}]}' />
 
+此圖呈現 Red-Green-Refactor 的循環關係：三個核心階段形成一個永不停止的迴圈，而 Baby Steps 和 Living Documentation 是支撐這個循環的兩大原則。注意箭頭方向：永遠是 Red → Green → Refactor → Red，不要跳過任何一步。
+
 ## 實戰補充
 
 <Callout type="tip" title="資深開發者的經驗">
-- **Green 階段可以「作弊」**：回傳硬編碼值讓測試通過是完全合法的。Kent Beck 稱之為「Fake It Till You Make It」，後續測試會逼你寫出真正的邏輯。
-- **Refactor 階段是重點**：新手常把重心放在 Red-Green，但真正的程式碼品質來自 Refactor。每次綠燈後花 30 秒想想：有沒有重複？命名清楚嗎？
-- **用 Git 搭配 TDD**：每次循環完成（綠燈 + 重構完）就 commit 一次，這樣隨時可以回到上一個穩定狀態。
+- **Green 階段可以「作弊」**：回傳硬編碼值讓測試通過是完全合法的。Kent Beck 稱之為「Fake It Till You Make It」，後續測試會逼你寫出真正的邏輯
+- **Refactor 階段是重點**：新手常把重心放在 Red-Green，但真正的程式碼品質來自 Refactor。每次綠燈後花 30 秒問三個問題：(1) 有沒有重複的程式碼？(2) 變數和方法的命名清楚嗎？(3) 有沒有 Magic Number 可以抽成常數？
+- **用 Git 搭配 TDD**：每次循環完成（綠燈 + 重構完）就 commit 一次，這樣隨時可以回到上一個穩定狀態。具體做法：`git add -A && git commit -m "green: add X functionality"`
+- **常見的循環時間**：經驗法則是每個 Red-Green-Refactor 循環控制在 2-10 分鐘。如果超過 15 分鐘還沒綠燈，用 `git stash` 回到上一個穩定點，然後拆成更小的步驟重來
 </Callout>
+
+### 面試常見問題
+
+**Q：TDD 會不會讓開發速度變慢？**
+
+A：短期會慢 15-30%（因為要先寫測試），但中長期會加快，因為：(1) Bug 在寫入時就被發現，不需要事後 Debug；(2) 重構有安全網，改程式碼更有信心；(3) 測試就是文件，新人上手更快。研究數據（Microsoft、IBM 的案例）顯示，TDD 專案的 Bug 密度降低 40-90%，整體交付時間相近或更短。
+
+**Q：什麼情況下不適合用 TDD？**
+
+A：(1) 探索性原型（Spike）——你還不知道 API 長什麼樣，先寫 spike 探索，確定方向後再用 TDD 重寫；(2) 純 UI 排版——視覺呈現難以用斷言驗證，改用 Visual Regression Testing；(3) 一次性腳本——只跑一次的資料遷移腳本，測試的 ROI 太低。
 
 ## 理解測驗
 
@@ -166,7 +189,7 @@ class StringCalculator:
 ## 重點整理
 
 <Callout type="tip" title="一句話記住">
-**Red-Green-Refactor = 先定義目標（紅燈）、再最小實現（綠燈）、最後改善品質（重構），不斷循環。**
+**口訣：「紅問綠答白整理」—— 紅燈問問題、綠燈給答案、重構做整理，循環不停止。**
 </Callout>
 
 | 概念 | 說明 |

@@ -44,6 +44,12 @@ Amazon DynamoDB、Apache Cassandra、Redis Cluster 都是分散式 Key-Value Sto
 
 ### Consistent Hashing 與資料分區
 
+**Consistent Hashing 圖解說明**：想像一個圓環（0 到 2^32），每個節點（Node A/B/C）被 Hash 到環上的某個位置。每個 Key 也被 Hash 到環上，然後順時針走，遇到的第一個節點就是它的「歸屬節點」。
+
+為什麼比 `hash % N` 好？假設有 3 個節點，現在加入第 4 個。`hash % 3` 變成 `hash % 4`，幾乎所有 Key 的歸屬都會改變，需要大量資料搬移。但在 Consistent Hashing 中，新節點只「接管」它逆時針方向到前一個節點之間的 Key，只有約 1/4 的資料需要搬移。
+
+**Virtual Node（虛擬節點）**：如果只有 3 個節點直接放到環上，資料分佈可能很不均勻（某個節點分到的區間特別大）。解法是每個物理節點映射 100-200 個虛擬節點到環上，讓分佈更均勻。虛擬節點越多分佈越均勻，但查找表的記憶體開銷也越大。
+
 ```python
 # 每個 Key 被分配到 Hash 環上順時針方向的第一個節點
 # 資料複製到順時針方向的 N 個不同節點
@@ -129,14 +135,30 @@ function isConflict(vc1: VectorClock, vc2: VectorClock): boolean {
 
 <Diagram data='{"nodes":[{"id":"client","label":"Client","type":"muted"},{"id":"coord","label":"Coordinator Node","type":"highlight"},{"id":"n1","label":"Node A (Primary)","type":"default"},{"id":"n2","label":"Node B (Replica)","type":"default"},{"id":"n3","label":"Node C (Replica)","type":"default"},{"id":"gossip","label":"Gossip Protocol","type":"muted"}],"edges":[{"from":"client","to":"coord","label":"put/get"},{"from":"coord","to":"n1","label":"write (W=2)"},{"from":"coord","to":"n2","label":"write (W=2)"},{"from":"coord","to":"n3","label":"async replica"},{"from":"n1","to":"n2","label":"anti-entropy sync"},{"from":"n2","to":"n3","label":"anti-entropy sync"},{"from":"gossip","to":"n1","label":"heartbeat"},{"from":"gossip","to":"n2","label":"heartbeat"},{"from":"gossip","to":"n3","label":"heartbeat"}]}' />
 
+**架構圖解讀**：Client 將 put/get 請求發送到 Coordinator Node（任何節點都可以當 Coordinator）。Coordinator 根據 Consistent Hashing 找到負責的 3 個節點（N=3），寫入時等待至少 W=2 個節點確認，第 3 個節點非同步複製。節點之間透過 anti-entropy sync（Merkle Tree 比對）修復資料不一致。Gossip Protocol 讓每個節點定期交換心跳，偵測哪些節點存活、哪些掛了。
+
 ## 實戰補充
 
 <Callout type="tip" title="Quorum 參數的選擇">
-- **W=1, R=1**：最快但最不一致（Eventual Consistency），適合日誌、計數器
-- **W=N, R=1**：寫慢讀快且一致，適合讀遠多於寫的場景
-- **W=1, R=N**：寫快讀慢且一致，適合寫遠多於讀的場景
-- **W=⌈(N+1)/2⌉, R=⌈(N+1)/2⌉**：平衡的 Strong Consistency
-- 核心公式：**W + R > N** 保證讀取至少命中一個最新副本
+核心公式：**W + R > N** 保證讀取至少命中一個最新副本（因為寫入的節點集合和讀取的節點集合一定有交集）。
+
+| 配置 | W | R | 特性 | 適合場景 |
+|------|---|---|------|---------|
+| 最快最不一致 | 1 | 1 | Eventual Consistency | 日誌、瀏覽計數器 |
+| 讀快寫慢 | N | 1 | Strong，寫入等所有副本 | 讀遠多於寫（如設定資料） |
+| 寫快讀慢 | 1 | N | Strong，讀取查所有副本 | 寫遠多於讀（如感測器資料） |
+| 平衡 | 2 | 2 | Strong（N=3 時） | 通用場景（最常見） |
+
+**面試常見問題與參考答案**：
+
+**Q：Hinted Handoff 是什麼？**
+A：Node A 負責某個 Key 但掛了，Coordinator 把資料暫時寫到 Node D（Hint：「這筆資料其實是 A 的」）。A 恢復後，D 把暫存的資料交還給 A。好處是寫入不會因為單節點故障而失敗。
+
+**Q：Merkle Tree 怎麼用在反熵修復？**
+A：每個節點對自己負責的 Key 建一棵 Merkle Tree（Hash 樹）。兩個副本節點交換 Tree 的根 Hash — 如果相同，資料完全一致；如果不同，逐層往下比對找出不一致的 Key，只同步那些 Key。比逐筆比對高效得多。
+
+**Q：為什麼不用 Raft/Paxos 而用 Gossip？**
+A：Raft/Paxos 是 Consensus Protocol，保證 Strong Consistency 但需要 Leader 選舉，適合 CP 系統（如 etcd）。Gossip 是去中心化的，沒有 Leader，最終一致，適合 AP 系統（如 Cassandra/DynamoDB）。本設計選 AP 所以用 Gossip。
 </Callout>
 
 ## 理解測驗
@@ -150,7 +172,7 @@ function isConflict(vc1: VectorClock, vc2: VectorClock): boolean {
 ## 重點整理
 
 <Callout type="tip" title="一句話記住">
-**分散式 KV Store = Consistent Hashing 分區 + Quorum 控制一致性 + Vector Clock 解衝突 + Gossip 偵測故障。**
+**Hash 環分資料、Quorum 控一致、Vector Clock 解衝突、Gossip 偵故障。** 記憶口訣：「環控鐘探」— 四個機制各管一件事，缺一不可。
 </Callout>
 
 | 概念 | 說明 |

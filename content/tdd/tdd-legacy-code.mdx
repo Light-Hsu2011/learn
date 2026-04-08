@@ -24,12 +24,12 @@ Legacy Code 不等於「老程式碼」。一個月前寫的、沒有測試的�
 
 ## 核心觀念
 
-- **Characterization Test（特徵測試）**：記錄現有行為的測試，不管行為對不對，先記下來
-- **Seam（接縫）**：程式碼中可以插入測試的地方，不需要修改原始程式碼
-- **Sprout Method**：在既有方法旁邊長出新方法，新方法有完整測試
-- **Sprout Class**：把新功能放到新類別中，新類別有完整測試
-- **Wrap Method**：用新方法包住舊方法，在前後加上新行為（有測試保護）
-- **依賴打破技術（Dependency-Breaking Techniques）**：解開糾纏的依賴，讓程式碼可測試
+- **Characterization Test（特徵測試）**：記錄現有行為的測試，不管行為對不對，先記下來。寫法：呼叫方法、觀察實際回傳值、把回傳值寫成 Assert。目的不是驗證正確性，而是「如果行為改變了，測試會告訴你」
+- **Seam（接縫）**：程式碼中可以插入測試替身而不需要修改原始程式碼的地方。三種常見 Seam：(1) Object Seam——透過建構子注入替換依賴；(2) Preprocessing Seam——用條件編譯或環境變數切換行為；(3) Link Seam——在連結階段替換實作（較少用）
+- **Sprout Method**：在既有方法旁邊長出新方法，新方法有完整 TDD 測試。使用時機：你需要在現有方法中加入新行為，但現有方法太複雜無法直接測試
+- **Sprout Class**：把新功能放到新類別中，新類別有完整測試。使用時機：新功能的依賴和現有類別差異太大，Sprout Method 無法乾淨地插入
+- **Wrap Method**：用新方法包住舊方法，在前後加上新行為（有測試保護）。使用時機：你需要在現有方法的前後加入邏輯（如 logging、驗證），但不想碰舊方法的內部
+- **依賴打破技術（Dependency-Breaking Techniques）**：Michael Feathers 定義了 25+ 種技術來解開糾纏的依賴。最常用的三種：(1) Extract Interface——為具體類別抽出介面；(2) Parameterize Constructor——把 `new` 出來的依賴改成建構子參數；(3) Introduce Static Setter——為靜態依賴加入測試用的 setter（最後手段）
 
 ## 常見誤區
 
@@ -193,6 +193,17 @@ def test_generate_with_summary_includes_summary():
 
 <Diagram data='{"nodes":[{"id":"legacy","label":"Legacy Code (無測試)","type":"highlight"},{"id":"char","label":"Characterization Test","type":"default"},{"id":"seam","label":"Seam (接縫)","type":"default"},{"id":"sprout","label":"Sprout Method/Class","type":"default"},{"id":"wrap","label":"Wrap Method","type":"default"},{"id":"safe","label":"安全重構","type":"highlight"},{"id":"tdd","label":"TDD 新功能","type":"highlight"}],"edges":[{"from":"legacy","to":"seam","label":"找到切入點"},{"from":"seam","to":"char","label":"記錄現有行為"},{"from":"char","to":"safe","label":"有測試保護"},{"from":"safe","to":"sprout","label":"新功能長在旁邊"},{"from":"safe","to":"wrap","label":"包住舊方法"},{"from":"sprout","to":"tdd","label":"用 TDD 開發"},{"from":"wrap","to":"tdd","label":"用 TDD 開發"}]}' />
 
+此圖展示 Legacy Code 改造的完整路徑：先找到 Seam（接縫），再用 Characterization Test 保護現有行為，有了安全網才能重構。新功能透過 Sprout 或 Wrap 技術加入，全程用 TDD 開發。關鍵：順序不能亂——沒有 Characterization Test 就動手重構是最危險的。
+
+## Sprout vs Wrap 的選擇
+
+| 情境 | 選 Sprout | 選 Wrap |
+|------|-----------|---------|
+| 加入全新的業務邏輯 | 是 | 否 |
+| 在方法前後加 logging、驗證 | 否 | 是 |
+| 新功能和舊方法的依賴完全不同 | 是（用 Sprout Class） | 否 |
+| 需要改變舊方法的回傳值格式 | 否 | 是 |
+
 ## 實戰補充
 
 <Callout type="tip" title="資深開發者的經驗">
@@ -214,7 +225,7 @@ def test_generate_with_summary_includes_summary():
 ## 重點整理
 
 <Callout type="tip" title="一句話記住">
-**Legacy Code = 沒測試的程式碼。先搭鷹架（Characterization Test），再安全翻修。**
+**口訣：「沒有測試就是 Legacy，先搭鷹架再動刀，小步前進不蠻幹」。**
 </Callout>
 
 | 技術 | 說明 |

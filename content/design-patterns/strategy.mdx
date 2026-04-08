@@ -28,19 +28,34 @@ Strategy 屬於**行為型模式（Behavioral Pattern）**，重點在於物件�
 
 ## 什麼時候用？
 
-- 你有好幾種做同一件事的方法（例如不同的排序、不同的付款方式）
-- 你想在執行時動態切換行為
-- 你想避免 if-else 或 switch 越來越長
+用以下 if/then 條件判斷：
+
+- **如果**同一個操作有 3 種以上的實作方式，且未來還會增加 → 用 Strategy
+- **如果**你發現 if-else 或 switch 超過 3 個分支，且每個分支的邏輯超過 5 行 → 用 Strategy 重構
+- **如果**你需要在執行時根據使用者選擇、設定檔或環境動態切換演算法 → 用 Strategy
+- **如果**不同的演算法共享相同的輸入輸出格式，只是內部邏輯不同 → 用 Strategy
+
+### 常見應用場景
+
+| 場景 | 策略介面 | 具體策略範例 |
+|------|---------|-------------|
+| 電商付款 | `IPaymentStrategy` | 信用卡、Line Pay、銀行轉帳、貨到付款 |
+| 資料排序 | `ISortStrategy` | 快速排序、合併排序、堆積排序 |
+| 訊息通知 | `INotificationStrategy` | Email、SMS、Push Notification |
+| 文件壓縮 | `ICompressionStrategy` | ZIP、GZIP、LZ4 |
+| 定價折扣 | `IDiscountStrategy` | 會員折扣、滿額折扣、限時特價 |
 
 ## 什麼時候不該用？
 
 <Callout type="warning" title="過度設計警告">
-如果只有一兩種行為，用 if-else 就夠清楚了。Strategy Pattern 會多出介面和類別，只有在行為**真的會擴增**時才值得用。
+如果行為種類 ≤ 2 且不太可能增加，用 if-else 就夠清楚了。Strategy Pattern 會多出介面和類別，只有在行為**真的會擴增**時才值得用。具體判斷標準：行為種類固定為 1-2 種、每個分支邏輯不超過 3 行、未來一年內不會新增 → 不需要 Strategy。
 </Callout>
 
 ## 執行流程
 
 <StepDiagram data='[{"title":"定義策略介面","description":"宣告所有策略共用的方法簽名","icon":"1"},{"title":"實作具體策略","description":"每種演算法各自實作介面","icon":"2"},{"title":"建立 Context","description":"持有策略的參考，委派工作給策略","icon":"3"},{"title":"注入策略","description":"在執行時傳入或切換具體策略","icon":"4"},{"title":"執行","description":"Context 呼叫策略方法，不需要知道具體實作","icon":"5"}]' />
+
+流程解讀：Strategy 的套用從定義共用介面開始，這個介面規定了所有策略必須遵守的「合約」（方法簽名）。接著為每種演算法建立獨立的類別，各自實作介面。Context 是使用策略的主體，它只認識介面而不認識具體策略，因此可以在執行時透過建構子注入或 setter 方法切換策略，達到「開放封閉原則（Open-Closed Principle，指對擴展開放、對修改封閉）」的效果。
 
 ## 程式碼範例
 
@@ -236,6 +251,8 @@ System.out.println(hero.performAttack()); // 發射火球！
 
 <Diagram data='{"nodes":[{"id":"client","label":"Client","type":"muted"},{"id":"context","label":"Context (GameCharacter)","type":"highlight"},{"id":"strategy","label":"Strategy Interface","type":"default"},{"id":"concrete","label":"ConcreteStrategy (Sword/Bow/Magic)","type":"default"}],"edges":[{"from":"client","to":"context","label":"uses"},{"from":"context","to":"strategy","label":"delegates to"},{"from":"strategy","to":"concrete","label":"implements"}]}' />
 
+圖中 Client 透過 Context 來使用策略。Context（如 GameCharacter）持有 Strategy Interface 的參考，透過「委派（delegates to）」將實際工作交給策略物件。ConcreteStrategy（如 SwordAttack、BowAttack）各自實作介面，Client 完全不需要知道目前使用哪個具體策略。這種結構讓新增策略時只需新增一個類別，不需修改 Context 或 Client。
+
 ## 理解測驗
 
 <Quiz data='{"question":"Strategy Pattern 的核心目的是什麼？","options":["讓程式跑得更快","讓演算法可以在執行時互換，而不需要修改使用它的程式碼","減少程式碼行數","讓所有類別都繼承同一個父類別"],"answer":1,"explanation":"Strategy Pattern 的重點是把可互換的演算法封裝起來，讓 Context 可以在執行時切換策略。"}' />
@@ -244,10 +261,33 @@ System.out.println(hero.performAttack()); // 發射火球！
 
 <Quiz data='{"question":"以下哪個場景最適合用 Strategy Pattern？","options":["一個永遠不會變的計算公式","電商系統支援多種付款方式（信用卡、Line Pay、銀行轉帳），且未來會持續新增","印出 Hello World","讀取一個固定格式的設定檔"],"answer":1,"explanation":"多種付款方式且會持續擴增，正是 Strategy Pattern 的經典應用場景。"}' />
 
+## 面試常見問題
+
+**Q: Strategy Pattern 和 if-else 有什麼本質區別？何時該重構？**
+
+A: if-else 把所有邏輯集中在一個方法裡，每新增一種行為就要修改這個方法，違反開放封閉原則。Strategy 把每種行為封裝在獨立類別中，新增行為只需新增類別。重構的判斷標準：當 if-else 分支超過 3 個、每個分支邏輯超過 5 行、且未來確定會繼續增加分支時，就該重構為 Strategy。
+
+**Q: Strategy Pattern 和 Template Method Pattern 都能實現「可替換的行為」，怎麼選？**
+
+A: 關鍵差異在於「組合 vs 繼承」。Strategy 用組合（持有介面參考），可以在執行時動態切換策略；Template Method 用繼承（子類別覆寫方法），切換行為需要切換整個物件。選擇標準：如果行為需要在執行時動態切換 → Strategy；如果流程骨架固定、只有個別步驟需要自訂 → Template Method。
+
+**Q: 在 DI 容器中如何管理多個 Strategy？**
+
+A: 在 .NET 中可以用 `IEnumerable<IStrategy>` 注入所有策略，再用一個 Resolver 或 Factory 根據條件選擇。例如註冊 `services.AddScoped<IPaymentStrategy, CreditCardPayment>()` 等多個實作，再用 `IPaymentStrategyResolver` 根據使用者選擇回傳對應策略。
+
+## 相關模式
+
+| 模式 | 關係 |
+|------|------|
+| **State** | 結構幾乎相同（都是 Context + 介面 + 具體實作），但意圖不同：Strategy 的策略之間互不相識，由 Client 選擇；State 的狀態知道彼此，會自動轉換 |
+| **Template Method** | 都能實現可替換的行為，但 Strategy 用組合、Template Method 用繼承。口訣：「執行時換用 Strategy，編譯時換用 Template Method」 |
+| **Factory Method** | 常搭配使用 — 用 Factory 根據條件建立對應的 Strategy 實例 |
+| **Command** | Command 封裝的是「請求」（可排隊、撤銷），Strategy 封裝的是「演算法」（可替換）。兩者都是把行為物件化，但目的不同 |
+
 ## 重點整理
 
 <Callout type="tip" title="一句話記住">
-**Strategy Pattern = 把「怎麼做」這件事抽成介面，讓你可以隨時換不同的做法。**
+**Strategy Pattern = 把「怎麼做」抽成介面，讓演算法像零件一樣即插即用。** 口訣：「行為抽介面，切換不改碼」
 </Callout>
 
 | 概念 | 說明 |

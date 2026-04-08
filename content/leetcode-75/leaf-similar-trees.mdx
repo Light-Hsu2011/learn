@@ -27,7 +27,7 @@ description: "用 DFS 收集兩棵樹的葉節點序列並比較是否相同"
 
 ## 解題思路
 
-<StepDiagram data='[{"title":"DFS 收集葉子","description":"對每棵樹做 DFS，遇到葉節點就加入列表","icon":"1"},{"title":"辨識葉節點","description":"左右子節點都為 null 的就是葉節點","icon":"2"},{"title":"比較兩個序列","description":"兩個葉子序列完全相同就回傳 true","icon":"3"}]' />
+<StepDiagram data='[{"title":"DFS 收集葉子","description":"對 root1 和 root2 各做一次 DFS，遇到葉節點就將 node.val 加入對應的列表","icon":"1"},{"title":"辨識葉節點","description":"判斷條件為 node.left == null 且 node.right == null，兩邊都沒有子節點","icon":"2"},{"title":"比較兩個序列","description":"逐元素比較兩個葉子列表，長度和每個位置的值都相同才回傳 true","icon":"3"}]' />
 
 ## 程式碼
 
@@ -103,18 +103,28 @@ def leafSimilar(root1: Optional[TreeNode], root2: Optional[TreeNode]) -> bool:
 |--|------|-------|
 | 本解法 | O(n1 + n2) | O(n1 + n2) |
 
-n1, n2 分別是兩棵樹的節點數。
+n1, n2 分別是兩棵樹的節點數。Time O(n1 + n2) 是因為兩棵樹各遍歷一次、每個節點做常數操作。Space O(n1 + n2) 是因為兩個葉子列表最多各存 n/2 個葉節點（完全二元樹），加上遞迴 call stack 深度 O(h)。
+
+## 邊界情況
+
+- **兩棵都只有根節點**：根節點本身就是葉子，比較兩個根的值即可
+- **一棵樹的葉子較多**：列表長度不同直接回傳 false，不需逐元素比較
+- **值相同但順序不同**：如一棵葉子序列 `[1,2]` 另一棵 `[2,1]`，回傳 false（順序必須一致）
 
 ## 圖解
 
 <Diagram data='{"nodes":[{"id":"tree1","label":"Tree 1","type":"muted"},{"id":"tree2","label":"Tree 2","type":"muted"},{"id":"l1","label":"葉子: [6,7,4,9,8]","type":"highlight"},{"id":"l2","label":"葉子: [6,7,4,9,8]","type":"highlight"},{"id":"result","label":"相同 → true","type":"highlight"}],"edges":[{"from":"tree1","to":"l1","label":"DFS"},{"from":"tree2","to":"l2","label":"DFS"},{"from":"l1","to":"result","label":"比較"},{"from":"l2","to":"result","label":"比較"}]}' />
 
+圖表展示了兩棵結構不同的樹，各自用 DFS 從左到右收集葉子。兩棵樹的葉子序列都是 `[6,7,4,9,8]`，逐元素比對完全相同，所以回傳 true。
+
 ## 進階觀點
 
 <Callout type="tip" title="面試追問">
-**Generator 優化**：Python 可以用 yield 做 lazy evaluation，不用一次收集所有葉子，遇到不同就提早結束。面試加分寫法。
+**Q: 如何用 Generator 優化空間？**
+A: Python 用 `yield` 讓 DFS 每找到一個葉子就暫停回傳，不需要一次收集所有葉子。同時遍歷兩個 generator，逐個比較葉子值，遇到不同立即回傳 false。空間從 O(n) 降到 O(h)（只需維護 call stack）。
 
-**空間優化**：用 iterative DFS（Stack）加 generator，可以做到 O(h) 空間（h 是樹高）。
+**Q: iterative DFS 如何實作？**
+A: 用顯式 Stack 取代遞迴。每次 pop 一個節點，如果是葉子就回傳值；否則先 push 右子再 push 左子（確保左子先被處理，維持從左到右的順序）。
 
 **變體題**：LC 100 Same Tree（結構和值都相同）、LC 101 Symmetric Tree（鏡像對稱）。
 </Callout>

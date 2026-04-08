@@ -26,7 +26,7 @@ description: "用 Counter 統計頻率後用 Set 檢查頻率是否唯一"
 
 ## 解題思路
 
-<StepDiagram data='[{"title":"計數","description":"用 HashMap/Counter 統計每個元素的出現次數","icon":"1"},{"title":"去重","description":"將所有頻率值放入 Set","icon":"2"},{"title":"比較","description":"若 Set 大小 == HashMap 大小，代表頻率都唯一","icon":"3"}]' />
+<StepDiagram data='[{"title":"計數","description":"遍歷陣列，用 HashMap 統計每個元素的出現次數。例如 [1,2,2,1,1,3] → {1:3, 2:2, 3:1}","icon":"1"},{"title":"去重","description":"取出 HashMap 的所有 values（頻率值），放入 HashSet 自動去重。例如 values [3,2,1] → Set {3,2,1}","icon":"2"},{"title":"比較","description":"比較 Set.size 和 HashMap.size：若相等代表每個頻率值都不同（沒有被 Set 去掉），回傳 true","icon":"3"}]' />
 
 ## 程式碼
 
@@ -70,18 +70,31 @@ def uniqueOccurrences(arr: list[int]) -> bool:
 |--|------|-------|
 | 本解法 | O(n) | O(n) |
 
-計數 O(n)，建 Set O(k)，k 為不同元素數量。
+計數遍歷陣列一次 O(n)，建 Set 遍歷 k 個頻率值 O(k)，k 為不同元素數量且 k ≤ n，因此整體為 O(n)。空間上 HashMap 存 k 個鍵值對、Set 存 k 個值，皆為 O(n)。
+
+## 邊界情況
+
+- **只有一個元素**：例如 `[5]`，頻率為 1 種、值為 1 次，Set 大小 1 == HashMap 大小 1，回傳 true
+- **所有元素相同**：例如 `[3,3,3]`，只有一種頻率 3，回傳 true
+- **陣列含負數**：例如 `[-1,-1,2,2]`，-1 和 2 都出現 2 次，頻率重複，回傳 false
 
 ## 圖解
 
 <Diagram data='{"nodes":[{"id":"input","label":"arr: [1,2,2,1,1,3]","type":"default"},{"id":"count","label":"freq: {1:3, 2:2, 3:1}","type":"highlight"},{"id":"set","label":"Set: {3, 2, 1}","type":"highlight"},{"id":"compare","label":"3 values == 3 unique → true","type":"muted"}],"edges":[{"from":"input","to":"count","label":"Counter"},{"from":"count","to":"set","label":"頻率去重"},{"from":"set","to":"compare","label":"比較大小"}]}' />
 
+圖表展示三步流程：先用 Counter 統計出 3 種不同的頻率值（3, 2, 1），再放入 Set 去重後仍為 3 個元素。HashMap 大小 3 等於 Set 大小 3，確認頻率無重複。
+
 ## 進階觀點
 
 <Callout type="tip" title="面試追問">
-- **不用 Set 怎麼做？** 把頻率排序後逐對比較相鄰元素。時間 O(k log k)。
-- **如果要找出哪些頻率重複了？** 在建 Set 時記錄重複的頻率值。
-- **這題的本質？** 就是「判斷一組數值是否有重複」，只是這組數值是原始陣列的頻率統計。
+- **Q: 不用 Set 怎麼做？**
+  A: 把頻率排序後逐對比較相鄰元素，若有相等則回傳 false。時間 O(k log k)，k 為不同元素數量。
+
+- **Q: 如果要找出哪些頻率重複了？**
+  A: 在建 Set 時，每次 add 前檢查是否已存在。若已存在，將該頻率值加入「重複集合」。遍歷完後重複集合即為答案。
+
+- **Q: 這題的本質是什麼？**
+  A: 就是「判斷一組數值是否有重複」，只是這組數值是原始陣列的頻率統計。本質上是兩層問題：第一層統計頻率，第二層檢查頻率的唯一性。
 </Callout>
 
 ## 理解測驗

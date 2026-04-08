@@ -38,6 +38,8 @@ Builder 屬於**建立型模式（Creational Pattern）**，重點在於將複�
 
 <StepDiagram data='[{"title":"定義產品","description":"決定最終要建立的複雜物件結構","icon":"1"},{"title":"定義 Builder 介面","description":"宣告每個建構步驟的方法","icon":"2"},{"title":"實作具體 Builder","description":"實作每個步驟，內部累積狀態","icon":"3"},{"title":"鏈式呼叫","description":"依需求呼叫各步驟方法（Fluent API）","icon":"4"},{"title":"Build","description":"呼叫 Build() 取得最終產品","icon":"5"}]' />
 
+流程解讀：Builder 把「一次性的複雜建構」拆成「多步驟的漸進配置」。每個 setter 方法只設定一個面向，回傳 `this` 支援 Fluent API（流暢介面，指每個方法回傳自身以支援鏈式呼叫）。Builder 內部累積所有設定，直到 `Build()` 被呼叫時才一次性組裝最終產品。這確保了產品在建立完成前不會處於不完整狀態。
+
 ## 程式碼範例
 
 ### C# 版本
@@ -298,6 +300,8 @@ System.out.println(request);
 
 <Diagram data='{"nodes":[{"id":"client","label":"Client","type":"muted"},{"id":"builder","label":"HttpRequestBuilder","type":"highlight"},{"id":"product","label":"HttpRequest (Product)","type":"default"},{"id":"director","label":"Director (optional)","type":"muted"}],"edges":[{"from":"client","to":"builder","label":"configures step by step"},{"from":"builder","to":"product","label":"build()"},{"from":"director","to":"builder","label":"orchestrates steps"}]}' />
 
+結構解讀：Client 透過 Builder 的 Fluent API 逐步配置（`SetUrl().SetMethod().AddHeader()`），最後呼叫 `Build()` 取得完成品。Director 是可選角色（GoF 原版有，現代實務常省略），負責預定義常用的建構步驟組合。Builder 內部累積狀態，`Build()` 時一次組裝成最終的 Product，確保 Product 建立後的一致性。
+
 ## 實戰補充
 
 <Callout type="tip" title="資深開發者經驗">
@@ -318,10 +322,29 @@ System.out.println(request);
 
 <Quiz data='{"question":"以下哪個場景最適合用 Builder Pattern？","options":["建立一個只有 id 和 name 的簡單物件","建立 HTTP Request，有 URL、方法、多個 Header、Body、Timeout 等多個可選參數","從資料庫讀取一筆資料","把數字加起來"],"answer":1,"explanation":"HTTP Request 有大量可選參數，用 Builder 可以清楚表達每個參數的意圖，避免冗長的建構子。"}' />
 
+## 面試常見問題
+
+**Q: Builder Pattern 和 Telescoping Constructor（伸縮建構子）有什麼差別？**
+
+A: Telescoping Constructor 指為了處理可選參數，建立多個建構子多載（2 參數、3 參數、4 參數...），參數一多就難以維護且容易搞混順序。Builder 用具名方法逐步設定，每個方法名稱就是參數的語意，不會搞混。判斷標準：建構子參數超過 4 個且有可選參數 → 用 Builder。
+
+**Q: Builder 和 Factory 有什麼差別？**
+
+A: Factory 關注「建立哪種物件」（選擇具體類別），Builder 關注「怎麼建構這個物件」（逐步配置複雜的參數）。Factory 回傳的物件通常一步到位，Builder 需要多步配置後才 `Build()`。
+
+## 相關模式
+
+| 模式 | 關係 |
+|------|------|
+| **Abstract Factory** | 都是建立型模式，但 Abstract Factory 一步建立（選類別），Builder 多步配置（填參數） |
+| **Prototype** | 都能建立複雜物件，但 Prototype 透過複製既有物件，Builder 透過步驟化建構 |
+| **Composite** | Builder 常用來建構複雜的 Composite 結構，因為手動組裝樹狀結構容易出錯 |
+| **Fluent Interface** | Builder 最常用的實作風格，每個方法回傳 `this` 支援鏈式呼叫 |
+
 ## 重點整理
 
 <Callout type="tip" title="一句話記住">
-**Builder Pattern = 一步步配置，最後一次組裝出複雜物件。**
+**Builder Pattern = 點餐流程：一步步選配，最後結帳取餐。** 口訣：「參數多用 Builder，鏈式呼叫最清楚」
 </Callout>
 
 | 概念 | 說明 |

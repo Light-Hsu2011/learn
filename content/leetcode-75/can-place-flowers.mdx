@@ -26,7 +26,7 @@ description: "用貪心法逐格檢查左右鄰居是否為空來決定能否種
 
 ## 解題思路
 
-<StepDiagram data='[{"title":"遍歷花圃","description":"從左到右掃描每個位置","icon":"1"},{"title":"檢查條件","description":"當前位置為 0，且左右鄰居也為 0（或邊界）","icon":"2"},{"title":"貪心種花","description":"滿足條件就種下（設為 1），計數器 +1","icon":"3"},{"title":"提前結束","description":"計數器 >= n 時直接回傳 true","icon":"4"}]' />
+<StepDiagram data='[{"title":"遍歷花圃","description":"用 for 迴圈從 i=0 到 flowerbed.length-1 逐一檢查每個位置","icon":"1"},{"title":"檢查條件","description":"flowerbed[i]==0，且 i==0 或 flowerbed[i-1]==0（左邊安全），且 i==末端 或 flowerbed[i+1]==0（右邊安全）","icon":"2"},{"title":"貪心種花","description":"三個條件都滿足時，將 flowerbed[i] 設為 1（標記已種），count++","icon":"3"},{"title":"提前結束","description":"count ≥ n 時立即回傳 true，避免多餘遍歷","icon":"4"}]' />
 
 ## 程式碼
 
@@ -95,18 +95,27 @@ def canPlaceFlowers(flowerbed: list[int], n: int) -> bool:
 |--|------|-------|
 | 本解法 | O(n) | O(1) |
 
-只需一次遍歷，原地修改不需額外空間。
+只需一次遍歷（最多 n 步），每步做常數次判斷，因此時間 O(n)。原地修改 flowerbed 陣列不需額外空間，空間 O(1)。
+
+## 邊界情況
+
+- **n = 0**：不需要種任何花，直接回傳 true
+- **全為 0 的陣列**：例如 `[0,0,0,0,0]` 可種 `(length+1)/2` 朵，即 3 朵（位置 0, 2, 4）
+- **長度為 1**：`[0]` 可種 1 朵，`[1]` 可種 0 朵
+- **全為 1 的陣列**：無法再種任何花，n 必須為 0 才回傳 true
 
 ## 圖解
 
 <Diagram data='{"nodes":[{"id":"input","label":"[1,0,0,0,1]","type":"default"},{"id":"check","label":"檢查位置 2: 左=0 右=0","type":"highlight"},{"id":"plant","label":"種花 → [1,0,1,0,1]","type":"highlight"},{"id":"result","label":"count=1 >= n=1 → true","type":"muted"}],"edges":[{"from":"input","to":"check","label":"掃描到 i=2"},{"from":"check","to":"plant","label":"條件滿足"},{"from":"plant","to":"result","label":"判斷結果"}]}' />
 
+圖表展示關鍵步驟：在 `[1,0,0,0,1]` 中，位置 1 的左鄰為 1 不可種，位置 2 的左右鄰居都是 0 可以種。種下後陣列變為 `[1,0,1,0,1]`，count 達到 n=1，提前回傳 true。
+
 ## 進階觀點
 
 <Callout type="tip" title="面試追問">
-- **為什麼貪心是正確的？** 越早種花不會影響後面能種的最大數量，因為種在左邊只會「佔掉」它右邊一格，而不種反而浪費機會。
-- **能否不修改原陣列？** 可以，用一個變數記錄上一個種花的位置即可。
-- **邊界情況？** 全 0 陣列、長度 1 的陣列、n = 0（直接 true）。
+- **為什麼貪心是正確的？** 假設在某個可種位置 i 不種，改在 i+2 種。那 i+2 能種的前提是 i 到 i+2 之間都是 0，但此時 i 本身也滿足條件。跳過 i 不會增加總數（最多相等），所以貪心不會錯過最優解。
+- **能否不修改原陣列？** 可以。用一個變數 `prevPlanted` 記錄上一次種花的位置，檢查 `i - prevPlanted > 1` 取代 `flowerbed[i-1] == 0` 的判斷。這樣不需修改輸入。
+- **flowerbed = `[0]`, n = 1 會不會出錯？** 不會。i=0 時 leftEmpty 和 rightEmpty 都因邊界條件為 true，可以種花，count=1 ≥ n=1 回傳 true。
 </Callout>
 
 ## 理解測驗

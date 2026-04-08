@@ -227,6 +227,19 @@ total = price1.add(Money(50, "TWD"))  # Money(150, "TWD")
 
 <Diagram data='{"nodes":[{"id":"vo","label":"Value Object","type":"highlight"},{"id":"immutable","label":"不可變性","type":"default"},{"id":"equality","label":"值相等","type":"default"},{"id":"validation","label":"自我驗證","type":"default"},{"id":"entity","label":"Entity","type":"muted"},{"id":"primitive","label":"原始型別 (string, int)","type":"muted"}],"edges":[{"from":"vo","to":"immutable","label":"必須具備"},{"from":"vo","to":"equality","label":"比較方式"},{"from":"vo","to":"validation","label":"建構時驗證"},{"from":"entity","to":"vo","label":"包含"},{"from":"vo","to":"primitive","label":"取代"}]}' />
 
+此圖展示 Value Object 的三大核心特性和它在架構中的定位：不可變性確保安全共享、值相等決定比較邏輯、自我驗證在建構時就擋住非法值。Value Object 取代原始型別（Primitive Obsession），被 Entity 作為屬性包含。
+
+## 何時用 Value Object，何時不用
+
+| 場景 | 用 Value Object | 說明 |
+|------|----------------|------|
+| 金額計算 | 是 | `Money` 包含 amount + currency，防止不同幣別相加 |
+| 電子郵件 | 是 | `Email` 在建構時驗證格式，不合法直接拋例外 |
+| 地址 | 是 | `Address` 由街道+城市+郵遞區號組成，值相同就是同一個地址 |
+| 日期區間 | 是 | `DateRange` 包含起始和結束日期，可以驗證結束不早於起始 |
+| 只有一個 `string` 且無驗證規則 | 考慮不用 | 如果只是包裝 `string` 且沒有額外邏輯，過度包裝反而增加複雜度 |
+| 資料庫 ID | 通常不用 | 除非你需要強型別 ID（如 `OrderId` vs `CustomerId` 防止混用） |
+
 ## 實戰補充
 
 <Callout type="tip" title="資深開發者筆記">
@@ -248,7 +261,7 @@ EF Core 存儲 Value Object 的方式：使用 `OwnsOne` 或 `ComplexProperty` �
 ## 重點整理
 
 <Callout type="tip" title="一句話記住">
-**Value Object = 沒有身分證的物件，值一樣就相等，建了就不能改。**
+**口訣：「沒身分證、不能改、值一樣就算同一個」—— Value Object 三大鐵律。**
 </Callout>
 
 | 概念 | 說明 |

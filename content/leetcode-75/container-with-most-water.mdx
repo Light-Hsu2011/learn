@@ -26,7 +26,7 @@ description: "用左右指針從兩端夾逼，每次移動較矮的那邊來尋
 
 ## 解題思路
 
-<StepDiagram data='[{"title":"雙指針初始化","description":"left = 0, right = n-1，從最寬開始","icon":"1"},{"title":"計算面積","description":"area = min(height[left], height[right]) × (right - left)","icon":"2"},{"title":"更新最大值","description":"maxArea = max(maxArea, area)","icon":"3"},{"title":"移動較矮邊","description":"height[left] < height[right] 時 left++，否則 right--","icon":"4"},{"title":"重複","description":"直到 left >= right","icon":"5"}]' />
+<StepDiagram data='[{"title":"雙指針初始化","description":"left = 0, right = n-1，從最寬的配對開始，保證不遺漏最大寬度","icon":"1"},{"title":"計算面積","description":"area = min(height[left], height[right]) × (right - left)，面積由較矮邊和寬度共同決定","icon":"2"},{"title":"更新最大值","description":"maxArea = max(maxArea, area)，記錄全局最佳","icon":"3"},{"title":"移動較矮邊","description":"height[left] < height[right] 時 left++，否則 right--。因為移動較高邊不可能增加面積","icon":"4"},{"title":"重複","description":"直到 left ≥ right，所有有希望的配對都已檢查","icon":"5"}]' />
 
 ## 程式碼
 
@@ -87,18 +87,31 @@ def maxArea(height: list[int]) -> int:
 |--|------|-------|
 | 本解法 | O(n) | O(1) |
 
-雙指針各走一遍，總共 O(n)。
+left 和 right 每步至少移動一個，合計最多走 n-1 步，因此 O(n)。只用幾個變數，空間 O(1)。
+
+## 邊界情況
+
+- **只有兩條線**：只有一種配對，直接計算 `min(h[0], h[1]) × 1` 回傳
+- **所有線段等高**：例如 `[5,5,5,5]`，最寬的配對就是最大面積（5 × 3 = 15），任何縮小寬度都只會減少面積
+- **包含高度為 0 的線段**：0 高度的邊不貢獻面積，但演算法仍正確處理（area = 0）
 
 ## 圖解
 
 <Diagram data='{"nodes":[{"id":"input","label":"height: [1,8,6,2,5,4,8,3,7]","type":"default"},{"id":"wide","label":"left=0,right=8: min(1,7)×8=8","type":"default"},{"id":"move","label":"移動較矮邊(left)","type":"highlight"},{"id":"best","label":"left=1,right=8: min(8,7)×7=49","type":"highlight"},{"id":"result","label":"maxArea = 49","type":"muted"}],"edges":[{"from":"input","to":"wide","label":"最寬配對"},{"from":"wide","to":"move","label":"1 < 7"},{"from":"move","to":"best","label":"新配對"},{"from":"best","to":"result","label":"持續夾逼"}]}' />
 
+圖表展示關鍵步驟：初始最寬配對 (0,8) 面積只有 8（被高度 1 拖累）。移動較矮的左邊後，新配對 (1,8) 面積跳到 49，成為最佳解。這正是「移動矮邊才有機會找到更高線段」的核心策略。
+
 ## 進階觀點
 
 <Callout type="tip" title="面試追問">
-- **為什麼移動較矮邊是正確的？** 面積由較矮邊決定。移動較高邊只會讓寬度減少，而高度不可能超過現有較矮邊，面積必定變小。移動較矮邊至少有機會找到更高的板。
-- **跟 Trapping Rain Water 的差別？** 本題找兩條線的最大面積；Trapping Rain Water 計算所有凹槽的總水量。
-- **兩邊等高時移哪邊？** 移哪邊都可以，因為兩邊都「可能」找到更好的答案，不會漏掉最優解。
+**Q: 為什麼移動較矮邊是正確的？**
+A: 假設 `height[left] < height[right]`。固定 left 時，right 往左移只會讓寬度減小，而高度仍被 `height[left]` 限制，面積只可能更小或相等。所以 (left, right-1), (left, right-2)... 這些配對都不可能更好，可以安全跳過。移動 left 則有機會遇到更高的線段。
+
+**Q: 跟 Trapping Rain Water 的差別？**
+A: 本題找單一矩形最大面積（兩條線 + x 軸）；Trapping Rain Water 計算所有凹槽能接的雨水總和。Trapping Rain Water 需要知道每個位置左右兩邊的最大高度（用前綴/後綴最大值或雙指針），本題只需兩端指針比較高度。
+
+**Q: 兩邊等高時移哪邊？**
+A: 移哪邊都可以。證明：假設兩邊等高 h，當前面積 = h x width。移任一邊後寬度減 1，若新邊 ≤ h 面積變小，若新邊 > h 面積仍被另一邊的 h 限制。兩邊對稱，不影響正確性。
 </Callout>
 
 ## 理解測驗

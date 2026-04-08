@@ -24,7 +24,7 @@ description: "經典二分搜尋，透過 API 回饋縮小搜尋範圍"
 
 ## 解題思路
 
-<StepDiagram data='[{"title":"設定範圍","description":"left = 1, right = n","icon":"1"},{"title":"取中間值","description":"mid = left + (right - left) / 2 避免溢位","icon":"2"},{"title":"呼叫 API","description":"guess(mid) 回傳比較結果","icon":"3"},{"title":"縮小範圍","description":"回傳 -1 往左找，1 往右找，0 就是答案","icon":"4"}]' />
+<StepDiagram data='[{"title":"設定範圍","description":"left = 1, right = n，代表答案一定在 [1, n] 之間","icon":"1"},{"title":"取中間值","description":"mid = left + (right - left) / 2，用減法再加法的寫法防止 left + right 超過 int 最大值（約 21 億）","icon":"2"},{"title":"呼叫 API","description":"guess(mid) 回傳三種結果：-1 表示 mid 太高、1 表示 mid 太低、0 表示猜對了","icon":"3"},{"title":"縮小範圍","description":"回傳 -1 → right = mid - 1 淘汰右半；回傳 1 → left = mid + 1 淘汰左半；回傳 0 → 直接 return mid","icon":"4"}]' />
 
 ## 程式碼
 
@@ -82,17 +82,34 @@ def guessNumber(n: int) -> int:
 |--|------|-------|
 | 本解法 | O(log n) | O(1) |
 
+- **Time**：每次迭代將搜尋範圍縮小一半，最多迭代 ceil(log2(n)) 次
+- **Space**：只用了 left、right、mid 三個變數，不隨 n 增長
+
 ## 圖解
 
 <Diagram data='{"nodes":[{"id":"range","label":"[1 ... n]","type":"default"},{"id":"mid","label":"取 mid","type":"highlight"},{"id":"api","label":"guess(mid)","type":"default"},{"id":"left","label":"往左半找","type":"muted"},{"id":"right","label":"往右半找","type":"muted"},{"id":"found","label":"找到答案","type":"highlight"}],"edges":[{"from":"range","to":"mid","label":"二分"},{"from":"mid","to":"api","label":"詢問"},{"from":"api","to":"left","label":"-1"},{"from":"api","to":"right","label":"1"},{"from":"api","to":"found","label":"0"}]}' />
 
+流程圖展示了 Binary Search 的決策分支：取中間值後呼叫 API，根據回饋值決定搜尋方向。
+每輪淘汰一半範圍，最終收斂到唯一答案。
+
 ## 進階觀點
 
 <Callout type="tip" title="面試追問">
-- 為什麼用 `left + (right - left) / 2` 而不是 `(left + right) / 2`？防止整數溢位，特別是在 C# / Java 中 int 的上限約 21 億。
-- Binary Search 的三種常見變體：找精確值、找左邊界、找右邊界，模板略有不同。
-- 這是 **Interactive Binary Search** 的範例，面試中常見的延伸是猜測有誤差（如 2-3 次錯誤回饋），需要三分搜尋或多次確認。
+**Q: 為什麼用 `left + (right - left) / 2` 而不是 `(left + right) / 2`？**
+A: 當 left 和 right 都接近 int 最大值時，兩者相加會超過 2^31 - 1 造成溢位。先做減法再加法可以避免。在 Python 中因為整數無上限所以不受影響。
+
+**Q: Binary Search 三種常見變體的差異？**
+A: 找精確值用 `left ≤ right`，迴圈內直接 return；找左邊界用 `left < right`，命中時 `right = mid` 繼續縮小；找右邊界類似但命中時 `left = mid + 1`。三者的迴圈條件和收縮方向不同，選錯會導致無窮迴圈或漏解。
+
+**Q: 如果 API 有一定機率回傳錯誤結果，如何保證正確性？**
+A: 可以對同一個 mid 呼叫多次取多數決（如呼叫 11 次取出現 6+ 次的結果），或用機率型二分搜尋。每次多數決的錯誤機率隨呼叫次數指數下降，整體仍為 O(log n) 次猜測。
 </Callout>
+
+## 邊界情況
+
+- **n 等於 1**：答案一定是 1，迴圈第一次 mid = 1 就會命中 return
+- **答案在兩端（pick = 1 或 pick = n）**：Binary Search 仍然正確，最多 log n 次就能收斂到邊界
+- **n 等於 int 最大值（2^31 - 1）**：此時 `(left + right) / 2` 會溢位，必須用 `left + (right - left) / 2` 的寫法
 
 ## 理解測驗
 

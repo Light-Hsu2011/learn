@@ -31,7 +31,7 @@ BFS 就是你的電梯 — 一層一層往上，每層停下來統計。
 
 ## 解題思路
 
-<StepDiagram data='[{"title":"BFS 初始化","description":"Queue 放入 root，level = 1","icon":"1"},{"title":"逐層處理","description":"每層計算所有節點值的總和","icon":"2"},{"title":"比較更新","description":"如果當前層的總和 > 最大總和，更新答案","icon":"3"},{"title":"進入下一層","description":"level++，繼續處理 Queue 中的節點","icon":"4"}]' />
+<StepDiagram data='[{"title":"BFS 初始化","description":"將 root 放入 Queue，設 level = 0、maxSum = 負無限大、resultLevel = 1","icon":"1"},{"title":"逐層處理","description":"level++ 後用 levelSize 控制內層迴圈，累加所有出隊節點的值得到 levelSum","icon":"2"},{"title":"比較更新","description":"若 levelSum 嚴格大於 maxSum，更新 maxSum 和 resultLevel（用嚴格大於確保取最小層級）","icon":"3"},{"title":"進入下一層","description":"內層迴圈中已將下一層子節點加入 Queue，外層繼續處理直到 Queue 為空","icon":"4"}]' />
 
 ## 程式碼
 
@@ -136,18 +136,28 @@ def maxLevelSum(root: Optional[TreeNode]) -> int:
 |--|------|-------|
 | 本解法 | O(n) | O(w) |
 
-w 是樹的最大寬度。
+w 是樹的最大寬度。Time O(n) 是因為每個節點入隊出隊各一次、做一次加法。Space O(w) 是 Queue 同時存放一層節點，完全二元樹最大寬度約 n/2。
+
+## 邊界情況
+
+- **只有根節點**：只有第 1 層，直接回傳 1
+- **所有層總和為負數**：初始化 maxSum 為負無限大，確保負數也能正確比較
+- **多層總和相同**：使用嚴格大於（`>`）而非大於等於（`>=`），自動保留最小的層級編號
 
 ## 圖解
 
 <Diagram data='{"nodes":[{"id":"l1","label":"Level 1: [1] sum=1","type":"default"},{"id":"l2","label":"Level 2: [7,0] sum=7","type":"highlight"},{"id":"l3","label":"Level 3: [7,-8] sum=-1","type":"muted"},{"id":"result","label":"答案: Level 2","type":"highlight"}],"edges":[{"from":"l1","to":"l2","label":""},{"from":"l2","to":"l3","label":""},{"from":"l2","to":"result","label":"最大"}]}' />
 
+圖表展示了三層的計算過程：Level 1 總和 1、Level 2 總和 7（最大）、Level 3 總和 -1。Level 2 的 7 嚴格大於其他層，所以答案為 Level 2。
+
 ## 進階觀點
 
 <Callout type="tip" title="面試追問">
-**DFS 替代方案**：用 DFS + HashMap（level → sum）也可以，但 BFS 更自然因為天然按層處理。
+**Q: DFS 能解這題嗎？**
+A: 可以。用 DFS 遍歷時記錄 depth，用 HashMap 或 Array（`levelSums[depth] += node.val`）累加每層總和。遍歷完後找最大值的 index。BFS 更直覺因為天然按層處理，不需額外資料結構。
 
-**為什麼初始化 maxSum 為 int.MinValue？** 因為節點值可能是負數，所有層的和都可能是負數。
+**Q: 為什麼 maxSum 要初始化為負無限大而不是 0？**
+A: 節點值可能是負數（題目明確說明）。如果所有層的總和都是負數，初始化為 0 會導致永遠不更新 resultLevel，回傳錯誤結果。
 
 **變體題**：LC 515 Find Largest Value in Each Tree Row（每層最大值）、LC 637 Average of Levels（每層平均值）。
 </Callout>

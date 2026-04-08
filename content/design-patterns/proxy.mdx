@@ -40,6 +40,8 @@ Proxy 屬於**結構型模式（Structural Pattern）**，重點在於如何組�
 
 <StepDiagram data='[{"title":"定義共用介面","description":"Proxy 和真實物件實作相同的介面","icon":"1"},{"title":"實作真實物件","description":"包含實際的業務邏輯","icon":"2"},{"title":"建立 Proxy","description":"實作相同介面，內部持有或延遲建立真實物件","icon":"3"},{"title":"加入控制邏輯","description":"在委派給真實物件之前/之後加入額外邏輯","icon":"4"},{"title":"Client 使用 Proxy","description":"Client 透過介面使用，不知道背後是 Proxy 還是真實物件","icon":"5"}]' />
 
+流程解讀：Proxy 的關鍵是「透明插入」。因為 Proxy 和 RealSubject 實作相同的介面，Client 無法區分兩者。Proxy 在 `delegate` 之前可以做前置檢查（權限、快取命中？），在 `delegate` 之後可以做後置處理（記錄日誌、更新快取）。Virtual Proxy 甚至可以延遲到第一次被呼叫時才建立 RealSubject。
+
 ## 程式碼範例
 
 ### C# 版本
@@ -264,6 +266,8 @@ System.out.println(repo.getDocument("doc-2")); // MISS
 
 <Diagram data='{"nodes":[{"id":"client","label":"Client","type":"muted"},{"id":"subject","label":"Subject Interface","type":"highlight"},{"id":"proxy","label":"Proxy (CachingDocumentProxy)","type":"default"},{"id":"real","label":"RealSubject (DatabaseDocumentRepository)","type":"default"}],"edges":[{"from":"client","to":"subject","label":"uses"},{"from":"proxy","to":"subject","label":"implements"},{"from":"real","to":"subject","label":"implements"},{"from":"proxy","to":"real","label":"delegates to (with control)"}]}' />
 
+結構解讀：Proxy 和 RealSubject 實作相同的 Subject Interface，Client 透過介面使用，不知道自己在跟誰打交道。Proxy 在委派給 RealSubject 之前或之後加入控制邏輯（快取檢查、權限驗證、延遲載入等）。這種「相同介面 + 控制存取」的組合讓 Proxy 可以透明地插入到 Client 和 RealSubject 之間。
+
 ## 實戰補充
 
 <Callout type="tip" title="資深開發者經驗">
@@ -278,10 +282,29 @@ Proxy 在企業開發中極為常見。**Entity Framework 的 Lazy Loading** 就
 
 <Quiz data='{"question":"在 Caching Proxy 範例中，第二次呼叫 getDocument(\"doc-1\") 時發生了什麼？","options":["再次查詢資料庫","直接從快取返回結果","拋出例外","建立新的 Proxy 實例"],"answer":1,"explanation":"第二次呼叫時，Proxy 發現快取中已有 doc-1 的結果（Cache HIT），直接返回快取的值，不再呼叫真實物件的方法。"}' />
 
+## 面試常見問題
+
+**Q: Proxy 的常見類型有哪些？各解決什麼問題？**
+
+A: (1) Virtual Proxy — 延遲載入（如 EF 的 Lazy Loading，存取 Navigation Property 時才查資料庫）。(2) Protection Proxy — 存取控制（檢查權限後才允許操作）。(3) Remote Proxy — 代表遠端物件（如 gRPC Client Stub，隱藏網路通訊細節）。(4) Caching Proxy — 快取昂貴操作的結果。(5) Logging Proxy — 記錄存取日誌和效能監控。
+
+**Q: Proxy 和 Decorator 結構幾乎一樣，怎麼區分？**
+
+A: 意圖不同。Proxy 控制存取（權限、快取、延遲載入），Decorator 增加功能（加密、壓縮、日誌）。Proxy 通常由自己管理 RealSubject 的生命週期（自己 new），Decorator 通常由外部注入被裝飾物件。判斷方式：如果主要目的是「控制什麼時候/誰能存取」→ Proxy；如果主要目的是「動態疊加新功能」→ Decorator。
+
+## 相關模式
+
+| 模式 | 關係 |
+|------|------|
+| **Decorator** | 結構相似但意圖不同 — Proxy 控制存取，Decorator 增加功能 |
+| **Adapter** | Adapter 改變介面，Proxy 保持相同介面。Adapter 讓不相容的東西合作，Proxy 控制存取方式 |
+| **Facade** | Facade 簡化介面（Client 可以繞過），Proxy 保持介面不變（Client 不知道 Proxy 的存在） |
+| **Flyweight** | Proxy 可以包裝 Flyweight，在存取共享物件前加入控制邏輯 |
+
 ## 重點整理
 
 <Callout type="tip" title="一句話記住">
-**Proxy Pattern = 在 Client 和真實物件之間放一個代理人，控制存取方式而不改變介面。**
+**Proxy Pattern = 房屋仲介：同樣的服務介面，中間多一層管控。** 口訣：「相同介面加控制，Client 渾然不知」
 </Callout>
 
 | 概念 | 說明 |

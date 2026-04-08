@@ -49,7 +49,7 @@ CQRS 經常搭配 Domain-Driven Design 使用。在 DDD 中，Command 端承載�
 ## 常見誤區
 
 <Callout type="warning" title="不是每個系統都需要 CQRS">
-簡單 CRUD 應用套上 CQRS 只會增加複雜度。當讀寫比例嚴重失衡（讀遠大於寫）、讀寫模型差異大、或需要獨立擴展讀寫端時，CQRS 才值得導入。先確認問題存在，再用 CQRS 解決。
+簡單 CRUD 應用套上 CQRS 只會增加複雜度。明確的導入判斷標準：(1) 讀寫比例嚴重失衡（如讀 100 次才寫 1 次）；(2) 讀取模型和寫入模型差異大（如寫入用正規化的 Aggregate，讀取需要跨多表 JOIN 的報表）；(3) 需要獨立擴展讀寫端的效能；(4) 需要不同的資料存儲（寫入用 PostgreSQL，讀取用 Elasticsearch）。四個條件至少符合一個，再考慮導入 CQRS。
 </Callout>
 
 ## 實作流程
@@ -205,6 +205,18 @@ class GetOrderHandler:
 
 <Diagram data='{"nodes":[{"id":"client","label":"Client","type":"muted"},{"id":"cmd-bus","label":"Command Bus","type":"default"},{"id":"write-model","label":"Write Model (Aggregate)","type":"highlight"},{"id":"event-store","label":"Event Store / Write DB","type":"default"},{"id":"projection","label":"Event Projection","type":"default"},{"id":"read-model","label":"Read Model (DTO View)","type":"highlight"},{"id":"query-bus","label":"Query Bus","type":"default"}],"edges":[{"from":"client","to":"cmd-bus","label":"send command"},{"from":"cmd-bus","to":"write-model","label":"dispatch"},{"from":"write-model","to":"event-store","label":"persist"},{"from":"event-store","to":"projection","label":"publish event"},{"from":"projection","to":"read-model","label":"update view"},{"from":"client","to":"query-bus","label":"send query"},{"from":"query-bus","to":"read-model","label":"read"}]}' />
 
+此圖展示 CQRS 的完整資料流：左邊是 Command 路徑（Client → Command Bus → Write Model → Event Store），右邊是 Query 路徑（Client → Query Bus → Read Model）。中間的 Event Projection 負責把 Write Model 的變更同步到 Read Model。兩條路徑完全獨立，可以各自優化和擴展。
+
+## CQRS 的三種實作層級
+
+| 層級 | 做法 | 複雜度 | 適用場景 |
+|------|------|--------|----------|
+| **Level 1：分離 Handler** | Command 和 Query 用不同的 Handler 類別處理，但共用同一個資料庫和模型 | 低 | 大多數專案的起點，幾乎沒有額外成本 |
+| **Level 2：分離模型** | Write Model 用 Aggregate，Read Model 用扁平化的 DTO View。共用資料庫但用不同的查詢路徑（如寫入用 EF Core，讀取用 Dapper + Raw SQL） | 中 | 讀取效能有壓力、讀寫模型差異大 |
+| **Level 3：分離資料庫** | Write DB 和 Read DB 分開，透過 Event Projection 同步。可以搭配 Event Sourcing | 高 | 超高讀取流量、需要不同的儲存引擎 |
+
+建議：從 Level 1 開始，遇到效能瓶頸再升級到 Level 2，真正需要才用 Level 3。不要一開始就上 Level 3。
+
 ## 實戰補充
 
 <Callout type="tip" title="資深開發者筆記">
@@ -226,7 +238,7 @@ class GetOrderHandler:
 ## 重點整理
 
 <Callout type="tip" title="一句話記住">
-**CQRS = 讀寫分家，各自過各自的最佳生活。**
+**口訣：「寫入走 Domain、讀取走捷徑」—— Command 保護業務規則，Query 追求讀取效能。**
 </Callout>
 
 | 概念 | 說明 |

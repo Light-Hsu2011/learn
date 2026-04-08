@@ -24,11 +24,11 @@ Aggregate 是 DDD 中定義交易邊界的核心概念。一個 Aggregate 內的
 
 ## 核心觀念
 
-- **Aggregate Root**：Aggregate 的入口點，外部只持有 Root 的參考，透過 Root 操作內部物件
-- **一致性邊界**：Aggregate 內部的所有不變量（Invariants）在每次操作後都必須成立
-- **交易邊界**：一個交易只修改一個 Aggregate，不跨 Aggregate 做交易
-- **不要跨 Aggregate 直接修改**：Aggregate 之間只能透過 ID 參考，不能持有物件參考
-- **小而精**：Aggregate 越小越好，只包含必須一起保持一致的物件
+- **Aggregate Root**：Aggregate 的入口點，外部只持有 Root 的參考，透過 Root 操作內部物件。辨識方式：如果一個 Entity 會被外部直接查詢和操作，它就是 Aggregate Root。例如 `Order` 是 Root，`OrderLineItem` 不是
+- **一致性邊界**：Aggregate 內部的所有不變量（Invariants，即「任何時刻都必須成立的業務規則」）在每次操作後都必須成立。例如「訂單總額必須等於各明細小計之和」就是一個不變量
+- **交易邊界**：一個資料庫交易（Transaction）只修改一個 Aggregate，不跨 Aggregate 做交易。如果需要跨 Aggregate 的一致性，用 Domain Event + 最終一致性（Eventual Consistency）處理
+- **不要跨 Aggregate 直接修改**：Aggregate 之間只能透過 ID 參考，不能持有物件參考。例如 `Order` 存 `CustomerId`（ID）而不是 `Customer`（物件），這避免了跨 Aggregate 的直接修改
+- **小而精**：Aggregate 越小越好，只包含必須一起保持一致的物件。判斷標準：如果兩個 Entity 不需要在同一個交易中保持一致，就不要放在同一個 Aggregate
 
 ## 常見誤區
 
@@ -230,6 +230,17 @@ class Order:
 
 <Diagram data='{"nodes":[{"id":"aggregate","label":"Aggregate（聚合）","type":"highlight"},{"id":"root","label":"Aggregate Root","type":"default"},{"id":"entity","label":"內部 Entity","type":"default"},{"id":"vo","label":"Value Object","type":"default"},{"id":"invariant","label":"不變量 (Invariants)","type":"muted"},{"id":"repo","label":"Repository","type":"muted"}],"edges":[{"from":"aggregate","to":"root","label":"入口點"},{"from":"aggregate","to":"entity","label":"包含"},{"from":"aggregate","to":"vo","label":"包含"},{"from":"root","to":"invariant","label":"維護"},{"from":"repo","to":"root","label":"只存取 Root"}]}' />
 
+此圖展示 Aggregate 的內部結構：Root 是唯一的入口，內部包含 Entity 和 Value Object，Root 負責維護不變量，Repository 只存取 Root。外部想操作內部 Entity 必須透過 Root 的方法，不能繞過去。
+
+## 何時把東西放進 Aggregate，何時拆出去
+
+| 情境 | 放進同一個 Aggregate | 拆成不同 Aggregate |
+|------|---------------------|-------------------|
+| Order 和 OrderLineItem | 是——「總額 = 各明細之和」必須即時一致 | - |
+| Order 和 Product | - | 是——訂單不需要和商品即時一致，商品改價格不影響已下的訂單 |
+| Order 和 Payment | - | 是——付款可以晚幾秒確認，用 Domain Event 通知 |
+| ShoppingCart 和 CartItem | 是——購物車內的商品列表必須與總計即時一致 | - |
+
 ## 實戰補充
 
 <Callout type="tip" title="資深開發者筆記">
@@ -251,7 +262,7 @@ EF Core 的實作技巧：Aggregate Root 對應一個 `DbSet<T>`，內部 Entity
 ## 重點整理
 
 <Callout type="tip" title="一句話記住">
-**Aggregate = 一致性邊界，所有修改都透過 Root 進出，確保內部規則永遠成立。**
+**口訣：「一道門進出、一筆交易、越小越好」—— Aggregate 設計三原則。**
 </Callout>
 
 | 概念 | 說明 |

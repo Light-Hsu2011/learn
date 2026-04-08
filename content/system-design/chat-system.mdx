@@ -20,20 +20,31 @@ WebSocket 就是這個「對講機頻道」— 建立持久連線，伺服器可
 設計一個支援一對一聊天和群組聊天的即時通訊系統，包含訊息傳遞、離線訊息、已讀回執等功能。
 
 <Callout type="info" title="核心技術選擇">
-即時通訊的關鍵是 **WebSocket**：建立持久的雙向連線，伺服器可以主動推送訊息。HTTP 輪詢（Polling）太浪費資源，Long Polling 延遲太高，WebSocket 是最佳方案。
+即時通訊的關鍵是 **WebSocket**：建立持久的雙向連線，伺服器可以主動推送訊息。
+
+三種方案的比較：
+- **HTTP Polling**：Client 每隔 N 秒發一次 GET 請求問「有新訊息嗎？」。問題：大量空請求浪費頻寬和伺服器資源，延遲最高可達 N 秒。只適合對即時性要求不高的場景（如 Email 通知）
+- **Long Polling**：Client 發請求，Server 有新訊息才回應，否則 Hold 住直到超時。問題：每次回應後需要重新建立連線，伺服器端 Hold 大量連線佔資源。比 Polling 好但仍有連線建立開銷
+- **WebSocket**：一次 HTTP Upgrade 後建立持久 TCP 連線，雙向隨時發資料。延遲最低（毫秒級）、最省資源。缺點：需要處理斷線重連、伺服器端需要維護大量長連線（每台伺服器約可維持 50,000-100,000 個 WebSocket 連線）
 </Callout>
 
 ## 需求分析
 
-- **功能性需求**：一對一聊天、群組聊天（最多 500 人）、已讀回執、離線訊息、多裝置同步
-- **非功能性需求**：低延遲（< 200ms）、訊息不遺失、訊息順序正確
-- **規模估算**：5,000 萬 DAU、每人每天 40 條訊息 = 每日 20 億條訊息
-- **連線管理**：每個在線用戶維持一個 WebSocket 連線
+- **功能性需求**：一對一聊天、群組聊天（最多 500 人）、已讀回執（「已讀」標記 + 時間）、離線訊息（用戶不在線時的訊息不遺失）、多裝置同步（手機和電腦看到一樣的訊息）
+- **非功能性需求**：低延遲（端到端 P99 < 200ms）、訊息不遺失（At-least-once delivery，允許重複但不允許丟失）、訊息順序正確（同一對話中的訊息必須按發送順序顯示）
+- **規模估算**：5,000 萬 DAU、每人每天 40 條訊息 = 每日 20 億條。尖峰 QPS（假設集中在 8 小時活躍時段）= 20 億 / 28,800 秒 ≈ 69,444 msg/s。每條訊息平均 100 bytes，每日資料量 ≈ 200GB
+- **連線管理**：每個在線用戶維持一個 WebSocket 連線。假設 30% 用戶同時在線 = 1,500 萬個並發連線。每台 WebSocket Server 承載 5-10 萬連線，需要 150-300 台 WebSocket Server
 
 ## 注意事項
 
 <Callout type="warning" title="群組訊息的扇出問題">
-一個 500 人的群組，發一條訊息就要推送給 499 個人。如果每人都在線，就是 499 次 WebSocket 推送。當有多個大群組同時活躍時，推送量會爆炸。必須用 Message Queue 來削峰，並考慮大群組的特殊處理策略。
+一個 500 人的群組，發一條訊息就要推送給 499 個人。如果每人都在線，就是 499 次 WebSocket 推送。當有多個大群組同時活躍時，推送量會爆炸。
+
+**兩種扇出策略**：
+- **Write Fanout（寫擴散）**：發訊息時就把訊息寫入每個成員的 Inbox。優點：讀取快（每人只查自己的 Inbox）。缺點：寫入放大嚴重（500 人群組 = 寫 499 份）。適合：小群組（50 人以下）
+- **Read Fanout（讀擴散）**：訊息只寫一份到群組的 Timeline。每個成員讀取時自己去拉。優點：寫入快。缺點：讀取時要查多個群組的 Timeline 再合併排序。適合：大群組（50 人以上）
+
+實務上可以混合：小群組用 Write Fanout，大群組用 Read Fanout。微信的做法是小群組寫擴散、大群組讀擴散的混合模式。
 </Callout>
 
 ## 設計流程
@@ -51,13 +62,35 @@ class ConnectionManager {
 
   addConnection(userId: string, ws: WebSocket) {
     this.connections.set(userId, ws);
-    // 在 Redis 中記錄：userId → serverId
+    // 在 Redis 中記錄：userId → serverId，TTL 300 秒
+    // 為什麼要 TTL？防止伺服器異常關閉時殘留過期映射
     redis.set(`online:${userId}`, SERVER_ID, "EX", 300);
   }
 
   removeConnection(userId: string) {
     this.connections.delete(userId);
     redis.del(`online:${userId}`);
+  }
+
+  // 心跳機制：每 30 秒 Client 發 ping，Server 回 pong
+  // 連續 3 次沒收到 ping 就判定斷線，清除連線
+  startHeartbeat(userId: string, ws: WebSocket) {
+    let missedPings = 0;
+    const interval = setInterval(() => {
+      if (missedPings >= 3) {
+        ws.terminate();
+        this.removeConnection(userId);
+        clearInterval(interval);
+        return;
+      }
+      missedPings++;
+    }, 30_000);
+
+    ws.on("pong", () => {
+      missedPings = 0;
+      // 刷新 Redis TTL
+      redis.expire(`online:${userId}`, 300);
+    });
   }
 
   async sendToUser(userId: string, message: ChatMessage) {
@@ -70,6 +103,8 @@ class ConnectionManager {
   }
 }
 ```
+
+**斷線重連機制**：Client 端必須實作指數退避重連（Exponential Backoff）。第一次斷線 1 秒後重連，第二次 2 秒，第三次 4 秒，最大間隔 30 秒。重連成功後，用最後收到的 Sequence ID 向 Server 請求漏掉的訊息。
 
 ### 訊息發送流程（C#）
 
@@ -131,13 +166,26 @@ public class DeliveryWorker
 
 <Diagram data='{"nodes":[{"id":"sender","label":"Sender (App)","type":"muted"},{"id":"ws1","label":"WebSocket Server 1","type":"default"},{"id":"ws2","label":"WebSocket Server 2","type":"default"},{"id":"chat","label":"Chat Service","type":"highlight"},{"id":"mq","label":"Message Queue","type":"highlight"},{"id":"redis","label":"Redis (Online Status)","type":"default"},{"id":"db","label":"Message DB","type":"default"},{"id":"receiver","label":"Receiver (App)","type":"muted"}],"edges":[{"from":"sender","to":"ws1","label":"WebSocket"},{"from":"ws1","to":"chat","label":"send message"},{"from":"chat","to":"db","label":"persist"},{"from":"chat","to":"mq","label":"publish delivery"},{"from":"mq","to":"redis","label":"lookup server"},{"from":"mq","to":"ws2","label":"push to receiver"},{"from":"ws2","to":"receiver","label":"WebSocket"}]}' />
 
+**架構圖解讀**：Sender 透過 WebSocket 連到 Server 1，發送訊息到 Chat Service。Chat Service 先將訊息持久化到 Message DB，然後 publish 到 Message Queue。Queue 的消費者查 Redis 找到 Receiver 在 Server 2 上線，透過 Server 2 的 WebSocket 推送給 Receiver。如果 Receiver 離線，訊息存入離線訊息表，等 Receiver 上線後拉取。
+
 ## 實戰補充
 
 <Callout type="tip" title="訊息排序的挑戰">
-分散式系統中，訊息的絕對順序很難保證。實務做法：
-1. **單聊**：用伺服器端時間戳排序，精度到微秒基本夠用
-2. **群聊**：用遞增的 Sequence ID（每個群組獨立的計數器），由 Chat Service 統一分配
-3. **跨裝置**：用戶的多裝置間用 Sync Protocol，每個裝置記錄最後同步的 Sequence ID
+分散式系統中，訊息的絕對順序很難保證（不同伺服器的時鐘有微小偏差）。實務做法：
+1. **單聊**：用伺服器端時間戳排序，精度到微秒基本夠用。如果時間戳相同，用訊息 ID（UUID v7 包含時間戳）做次要排序
+2. **群聊**：用遞增的 Sequence ID（每個群組獨立的計數器），由 Chat Service 統一分配。Redis 的 INCR 命令保證原子遞增，每個群組一個 Key 如 `seq:group:123`
+3. **跨裝置**：用戶的多裝置間用 Sync Protocol — 每個裝置記錄最後同步的 Sequence ID，上線後發送 `sync(last_seq_id)` 拉取後續所有訊息
+
+**面試常見問題與參考答案**：
+
+**Q：已讀回執怎麼實作？**
+A：接收者讀取訊息後，Client 發送 `ack(message_id, timestamp)` 到 Server。Server 更新該訊息的 read_at 欄位，然後透過 WebSocket 推送已讀狀態給發送者。群聊的已讀比較複雜 — 通常只顯示「N 人已讀」而不逐一追蹤（減少寫入量），或者只有 50 人以下的群組才顯示已讀名單。
+
+**Q：如何保證訊息 At-least-once delivery？**
+A：發送者發送訊息後等待 Server 的 ACK。如果 3 秒內沒收到 ACK，重發（帶相同的 client_message_id）。Server 端用 client_message_id 做冪等去重，避免重複儲存。
+
+**Q：訊息儲存用什麼資料庫？**
+A：聊天訊息是典型的 time-series 寫入（append-only、按時間排序查詢），適合用寬列儲存（如 HBase、Cassandra）。Row Key 設計為 `chat_id:bucket`（bucket 按天或按千條分桶），支援按對話和時間範圍高效查詢。
 </Callout>
 
 ## 理解測驗
@@ -151,7 +199,7 @@ public class DeliveryWorker
 ## 重點整理
 
 <Callout type="tip" title="一句話記住">
-**聊天系統 = WebSocket 即時推送 + Message Queue 處理扇出 + 離線訊息表保證不遺失。**
+**WebSocket 推、MQ 削峰、離線存、上線拉。** 記憶口訣：「推削存拉」— 在線用 WebSocket 推送、用 MQ 處理扇出、離線時存起來、上線後拉取補齊。
 </Callout>
 
 | 概念 | 說明 |

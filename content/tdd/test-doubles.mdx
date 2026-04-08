@@ -24,11 +24,11 @@ Test Double 是 Gerard Meszaros 在《xUnit Test Patterns》中定義的統稱�
 
 ## 核心觀念
 
-- **Stub**：回傳預設值的替身，控制被測物件的輸入。「你問我什麼，我照劇本回答」
-- **Mock**：帶有驗證期望的替身，檢查互動是否正確發生。「我會記錄你怎麼叫我，最後驗證」
-- **Fake**：有簡化實作的替身，如 In-Memory Database。「我是簡化版的真東西」
-- **Spy**：記錄呼叫紀錄的替身，事後查詢互動細節。「我默默記下一切，你事後再問我」
-- **Dummy**：僅用於填充參數，不會被實際使用
+- **Stub**：回傳預設值的替身，控制被測物件的輸入。「你問我什麼，我照劇本回答。」例如：Repository 的 `GetById` 永遠回傳一個固定的 User 物件，讓你測試「找到使用者後的處理邏輯」
+- **Mock**：帶有驗證期望的替身，檢查互動是否正確發生。「我會記錄你怎麼叫我，最後驗證。」例如：驗證 `EmailSender.Send()` 是否被呼叫了一次，且參數正確
+- **Fake**：有簡化實作的替身，如 In-Memory Database。「我是簡化版的真東西。」例如：用 `Dictionary` 實作的 InMemoryRepository，有真實的 CRUD 行為但不碰資料庫
+- **Spy**：記錄呼叫紀錄的替身，事後查詢互動細節。「我默默記下一切，你事後再問我。」和 Mock 的差異在於：Mock 在測試結束時主動驗證（`Verify`），Spy 只記錄、由測試程式碼事後查詢（`HaveBeenCalled`）
+- **Dummy**：僅用於填充參數，不會被實際使用。例如：建構子需要 `ILogger` 但這次測試不測 log，傳一個空實作即可
 
 ## 常見誤區
 
@@ -168,14 +168,38 @@ def test_notify_user_not_found():
 
 <Diagram data='{"nodes":[{"id":"td","label":"Test Double (統稱)","type":"highlight"},{"id":"stub","label":"Stub (控制輸入)","type":"default"},{"id":"mock","label":"Mock (驗證互動)","type":"default"},{"id":"fake","label":"Fake (簡化實作)","type":"default"},{"id":"spy","label":"Spy (記錄呼叫)","type":"default"},{"id":"dummy","label":"Dummy (填充參數)","type":"muted"}],"edges":[{"from":"td","to":"stub","label":"回傳預設值"},{"from":"td","to":"mock","label":"帶驗證期望"},{"from":"td","to":"fake","label":"簡化但能運作"},{"from":"td","to":"spy","label":"記錄後查詢"},{"from":"td","to":"dummy","label":"僅佔位"}]}' />
 
+此圖展示 Test Double 是五種替身的統稱。選擇依據：依賴是查詢型的用 Stub，依賴有副作用需要驗證的用 Mock/Spy，需要接近真實行為的用 Fake，純佔位的用 Dummy。
+
+## 測試框架中的 Mock 工具比較
+
+| 語言 | 工具 | 特色 | 選擇時機 |
+|------|------|------|----------|
+| **C#** | Moq | 流暢 API、Lambda Setup，社群最大 | 大多數 C# 專案的預設選擇 |
+| **C#** | NSubstitute | 語法更簡潔（`sub.GetById(1).Returns(user)`），無需 `.Object` | 偏好簡潔語法的團隊 |
+| **C#** | FakeItEasy | 命名直觀（`A.CallTo(...).Returns(...)`） | 可讀性優先的團隊 |
+| **TS/JS** | Jest 內建 | `jest.fn()` / `jest.spyOn()`，無需額外安裝 | 用 Jest 的專案 |
+| **TS/JS** | Vitest 內建 | API 與 Jest 相容，搭配 Vite 零配置 | 用 Vitest 的專案 |
+| **Python** | unittest.mock | 標準庫內建，`Mock()` / `patch()` | Python 專案的預設選擇 |
+| **Python** | pytest-mock | 提供 `mocker` fixture，語法更 pytest 風格 | 用 pytest 的專案 |
+
 ## 實戰補充
 
 <Callout type="tip" title="資深開發者的經驗">
 - **優先用 Stub，慎用 Mock**：過度使用 Mock 會讓測試變成「重新實作一次被測程式碼」。只在驗證重要副作用（寄信、付款）時才用 Mock。
 - **常用框架**：C# 用 Moq 或 NSubstitute，TypeScript 用 Jest 內建 mock，Python 用 unittest.mock。
 - **Fake 的投資報酬率高**：例如用 SQLite In-Memory 替代 SQL Server，既快又接近真實行為。
-- **London School vs. Chicago School**：London School 偏好大量 Mock 來隔離每個單元；Chicago School 偏好真實物件，只在邊界 Mock。選擇取決於團隊風格。
+- **London School vs. Chicago School**：London School（又稱 Mockist）偏好大量 Mock 來隔離每個單元，每個類別的測試只關心它直接互動的物件；Chicago School（又稱 Classicist）偏好真實物件，只在系統邊界（HTTP、DB、外部 API）Mock。選擇標準：如果你的程式碼有大量副作用和外部依賴，London School 更實用；如果主要是純邏輯運算，Chicago School 更穩固
 </Callout>
+
+### 面試常見問題
+
+**Q：什麼時候該用 Stub，什麼時候該用 Mock？**
+
+A：遵循 Command-Query Separation（CQS）原則：如果依賴的方法是 Query（回傳資料、無副作用），用 **Stub** 控制回傳值；如果依賴的方法是 Command（有副作用、如寄信、扣款），用 **Mock** 驗證呼叫。具體判斷：問自己「我關心的是回傳值還是互動行為？」關心回傳值用 Stub，關心行為用 Mock。
+
+**Q：過度 Mock 會造成什麼問題？**
+
+A：(1) 測試與實作高度耦合——重構內部結構時測試全部壞掉，即使行為沒變；(2) 虛假的安全感——測試只驗證了 Mock 框架能正確運作，沒碰到真正的業務邏輯；(3) 維護成本暴增——每改一行程式碼就要改十行測試的 Setup。解法：只 Mock 你無法控制的外部邊界，領域邏輯用真實物件。
 
 ## 理解測驗
 
@@ -188,7 +212,7 @@ def test_notify_user_not_found():
 ## 重點整理
 
 <Callout type="tip" title="一句話記住">
-**Test Double = 用替身隔離依賴。Stub 控制輸入，Mock 驗證互動，Fake 簡化實作，Spy 記錄呼叫。**
+**口訣：「Stub 餵料、Mock 盯場、Fake 演替身、Spy 偷拍、Dummy 站位」—— 五種替身各司其職。**
 </Callout>
 
 | 類型 | 用途 | 典型場景 |

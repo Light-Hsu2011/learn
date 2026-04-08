@@ -32,7 +32,7 @@ description: "不相鄰子序列最大和，經典 1D DP 取或不取的決策"
 
 ## 解題思路
 
-<StepDiagram data='[{"title":"定義狀態","description":"dp[i] = 考慮前 i 棟房子能偷到的最大金額","icon":"1"},{"title":"轉移方程","description":"dp[i] = max(dp[i-1], dp[i-2] + nums[i])","icon":"2"},{"title":"偷 or 不偷","description":"不偷第 i 棟 → dp[i-1]；偷第 i 棟 → dp[i-2] + nums[i]","icon":"3"},{"title":"空間優化","description":"只需前兩個值，用兩個變數滾動","icon":"4"}]' />
+<StepDiagram data='[{"title":"定義狀態","description":"dp[i] = 考慮前 i 棟房子（index 0 到 i-1）能偷到的最大金額","icon":"1"},{"title":"轉移方程","description":"dp[i] = max(dp[i-1], dp[i-2] + nums[i])。以 [2,7,9,3,1] 為例：dp[2] = max(7, 0+9) = 9","icon":"2"},{"title":"偷 or 不偷","description":"不偷第 i 棟 → 收益等於 dp[i-1]（跟沒有第 i 棟一樣）；偷第 i 棟 → 跳過 i-1，收益 = dp[i-2] + nums[i]","icon":"3"},{"title":"空間優化","description":"dp[i] 只依賴 dp[i-1] 和 dp[i-2]，用 prev1 和 prev2 兩個變數滾動，省下整個 dp 陣列","icon":"4"}]' />
 
 ## 程式碼
 
@@ -88,17 +88,34 @@ def rob(nums: list[int]) -> int:
 |--|------|-------|
 | 本解法 | O(n) | O(1) |
 
+- **Time**：線性遍歷一次 nums，每步只做一次 max 和兩次賦值
+- **Space**：兩個滾動變數 prev1 和 prev2 取代 dp 陣列
+
 ## 圖解
 
 <Diagram data='{"nodes":[{"id":"h0","label":"房子0: $2","type":"highlight"},{"id":"h1","label":"房子1: $7","type":"default"},{"id":"h2","label":"房子2: $9","type":"highlight"},{"id":"h3","label":"房子3: $3","type":"default"},{"id":"h4","label":"房子4: $1","type":"highlight"},{"id":"total","label":"最大: 2+9+1=12","type":"highlight"}],"edges":[{"from":"h0","to":"h2","label":"跳過 h1"},{"from":"h2","to":"h4","label":"跳過 h3"},{"from":"h4","to":"total","label":"加總"}]}' />
 
+圖表展示了最佳偷竊路線：選房子 0($2)→跳過 1→選 2($9)→跳過 3→選 4($1)，總計 $12。
+注意不一定總是「隔一棟偷一棟」——有時跳過兩棟更划算（取決於具體金額）。
+
 ## 進階觀點
 
 <Callout type="tip" title="面試追問">
-- **213. House Robber II**：房子排成環形，第一棟和最後一棟也相鄰。解法：跑兩次，分別排除第一棟和最後一棟，取較大值。
-- **337. House Robber III**：房子排成樹形結構，需要樹形 DP。
-- 本題的轉移方程 `dp[i] = max(dp[i-1], dp[i-2] + nums[i])` 是「取或不取」決策的經典範本，適用於所有「不相鄰選擇」的問題。
+**Q: House Robber II（環形）怎麼解？**
+A: 第一棟和最後一棟相鄰，不能同時偷。解法：跑兩次 House Robber I，一次排除第一棟（nums[1..n-1]），一次排除最後一棟（nums[0..n-2]），取兩次結果的較大值。因為第一棟和最後一棟不可能同時被偷，兩次計算覆蓋了所有合法方案。
+
+**Q: House Robber III（樹形）怎麼解？**
+A: 房子排成二叉樹，每個節點回傳兩個值：(偷自己的最大值, 不偷自己的最大值)。父節點偷自己則子節點不能偷，反之子節點可偷可不偷。用後序遍歷（bottom-up）從葉子往上計算。
+
+**Q: 轉移方程的通用性？**
+A: `dp[i] = max(dp[i-1], dp[i-2] + nums[i])` 是「取或不取」的經典範本。任何「不能選相鄰元素」的最大化問題都能用這個框架：股票交易冷卻期、顏色塗漆（Paint House）、刪除與獲得（Delete and Earn）等。
 </Callout>
+
+## 邊界情況
+
+- **只有一棟房子**：直接回傳 nums[0]，沒有鄰居限制
+- **只有兩棟房子**：回傳 max(nums[0], nums[1])，只能偷其中一棟
+- **所有房子金額相同**：最佳策略是偷所有奇數位或偶數位，答案 = ceil(n/2) × 金額
 
 ## 理解測驗
 

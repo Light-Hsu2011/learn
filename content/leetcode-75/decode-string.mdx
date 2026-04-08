@@ -28,7 +28,7 @@ description: "用 Stack 處理巢狀的 k[encoded_string] 編碼字串"
 
 ## 解題思路
 
-<StepDiagram data='[{"title":"遍歷字元","description":"逐一掃描字串中的每個字元","icon":"1"},{"title":"遇到數字","description":"累積多位數字（如 12 → 1*10+2）","icon":"2"},{"title":"遇到 [","description":"把當前字串和數字壓入 Stack，重置","icon":"3"},{"title":"遇到 ]","description":"從 Stack 彈出，組合：前綴 + 當前字串 × 次數","icon":"4"},{"title":"遇到字母","description":"直接附加到當前字串","icon":"5"}]' />
+<StepDiagram data='[{"title":"遍歷字元","description":"用 for 迴圈逐一掃描 s 的每個字元，根據字元類型分四種處理","icon":"1"},{"title":"遇到數字","description":"用 num = num * 10 + digit 累積多位數字，例如遇到 1 再遇到 2 得到 12","icon":"2"},{"title":"遇到 [","description":"把 current 字串壓入 strStack、num 壓入 numStack，然後 current 和 num 都重置為初始值","icon":"3"},{"title":"遇到 ]","description":"從 strStack 彈出前綴 prev、從 numStack 彈出次數 repeat，組合成 prev + current × repeat","icon":"4"},{"title":"遇到字母","description":"直接用 current += c 附加到當前字串","icon":"5"}]' />
 
 ## 程式碼
 
@@ -125,16 +125,28 @@ def decodeString(s: str) -> str:
 |--|------|-------|
 | 本解法 | O(n × maxK) | O(n) |
 
-其中 n 是解碼後字串長度，maxK 是最大重複次數。
+n 是解碼後字串長度，maxK 是最大重複次數。Time 為 O(n × maxK) 是因為每個字元最多被重複 maxK 次寫入結果字串；Space 為 O(n) 是因為 Stack 深度取決於巢狀層數，最多存 n 個字元的前綴資訊。
+
+## 邊界情況
+
+- **無巢狀編碼**：如 `"3[a]"` 直接展開為 `"aaa"`，Stack 只會壓入和彈出一次
+- **純字母無編碼**：如 `"abc"` 沒有任何數字和括號，直接逐字元附加到 current 回傳
+- **多位數字**：如 `"100[a]"` 需要正確累積三位數字 100，不能只讀第一位
 
 ## 圖解
 
 <Diagram data='{"nodes":[{"id":"input","label":"輸入 3[a2[c]]","type":"muted"},{"id":"stack","label":"Stack（存前綴和重複次數）","type":"default"},{"id":"curr","label":"當前字串 current","type":"default"},{"id":"num","label":"數字暫存 num","type":"default"},{"id":"result","label":"結果 accaccacc","type":"highlight"}],"edges":[{"from":"input","to":"num","label":"解析數字"},{"from":"input","to":"stack","label":"遇到 [ 壓入"},{"from":"stack","to":"curr","label":"遇到 ] 彈出組合"},{"from":"curr","to":"result","label":"最終結果"}]}' />
 
+圖表展示了 Stack 在解碼過程中的核心角色：數字和前綴字串分別壓入兩個 Stack，遇到 `]` 時彈出組合。整個流程是一個「壓入-彈出-拼接」的循環，最終 current 變數累積出完整結果。
+
 ## 進階觀點
 
 <Callout type="tip" title="面試追問">
-**遞迴解法**：也可以用遞迴模擬 Stack，遇到 `[` 進入遞迴，遇到 `]` 返回。面試官可能追問兩種方法的差異。
+**Q: 遞迴解法和 Stack 解法有什麼差異？**
+A: 遞迴解法用函式呼叫堆疊隱式模擬 Stack，遇到 `[` 進入遞迴、遇到 `]` 返回解碼結果。兩者時間複雜度相同，但遞迴有 call stack 深度限制（巢狀層數極深時可能 stack overflow），Stack 解法更安全。遞迴寫法更直觀但需要用全域 index 追蹤掃描位置。
+
+**Q: 如果輸入可能格式不合法怎麼辦？**
+A: 需要加入驗證：檢查括號是否配對（Stack 最後應為空）、數字後是否一定跟著 `[`、`]` 時 Stack 是否為空。面試時先問清楚輸入是否保證合法。
 
 **變體題**：LC 726 Number of Atoms（化學式解析）、LC 1190 Reverse Substrings Between Each Pair of Parentheses。
 </Callout>

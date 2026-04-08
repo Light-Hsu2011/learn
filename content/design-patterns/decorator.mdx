@@ -38,6 +38,8 @@ Decorator 屬於**結構型模式（Structural Pattern）**，重點在於如何
 
 <StepDiagram data='[{"title":"定義 Component 介面","description":"宣告原始物件和裝飾器共用的方法","icon":"1"},{"title":"實作具體 Component","description":"基礎物件，提供核心功能","icon":"2"},{"title":"建立 Decorator 基底類別","description":"實作 Component 介面，持有另一個 Component 的參考","icon":"3"},{"title":"實作具體 Decorator","description":"在委派給內部 Component 的前後加上新功能","icon":"4"},{"title":"組合裝飾","description":"一層包一層，動態組合所需的功能","icon":"5"}]' />
 
+流程解讀：Decorator 的關鍵是「介面相同 + 遞迴包裝」。Decorator 和 ConcreteComponent 實作相同介面，所以 Decorator 可以包 ConcreteComponent，也可以包另一個 Decorator。每個 Decorator 在調用 `inner.GetContent()` 的結果上疊加自己的邏輯。組合時由外往內包裝（`new SignedMessage(new TimestampedMessage(new PlainMessage(...)))`），執行時由外往內委派。
+
 ## 程式碼範例
 
 ### C# 版本
@@ -273,6 +275,8 @@ System.out.println(msg.getContent());
 
 <Diagram data='{"nodes":[{"id":"client","label":"Client","type":"muted"},{"id":"component","label":"Component (Message)","type":"highlight"},{"id":"concrete","label":"ConcreteComponent (PlainMessage)","type":"default"},{"id":"decorator","label":"Decorator Base","type":"highlight"},{"id":"decoratorA","label":"TimestampedMessage","type":"default"},{"id":"decoratorB","label":"SignedMessage","type":"default"}],"edges":[{"from":"client","to":"component","label":"uses"},{"from":"concrete","to":"component","label":"implements"},{"from":"decorator","to":"component","label":"implements & wraps"},{"from":"decoratorA","to":"decorator","label":"extends"},{"from":"decoratorB","to":"decorator","label":"extends"}]}' />
 
+結構解讀：Decorator Base 同時實作 Component 介面（對外看起來和 ConcreteComponent 一樣）並持有另一個 Component 的參考（用來包裝）。每個 ConcreteDecorator（TimestampedMessage、SignedMessage）在委派給內部 Component 的前後加入自己的邏輯。關鍵是 Decorator 和 Component 介面相同，所以 Decorator 可以包裝另一個 Decorator，形成任意深度的裝飾鏈。
+
 ## 實戰補充
 
 <Callout type="tip" title="資深開發者經驗">
@@ -287,10 +291,29 @@ Decorator 在 .NET 中最經典的應用是 **Stream 的層層包裝**：`FileSt
 
 <Quiz data='{"question":"Decorator 和被裝飾的物件之間是什麼關係？","options":["Decorator 繼承被裝飾的物件","Decorator 和被裝飾的物件實作相同的介面，且 Decorator 持有被裝飾物件的參考","被裝飾的物件持有 Decorator 的參考","兩者沒有任何關係"],"answer":1,"explanation":"Decorator 和被裝飾物件都實作相同的 Component 介面，Decorator 內部持有一個 Component 參考，在自己的方法中先/後委派給內部物件。"}' />
 
+## 面試常見問題
+
+**Q: Decorator 和繼承各在什麼場景更合適？**
+
+A: Decorator 適合：功能組合多樣（如 A+B、A+C、B+C、A+B+C）、需要在執行時動態增減功能。繼承適合：功能組合固定且數量少、需要存取 protected 成員。判斷標準：如果 N 種可選功能用繼承需要 2^N 個子類別 → 用 Decorator。
+
+**Q: Decorator 的順序為什麼重要？**
+
+A: 因為每個 Decorator 在委派前後加入自己的邏輯，順序不同結果就不同。例如 Stream 處理：先壓縮再加密（資料先變小再加密，對方需要先解密再解壓）vs 先加密再壓縮（加密後的資料通常壓不動，效果差）。設計 Decorator 時必須文件化正確的堆疊順序。
+
+## 相關模式
+
+| 模式 | 關係 |
+|------|------|
+| **Proxy** | 結構相似但意圖不同 — Decorator 加功能，Proxy 控存取。Decorator 由外部組合，Proxy 通常自己管理被代理物件 |
+| **Composite** | 都用遞迴組合，但 Composite 是樹狀（一對多），Decorator 是線性鏈（一對一包裝） |
+| **Strategy** | 都能改變物件行為，但 Decorator 從外部「包裝」物件，Strategy 從內部「替換」行為 |
+| **Chain of Responsibility** | Decorator 鏈和 CoR 鏈結構相似，但 Decorator 每層都會執行，CoR 只有一個 Handler 處理 |
+
 ## 重點整理
 
 <Callout type="tip" title="一句話記住">
-**Decorator Pattern = 一層包一層，動態疊加功能而不修改原始物件。**
+**Decorator Pattern = 手搖飲加料：基底不變，一層層往外加。** 口訣：「包裝加功能，順序有學問」
 </Callout>
 
 | 概念 | 說明 |

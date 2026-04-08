@@ -26,7 +26,7 @@ description: "用固定大小滑動窗口維護子陣列的和來找最大平均
 
 ## 解題思路
 
-<StepDiagram data='[{"title":"初始窗口","description":"計算前 k 個元素的總和","icon":"1"},{"title":"滑動窗口","description":"每次加入右邊新元素，移除左邊舊元素","icon":"2"},{"title":"更新最大值","description":"每次滑動後比較當前和與最大和","icon":"3"},{"title":"計算平均","description":"最大和 / k 即為答案","icon":"4"}]' />
+<StepDiagram data='[{"title":"初始窗口","description":"用 for 迴圈累加 nums[0] 到 nums[k-1]，得到第一個窗口的總和 windowSum","icon":"1"},{"title":"滑動窗口","description":"for i = k 到 n-1：windowSum += nums[i] - nums[i-k]。加入右邊新元素、減去左邊離開的元素，O(1) 更新","icon":"2"},{"title":"更新最大值","description":"每次滑動後 maxSum = max(maxSum, windowSum)，追蹤歷史最大窗口和","icon":"3"},{"title":"計算平均","description":"回傳 maxSum / k。只做一次除法，避免每步都做浮點運算","icon":"4"}]' />
 
 ## 程式碼
 
@@ -86,18 +86,31 @@ def findMaxAverage(nums: list[int], k: int) -> float:
 |--|------|-------|
 | 本解法 | O(n) | O(1) |
 
-只需一次遍歷，常數額外空間。
+初始化窗口 O(k)，然後滑動 n-k 次，每次做一次加法和一次減法（O(1)），合計 O(n)。只用 sum 和 maxSum 兩個變數，空間 O(1)。
+
+## 邊界情況
+
+- **k 等於陣列長度**：整個陣列就是唯一的窗口，直接算平均值
+- **陣列全是負數**：例如 `[-1,-2,-3]`, k=2，最大平均值是 (-1-2)/2 = -1.5，仍是負數
+- **k = 1**：退化為找陣列中的最大值
 
 ## 圖解
 
 <Diagram data='{"nodes":[{"id":"input","label":"[1,12,-5,-6,50,3] k=4","type":"default"},{"id":"w1","label":"窗口[1,12,-5,-6] sum=2","type":"default"},{"id":"w2","label":"窗口[12,-5,-6,50] sum=51","type":"highlight"},{"id":"w3","label":"窗口[-5,-6,50,3] sum=42","type":"default"},{"id":"result","label":"max=51, avg=12.75","type":"muted"}],"edges":[{"from":"input","to":"w1","label":"初始窗口"},{"from":"w1","to":"w2","label":"+50 -1"},{"from":"w2","to":"w3","label":"+3 -12"},{"from":"w2","to":"result","label":"最大和"}]}' />
 
+圖表展示滑動窗口的三個位置：初始窗口 sum=2，往右滑一格加入 50、移除 1 後 sum 跳到 51（最大值），再滑一格加入 3、移除 12 後 sum 降為 42。最終 maxSum=51，除以 k=4 得 12.75。
+
 ## 進階觀點
 
 <Callout type="tip" title="面試追問">
-- **為什麼追蹤 sum 而不是直接追蹤 average？** 比較整數和比浮點數更精確也更快，最後再除一次就好。
-- **如果 k 不固定，要找任意長度的最大平均值？** 那就是 Maximum Average Subarray II（Binary Search + 前綴和），難度大幅提升。
-- **滑動窗口的本質？** 利用相鄰窗口重疊部分的計算結果，避免重複計算。
+- **Q: 為什麼追蹤 sum 而不是直接追蹤 average？**
+  A: 比較整數和（或浮點數的加減）比每次都做除法更精確也更快。浮點除法可能引入精度誤差，而且除法運算比加減慢。最後只需對 maxSum 做一次除法即可。
+
+- **Q: 如果 k 不固定，要找任意長度的最大平均值？**
+  A: 那就是 Maximum Average Subarray II（LeetCode 644）。用 Binary Search 猜答案 mid，檢驗是否存在長度 ≥ k 的子陣列平均值 ≥ mid（用前綴和 + 貪心），難度大幅提升到 O(n log(max-min))。
+
+- **Q: 滑動窗口的本質是什麼？**
+  A: 利用相鄰窗口之間有 k-1 個元素重疊的特性，每次滑動只需 O(1) 更新（加新元素、減舊元素），避免重複計算重疊部分。把暴力的 O(nk) 降到 O(n)。
 </Callout>
 
 ## 理解測驗

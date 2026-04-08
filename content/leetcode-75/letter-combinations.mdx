@@ -26,7 +26,7 @@ description: "回溯法枚舉電話鍵盤上每個數字對應字母的所有組
 
 ## 解題思路
 
-<StepDiagram data='[{"title":"建立對照表","description":"2→abc, 3→def, ..., 9→wxyz","icon":"1"},{"title":"回溯起點","description":"從第 0 個數字開始，當前路徑為空","icon":"2"},{"title":"枚舉字母","description":"取當前數字對應的所有字母，逐一嘗試","icon":"3"},{"title":"遞迴下一層","description":"將選中的字母加入路徑，處理下一個數字","icon":"4"},{"title":"收集結果","description":"路徑長度等於 digits 長度時，加入結果集","icon":"5"}]' />
+<StepDiagram data='[{"title":"建立對照表","description":"用 HashMap 建立數字到字母的映射：2→abc, 3→def, 4→ghi, 5→jkl, 6→mno, 7→pqrs, 8→tuv, 9→wxyz","icon":"1"},{"title":"回溯起點","description":"呼叫 backtrack(idx=0, path=[])，從第一個數字開始、路徑為空","icon":"2"},{"title":"枚舉字母","description":"查表取 digits[idx] 對應的字母集合，用 for 迴圈逐一嘗試每個字母","icon":"3"},{"title":"遞迴下一層","description":"將選中字母加入 path，遞迴呼叫 backtrack(idx+1, path)。回傳後 pop 掉最後一個字母（回溯）","icon":"4"},{"title":"收集結果","description":"當 idx 等於 digits.length 時，path 已有完整組合，複製一份加入結果集","icon":"5"}]' />
 
 ## 程式碼
 
@@ -118,17 +118,29 @@ def letterCombinations(digits: str) -> list[str]:
 
 其中 n = digits 長度，4 是每個數字最多對應的字母數（如 7→pqrs）。
 
+- **Time**：最壞情況所有數字都對應 4 個字母，組合樹有 4^n 個葉節點，每個葉節點生成一個長度為 n 的字串
+- **Space**：遞迴深度為 n（digits 長度），不計輸出的話是 O(n)
+
 ## 圖解
 
 <Diagram data='{"nodes":[{"id":"root","label":"開始 (digits=23)","type":"default"},{"id":"a","label":"a","type":"highlight"},{"id":"b","label":"b","type":"highlight"},{"id":"c","label":"c","type":"highlight"},{"id":"ad","label":"ad","type":"muted"},{"id":"ae","label":"ae","type":"muted"},{"id":"af","label":"af","type":"muted"},{"id":"bd","label":"bd","type":"muted"}],"edges":[{"from":"root","to":"a","label":"2→a"},{"from":"root","to":"b","label":"2→b"},{"from":"root","to":"c","label":"2→c"},{"from":"a","to":"ad","label":"3→d"},{"from":"a","to":"ae","label":"3→e"},{"from":"a","to":"af","label":"3→f"},{"from":"b","to":"bd","label":"3→d..."}]}' />
 
+樹狀圖展示了回溯法的搜尋過程：第一層枚舉第一個數字對應的所有字母，第二層枚舉第二個數字的字母。
+每條從根到葉的路徑就是一個完整組合，digits="23" 共產生 3×3=9 種組合。
+
 ## 進階觀點
 
 <Callout type="tip" title="面試追問">
-- 也可以用 BFS（iterative）解：用 queue 逐層展開，適合不想用遞迴的場景。
-- 如果要求字典序排列？回溯天然就是字典序，只要對照表中字母按順序排列即可。
-- T9 輸入法的核心原理就是這題：給定數字序列，找出所有可能的字串，再配合字典過濾。
+- **能用 BFS 代替回溯嗎？** 可以。用 queue 存放當前所有部分組合，每次取出一個、對下一個數字的每個字母生成新組合放回 queue。優點是不用遞迴，缺點是 queue 中同時存放大量中間結果，空間消耗更大。
+- **結果天然是字典序嗎？** 是的，只要對照表中每個數字的字母按 a-z 排列（本來就是），回溯的枚舉順序就保證結果按字典序產生。
+- **T9 輸入法的原理？** 就是這題的核心：使用者按數字序列，系統枚舉所有可能的字母組合，再與字典匹配過濾出合法單字。現代實作會加上頻率排序和預測模型。
 </Callout>
+
+## 邊界情況
+
+- **digits 為空字串**：直接回傳空陣列，不進入回溯
+- **digits 只有一個字元**：結果就是該數字對應的字母列表，如 "7" → ["p","q","r","s"]
+- **digits 很長（如長度 10）**：最多產生 4^10 = 1,048,576 個組合，仍在可接受範圍內但要注意記憶體
 
 ## 理解測驗
 

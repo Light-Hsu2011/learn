@@ -24,9 +24,12 @@ Factory Method 屬於**建立型模式（Creational Pattern）**，重點在於�
 
 ## 什麼時候用？
 
-- 你不知道或不想在編譯時決定要建立哪種具體物件
-- 框架需要讓使用者自訂要建立的元件（例如 ASP.NET 的 ControllerFactory）
-- 你想把建立邏輯集中管理，而非散佈在程式碼各處
+用以下 if/then 條件判斷：
+
+- **如果**產品種類會持續增加，且你不想每次新增都修改既有的建立邏輯 → 用 Factory Method
+- **如果**框架需要讓使用者自訂要建立的元件類型（例如 ASP.NET 的 ControllerFactory）→ 用 Factory Method
+- **如果**建立邏輯散佈在程式碼多處，且每次新增產品都要改好幾個地方 → 用 Factory Method 集中管理
+- **如果**產品種類固定（1-2 種）且不會變 → 直接 `new` 就好，不需要 Factory Method
 
 ## 什麼時候不該用？
 
@@ -37,6 +40,8 @@ Factory Method 屬於**建立型模式（Creational Pattern）**，重點在於�
 ## 執行流程
 
 <StepDiagram data='[{"title":"定義產品介面","description":"宣告所有產品共用的方法簽名","icon":"1"},{"title":"定義工廠介面","description":"宣告 Factory Method（回傳產品介面型別）","icon":"2"},{"title":"實作具體產品","description":"每種產品各自實作產品介面","icon":"3"},{"title":"實作具體工廠","description":"每個工廠子類別覆寫 Factory Method，建立對應的產品","icon":"4"},{"title":"客戶端透過工廠建立","description":"呼叫工廠方法取得產品，不需知道具體類別","icon":"5"}]' />
+
+流程解讀：Factory Method 的關鍵是「把 `new` 的決定權交給子類別」。抽象工廠定義了一個回傳產品介面的方法（Factory Method），但不決定具體建立什麼。每個具體工廠覆寫這個方法，各自決定要 `new` 哪種具體產品。這讓 Client 只依賴抽象，新增產品時只需新增工廠子類別和產品子類別，不改既有程式碼。
 
 ## 程式碼範例
 
@@ -243,6 +248,8 @@ System.out.println(factory.notify("驗證碼：1234")); // [SMS] 驗證碼：123
 
 <Diagram data='{"nodes":[{"id":"client","label":"Client","type":"muted"},{"id":"factory","label":"NotificationFactory (abstract)","type":"highlight"},{"id":"product","label":"Notification (interface)","type":"default"},{"id":"concrete-factory","label":"EmailFactory / SmsFactory","type":"default"},{"id":"concrete-product","label":"EmailNotification / SmsNotification","type":"default"}],"edges":[{"from":"client","to":"factory","label":"uses"},{"from":"factory","to":"product","label":"creates (abstract)"},{"from":"concrete-factory","to":"factory","label":"extends"},{"from":"concrete-product","to":"product","label":"implements"},{"from":"concrete-factory","to":"concrete-product","label":"creates"}]}' />
 
+結構解讀：Client 只認識 NotificationFactory（抽象）和 Notification（介面），不知道具體實作是什麼。EmailFactory 覆寫 Factory Method 來建立 EmailNotification，SmsFactory 建立 SmsNotification。新增 PushNotification 時只需新增 PushFactory + PushNotification，Client 和既有工廠完全不用改。
+
 ## 實戰補充
 
 <Callout type="tip" title="資深開發者經驗">
@@ -261,10 +268,29 @@ System.out.println(factory.notify("驗證碼：1234")); // [SMS] 驗證碼：123
 
 <Quiz data='{"question":"以下哪個場景最適合用 Factory Method？","options":["程式只需要建立一種固定類型的物件","框架需要讓使用者自訂要建立的元件類型","把所有物件存在同一個陣列裡","將物件序列化成 JSON"],"answer":1,"explanation":"框架定義建立介面、使用者透過繼承自訂建立邏輯，這正是 Factory Method 的經典場景。"}' />
 
+## 面試常見問題
+
+**Q: Simple Factory、Factory Method、Abstract Factory 三者怎麼區分？**
+
+A: Simple Factory 用一個 switch/if 決定建什麼（不是 GoF 模式，適合產品固定的場景）。Factory Method 用繼承讓子類別各自決定建一種產品（適合產品會增加）。Abstract Factory 用介面讓具體工廠建一整套相關產品（適合產品有家族概念）。選擇路徑：產品只有一種且固定 → Simple Factory；產品會增加但各自獨立 → Factory Method；產品有家族且必須搭配 → Abstract Factory。
+
+**Q: Factory Method 和 DI 容器有什麼關係？**
+
+A: DI 容器本質上就是一個超級工廠，根據介面型別回傳對應的具體實作。在 .NET 中，`services.AddScoped<INotification, EmailNotification>()` 就是在「註冊」工廠方法。差異在於 DI 容器是通用的，Factory Method 是針對特定產品家族設計的。
+
+## 相關模式
+
+| 模式 | 關係 |
+|------|------|
+| **Abstract Factory** | Abstract Factory 內部通常用多個 Factory Method 來建立每種產品 |
+| **Template Method** | Factory Method 常出現在 Template Method 內部 — 模板定義流程，其中一步是 Factory Method 建立需要的物件 |
+| **Prototype** | 都是建立型模式，但 Prototype 透過複製建立，Factory Method 透過子類別覆寫建立 |
+| **Strategy** | Factory 可以用 Strategy 來決定建立邏輯，而非用繼承 |
+
 ## 重點整理
 
 <Callout type="tip" title="一句話記住">
-**Factory Method = 定義「怎麼造」的介面，讓子類別決定要造什麼。**
+**Factory Method = 把 `new` 的決定權交給子類別。** 口訣：「父類別定框架，子類別填產品」
 </Callout>
 
 | 概念 | 說明 |

@@ -27,7 +27,7 @@ description: "回溯加剪枝，從 1-9 中選 K 個不重複數字使其和為 
 
 ## 解題思路
 
-<StepDiagram data='[{"title":"定義搜尋空間","description":"從數字 1 到 9 中選擇，每個數字最多選一次","icon":"1"},{"title":"回溯框架","description":"維護當前組合、剩餘目標和、起始數字","icon":"2"},{"title":"剪枝條件","description":"剩餘和 < 0 或已選數量超過 K 時提前返回","icon":"3"},{"title":"收集結果","description":"選了 K 個且和剛好為 N 時加入結果","icon":"4"},{"title":"避免重複","description":"下一層從 i+1 開始，確保組合不重複","icon":"5"}]' />
+<StepDiagram data='[{"title":"定義搜尋空間","description":"候選數字固定為 1-9，每個最多選一次。搜尋空間是 C(9,k) 種組合","icon":"1"},{"title":"回溯框架","description":"backtrack(remain, start, path)：remain 是剩餘目標和，start 是本層起始數字，path 是當前已選數字","icon":"2"},{"title":"剪枝條件","description":"path 長度已達 k → 檢查 remain 是否為 0；i > remain → break（後面數字更大不可能湊出）","icon":"3"},{"title":"收集結果","description":"path.length == k 且 remain == 0 → 複製 path 加入結果集。兩條件缺一不可","icon":"4"},{"title":"避免重複","description":"遞迴時傳 start = i+1，保證後選數字嚴格大於先選，避免 [1,2,4] 和 [2,1,4] 重複","icon":"5"}]' />
 
 ## 程式碼
 
@@ -108,17 +108,29 @@ def combinationSum3(k: int, n: int) -> list[list[int]]:
 
 C(9,k) 是從 9 個數字中選 k 個的組合數，最多 C(9,4) = 126。
 
+- **Time**：搜尋空間最多 C(9,k) 種組合，加上剪枝實際探索更少。k=4 時最多 126 種，非常快
+- **Space**：遞迴深度為 k，path 陣列大小為 k，合計 O(k)
+
 ## 圖解
 
 <Diagram data='{"nodes":[{"id":"start","label":"開始 k=3, n=7","type":"default"},{"id":"pick1","label":"選 1, 剩餘 6","type":"highlight"},{"id":"pick2","label":"選 2, 剩餘 4","type":"highlight"},{"id":"pick4","label":"選 4, 剩餘 0 ✓","type":"highlight"},{"id":"pick3","label":"選 3, 剩餘 3","type":"muted"},{"id":"prune","label":"下一個 4>3 剪枝","type":"muted"}],"edges":[{"from":"start","to":"pick1","label":"i=1"},{"from":"pick1","to":"pick2","label":"i=2"},{"from":"pick2","to":"pick4","label":"i=4 → 答案"},{"from":"pick1","to":"pick3","label":"i=3"},{"from":"pick3","to":"prune","label":"剪枝"}]}' />
 
+圖表展示了回溯搜尋樹的實際走訪過程：選 1→2→4 時 remain=0 找到答案 [1,2,4]。
+選 1→3 後剩餘 3，下一個數字 4 > 3，直接 break 剪枝，避免無效搜尋。
+
 ## 進階觀點
 
 <Callout type="tip" title="面試追問">
-- 和 **39. Combination Sum**（可重複使用）、**40. Combination Sum II**（有重複元素）的差別：本題數字固定 1-9 且不重複，最單純。
-- 剪枝 `if (i > remain) break` 為什麼用 break 而不是 continue？因為數字是遞增的，如果 i 已經超過剩餘和，i+1, i+2... 更大，都不可能成功。
-- 可以進一步剪枝：檢查「剩餘可選數字的最大可能和」是否 ≥ remain。
+- **和 Combination Sum 系列的差別？** 39 題允許重複使用同一數字（遞迴傳 i 不是 i+1）；40 題有重複元素需跳過同層相同值；本題數字固定 1-9 且不重複，是最單純的版本。
+- **剪枝用 break 而不是 continue 的原因？** 因為迴圈是 i 從 start 到 9 遞增的。如果 i > remain，那 i+1, i+2... 更大，加上去只會讓 remain 變更負，全都不可能成功，所以直接 break 結束整層。
+- **能再加什麼剪枝？** 檢查「剩餘 k - path.length 個數字能湊出的最大和」是否 ≥ remain。最大和 = 9 + 8 + ... 取最後幾個，如果連最大都不夠就提前 return。
 </Callout>
+
+## 邊界情況
+
+- **n 大於 45（1+2+...+9=45）**：不可能湊出，直接回傳空陣列
+- **k 等於 1**：答案就是 n 本身（如果 1 ≤ n ≤ 9），回傳 [[n]]
+- **k 等於 9**：只有一種選法 [1,2,...,9]，且 n 必須等於 45 才有解
 
 ## 理解測驗
 

@@ -29,7 +29,7 @@ description: "二分搜尋利用相鄰元素的遞增遞減趨勢找到峰值"
 
 ## 解題思路
 
-<StepDiagram data='[{"title":"設定範圍","description":"left = 0, right = n - 1","icon":"1"},{"title":"取中間值","description":"mid = left + (right - left) / 2","icon":"2"},{"title":"比較右鄰居","description":"若 nums[mid] < nums[mid+1]，峰值在右側","icon":"3"},{"title":"縮小範圍","description":"往上坡方向移動，保證最終收斂到峰值","icon":"4"},{"title":"left == right","description":"收斂時的位置就是峰值","icon":"5"}]' />
+<StepDiagram data='[{"title":"設定範圍","description":"left = 0, right = n - 1，搜尋範圍包含整個陣列","icon":"1"},{"title":"取中間值","description":"mid = left + (right - left) / 2，注意 mid 永遠不會等於 right（因為整數除法向下取整）","icon":"2"},{"title":"比較右鄰居","description":"比較 nums[mid] 和 nums[mid+1]：若 nums[mid] 較小代表上坡，峰值在右側；否則下坡或已是峰值","icon":"3"},{"title":"縮小範圍","description":"上坡 → left = mid + 1（mid 不可能是峰值）；下坡 → right = mid（mid 可能是峰值所以保留）","icon":"4"},{"title":"left == right","description":"兩指標收斂到同一位置，該位置就是峰值——因為我們始終往上坡方向走，最終一定停在峰頂","icon":"5"}]' />
 
 ## 程式碼
 
@@ -86,17 +86,34 @@ def findPeakElement(nums: list[int]) -> int:
 |--|------|-------|
 | 本解法 | O(log n) | O(1) |
 
+- **Time**：每次迭代砍掉一半搜尋範圍，最多迭代 log2(n) 次
+- **Space**：只用了常數個指標變數
+
 ## 圖解
 
 <Diagram data='{"nodes":[{"id":"arr","label":"nums 陣列","type":"default"},{"id":"mid","label":"取 mid","type":"highlight"},{"id":"uphill","label":"nums[mid] < nums[mid+1]","type":"default"},{"id":"downhill","label":"nums[mid] > nums[mid+1]","type":"default"},{"id":"goright","label":"left = mid + 1","type":"muted"},{"id":"goleft","label":"right = mid","type":"muted"},{"id":"peak","label":"left == right → 峰值","type":"highlight"}],"edges":[{"from":"arr","to":"mid","label":"二分"},{"from":"mid","to":"uphill","label":"比較"},{"from":"mid","to":"downhill","label":"比較"},{"from":"uphill","to":"goright","label":"往右"},{"from":"downhill","to":"goleft","label":"往左"},{"from":"goright","to":"peak","label":"收斂"},{"from":"goleft","to":"peak","label":"收斂"}]}' />
 
+圖表展示了二分搜尋的方向判斷邏輯：比較 mid 和 mid+1 決定坡度方向。
+因為陣列兩端是 -∞，往上坡方向走一定會遇到峰值（不可能一路上坡到負無窮）。
+
 ## 進階觀點
 
 <Callout type="tip" title="面試追問">
-- 為什麼這題能用 Binary Search？關鍵是邊界條件 `nums[-1] = nums[n] = -∞`，這保證了只要往上坡方向走，一定會遇到峰值（不可能一路上坡到負無窮）。
-- 如果陣列嚴格遞增怎麼辦？最後一個元素就是峰值（因為右邊是 -∞）。
-- 2D 版本：**Find Peak Element II (1901)**，可以用 O(m log n) 或 O(n log m) 解。
+**Q: 為什麼這題能用 Binary Search？陣列又沒有排序。**
+A: 關鍵前提是 `nums[-1] = nums[n] = -∞`。這保證了搜尋空間的兩端都是「谷底」，所以只要偵測到上坡方向（`nums[mid] < nums[mid+1]`），往那個方向走一定會在抵達邊界前遇到下坡，從而找到峰值。這不需要全域有序，只需要「局部單調性保證峰值存在」。
+
+**Q: 如果陣列嚴格遞增怎麼辦？**
+A: 每次都判定為上坡，left 持續右移，最終 left = right = n-1，最後一個元素就是峰值（因為右邊是 -∞）。嚴格遞減同理，left 不動而 right 一路左移，最終峰值是第一個元素。
+
+**Q: 2D 版本（Find Peak Element II, LC 1901）怎麼解？**
+A: 對中間列找該列的最大值，再比較它和相鄰列對應位置的值，決定往左半還是右半搜尋。時間 O(m log n) 或 O(n log m)，核心思路仍是「往上坡方向走一定能找到峰值」。
 </Callout>
+
+## 邊界情況
+
+- **陣列只有一個元素**：left = right = 0 直接返回 0，因為它左右都是 -∞ 所以是峰值
+- **陣列只有兩個元素**：一次比較就能確定哪個是峰值
+- **存在多個峰值**：Binary Search 不保證找到全域最大值，只保證找到某一個局部峰值（題目只要求回傳任一個）
 
 ## 理解測驗
 

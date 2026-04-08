@@ -27,7 +27,7 @@ description: "1D DP 計算爬到樓頂的最小成本，每次可跨一或兩階
 
 ## 解題思路
 
-<StepDiagram data='[{"title":"定義狀態","description":"dp[i] = 到達第 i 階的最小累計費用","icon":"1"},{"title":"初始條件","description":"dp[0] = cost[0], dp[1] = cost[1]","icon":"2"},{"title":"轉移方程","description":"dp[i] = cost[i] + min(dp[i-1], dp[i-2])","icon":"3"},{"title":"空間優化","description":"只需前兩個值，用兩個變數滾動","icon":"4"},{"title":"答案","description":"min(dp[n-1], dp[n-2])，從最後兩階跳到頂","icon":"5"}]' />
+<StepDiagram data='[{"title":"定義狀態","description":"dp[i] = 踩到第 i 階（含付費）的最小累計費用","icon":"1"},{"title":"初始條件","description":"dp[0] = cost[0], dp[1] = cost[1]。可以從第 0 或第 1 階起步，起步時付該階費用","icon":"2"},{"title":"轉移方程","description":"dp[i] = cost[i] + min(dp[i-1], dp[i-2])。例如 cost=[10,15,20] → dp[2] = 20 + min(15,10) = 30","icon":"3"},{"title":"空間優化","description":"dp[i] 只依賴 dp[i-1] 和 dp[i-2]，用 prev1 和 prev2 兩個變數滾動替代整個陣列","icon":"4"},{"title":"答案","description":"min(prev1, prev2)：頂樓在 index n（陣列外），可以從 n-1 跨 1 步或 n-2 跨 2 步抵達","icon":"5"}]' />
 
 ## 程式碼
 
@@ -82,17 +82,29 @@ def minCostClimbingStairs(cost: list[int]) -> int:
 |--|------|-------|
 | 本解法 | O(n) | O(1) |
 
+- **Time**：只做一次線性遍歷，每步常數操作
+- **Space**：用兩個滾動變數取代 dp 陣列，O(1)
+
 ## 圖解
 
 <Diagram data='{"nodes":[{"id":"s0","label":"階梯 0 (cost[0])","type":"default"},{"id":"s1","label":"階梯 1 (cost[1])","type":"default"},{"id":"s2","label":"階梯 2","type":"highlight"},{"id":"top","label":"頂樓","type":"highlight"}],"edges":[{"from":"s0","to":"s2","label":"跨2階"},{"from":"s1","to":"s2","label":"跨1階"},{"from":"s1","to":"top","label":"跨2階"},{"from":"s2","to":"top","label":"跨1階"}]}' />
 
+圖表展示了到達每一階的兩種來源：從前一階跨 1 步，或從前兩階跨 2 步。
+最終到達頂樓也有兩條路（從 n-1 或 n-2），取較小成本即為答案。
+
 ## 進階觀點
 
 <Callout type="tip" title="面試追問">
-- 為什麼答案是 `min(dp[n-1], dp[n-2])` 而不是 `dp[n-1]`？因為頂樓在 index n（陣列外），你可以從第 n-1 階跨 1 步或從第 n-2 階跨 2 步到達。
-- 這是 **70. Climbing Stairs** 的帶權版本。Climbing Stairs 計算方案數，本題計算最小成本。
-- 可以改成「最大成本」嗎？只要把 min 改成 max，DP 框架完全相同。
+- **為什麼答案是 min(dp[n-1], dp[n-2])？** 頂樓的位置是 index n（在陣列最後一個元素的右邊），從 n-1 跨 1 步或 n-2 跨 2 步都能到達頂樓。兩者取較小成本。如果直覺地只回傳 dp[n-1]，會漏掉從 n-2 直接跨兩步跳過 n-1 的更優路線。
+- **和 70. Climbing Stairs 的關係？** Climbing Stairs 計算「方案數」用加法（dp[i] = dp[i-1] + dp[i-2]），本題計算「最小成本」用 min。兩者的 DP 結構完全相同，只是聚合函數不同。
+- **可以改成最大成本嗎？** 可以，只要把 min 全部換成 max。DP 框架不變，這展示了 DP 的通用性——改變目標函數不影響結構。
 </Callout>
+
+## 邊界情況
+
+- **cost 長度為 2**：只有兩階，從第 0 或第 1 階直接跳到頂樓，答案 = min(cost[0], cost[1])
+- **所有 cost 值相同**：不管怎麼走成本都一樣，答案 = ceil(n/2) × cost（盡量跨兩步最省）
+- **cost 值為 0**：部分階梯免費，DP 仍正確處理，免費的階梯自然被優先選擇
 
 ## 理解測驗
 

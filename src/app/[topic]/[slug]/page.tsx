@@ -7,6 +7,7 @@ import rehypePrettyCode from "rehype-pretty-code";
 import Link from "next/link";
 import { mdxComponents } from "@/components/mdx";
 import { LessonCompleteButton } from "@/components/lesson-complete-button";
+import { AskAI } from "@/components/ask-ai";
 
 interface Props {
   params: Promise<{ topic: string; slug: string }>;
@@ -91,6 +92,9 @@ export default async function LessonPage({ params }: Props) {
           </Link>
         )}
       </div>
+
+      {/* AI Q&A */}
+      <AskAI lessonTitle={frontmatter.title} lessonContent={content} />
     </div>
   );
 }

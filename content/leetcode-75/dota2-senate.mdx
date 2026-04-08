@@ -30,7 +30,7 @@ description: "用雙 Queue 模擬 Radiant 與 Dire 的投票淘汰過程"
 
 ## 解題思路
 
-<StepDiagram data='[{"title":"初始化雙 Queue","description":"R 的位置放入 rQueue，D 的位置放入 dQueue","icon":"1"},{"title":"比較隊首","description":"位置小的先行動，禁掉對方隊首","icon":"2"},{"title":"勝者進下一輪","description":"勝者位置 + n 後重新排入自己的 Queue","icon":"3"},{"title":"重複直到一方為空","description":"某個 Queue 為空時，另一方獲勝","icon":"4"}]' />
+<StepDiagram data='[{"title":"初始化雙 Queue","description":"遍歷 senate 字串，將 R 的 index 放入 rQueue、D 的 index 放入 dQueue","icon":"1"},{"title":"比較隊首","description":"取出 rQueue 和 dQueue 的隊首，index 小的先行動、禁掉對方（對方被移除）","icon":"2"},{"title":"勝者進下一輪","description":"勝者 index 加上 n 後重新排入自己的 Queue，模擬環形輪次","icon":"3"},{"title":"重複直到一方為空","description":"當 rQueue 或 dQueue 為空時，另一方所有議員存活，該黨獲勝","icon":"4"}]' />
 
 ## 程式碼
 
@@ -123,18 +123,28 @@ def predictPartyVictory(senate: str) -> str:
 |--|------|-------|
 | 本解法 | O(n) | O(n) |
 
-每位議員最多被處理常數次。
+每位議員最多被處理常數次。Time 為 O(n) 是因為每輪比較後一方被淘汰、另一方進入下輪，總操作次數不超過 2n。Space 為 O(n) 是因為兩個 Queue 合計最多存 n 個 index。
+
+## 邊界情況
+
+- **全部同一黨**：如 `"RRRR"`，dQueue 一開始就為空，直接回傳 "Radiant"
+- **只有兩人**：如 `"RD"`，一輪比較就結束，index 小的黨獲勝
+- **交替排列**：如 `"RDRD"`，每輪 R 禁 D、R 禁 D，R 全部存活
 
 ## 圖解
 
 <Diagram data='{"nodes":[{"id":"init","label":"senate = RDD","type":"muted"},{"id":"q0","label":"rQ=[0], dQ=[1,2]","type":"default"},{"id":"q1","label":"R(0) vs D(1)：R贏 → rQ=[3], dQ=[2]","type":"default"},{"id":"q2","label":"D(2) vs R(3)：D贏 → rQ=[], dQ=[5]","type":"highlight"},{"id":"result","label":"Dire 獲勝","type":"highlight"}],"edges":[{"from":"init","to":"q0","label":"初始化"},{"from":"q0","to":"q1","label":"第一輪"},{"from":"q1","to":"q2","label":"第二輪"},{"from":"q2","to":"result","label":"rQ 為空"}]}' />
 
+圖表展示了 `"RDD"` 的完整模擬過程：第一輪 R(0) 比 D(1) 先行動所以 R 禁掉 D(1)，R 以 index 3 進入下輪；第二輪 D(2) 比 R(3) 先行動禁掉 R，最終只剩 Dire。
+
 ## 進階觀點
 
 <Callout type="tip" title="面試追問">
-**為什麼勝者位置要加 n？** 加 n 確保勝者排到所有人後面，模擬「循環」的效果，同時保持相對順序。
+**Q: 為什麼勝者位置要加 n？**
+A: 加 n 確保勝者排到當前所有議員之後，模擬「繞回下一圈」的效果。例如 n=3 時 R(0) 勝出變成 R(3)，代表它在下一輪才能再行動。如果不加 n，勝者可能在同一輪重複行動。
 
-**Greedy 證明**：每個議員的最優策略是禁掉離自己最近的對手（即對方 Queue 的隊首），因為跳過不禁只會讓自己更危險。
+**Q: 為什麼 Greedy 策略是禁掉最近的對手？**
+A: 因為跳過眼前的對手去禁更遠的對手，意味著眼前的對手會先行動禁掉你方的下一位。每個議員禁掉對方 Queue 隊首（最快行動的對手）才是最優策略，這可以用交換論證證明。
 
 **變體**：這題本質是環形 Greedy 模擬，類似 LC 134 Gas Station 的環形思維。
 </Callout>

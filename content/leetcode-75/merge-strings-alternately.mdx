@@ -26,7 +26,7 @@ description: "用雙指針交替從兩字串取字元合併成新字串"
 
 ## 解題思路
 
-<StepDiagram data='[{"title":"初始化","description":"建立結果字串，設定索引 i = 0","icon":"1"},{"title":"交替取字元","description":"當 i 未超過任一字串長度時，先取 word1[i] 再取 word2[i]","icon":"2"},{"title":"處理剩餘","description":"較長字串的剩餘部分直接接上","icon":"3"},{"title":"回傳結果","description":"合併後的字串即為答案","icon":"4"}]' />
+<StepDiagram data='[{"title":"初始化","description":"建立 StringBuilder 或空字串，設定索引 i = 0 指向兩字串的起始位置","icon":"1"},{"title":"交替取字元","description":"while 迴圈中，先把 word1[i] 加入結果，再把 word2[i] 加入結果，i++。若某字串已到底則跳過","icon":"2"},{"title":"處理剩餘","description":"迴圈結束後，較長字串從 i 到尾端的字元直接 append 到結果後方","icon":"3"},{"title":"回傳結果","description":"合併後的字串即為答案，長度為 word1.length + word2.length","icon":"4"}]' />
 
 ## 程式碼
 
@@ -86,18 +86,31 @@ def mergeAlternately(word1: str, word2: str) -> str:
 |--|------|-------|
 | 本解法 | O(n + m) | O(n + m) |
 
-其中 n、m 分別為兩字串長度。
+其中 n、m 分別為兩字串長度。每個字元恰好被讀取一次並寫入結果，因此時間為 O(n+m)；結果字串需要儲存所有字元，空間也是 O(n+m)。
+
+## 邊界情況
+
+- **其中一個字串為空**：直接回傳另一個字串，迴圈不會執行任何交替操作
+- **兩字串長度相同**：不會有剩餘部分，迴圈結束時 i 恰好等於兩者長度
+- **一長一短（差距很大）**：例如 `word1 = "a"`, `word2 = "bcdefg"`，結果為 `"abcdefg"`，短字串只貢獻第一個字元
 
 ## 圖解
 
 <Diagram data='{"nodes":[{"id":"w1","label":"word1: abc","type":"default"},{"id":"w2","label":"word2: pqr","type":"default"},{"id":"merge","label":"交替合併","type":"highlight"},{"id":"result","label":"apbqcr","type":"muted"}],"edges":[{"from":"w1","to":"merge","label":"a, b, c"},{"from":"w2","to":"merge","label":"p, q, r"},{"from":"merge","to":"result","label":"交替拼接"}]}' />
 
+圖表展示了核心流程：兩個字串分別提供字元，在「交替合併」節點中依序穿插。每一步先從 word1 取一個字元、再從 word2 取一個字元，最終形成 `apbqcr`。當兩字串等長時不需額外處理剩餘。
+
 ## 進階觀點
 
 <Callout type="tip" title="面試追問">
-- **如果有三個以上字串要交替合併？** 改用 index 搭配 for 迴圈遍歷所有字串。
-- **能否 in-place？** 字串在大多數語言是 immutable，所以需要額外空間。
-- **跟 zip_longest 的關係？** Python 可直接用 `itertools.zip_longest` 一行解決。
+**Q: 如果有三個以上字串要交替合併？**
+A: 用一個 index `i` 從 0 開始遞增，內層 for 迴圈遍歷所有字串，每次取各字串的第 `i` 個字元。當所有字串都超過 `i` 時停止。時間複雜度 O(所有字串長度之和)。
+
+**Q: 能否 in-place 完成？**
+A: 不行。字串在 C#/Python/TypeScript 中都是 immutable，必須建立新的結果容器。即使語言允許 mutable 字串，兩個來源字串合成一個更長的結果也無法原地完成，因為結果長度 = 兩者之和。
+
+**Q: 跟 Python 的 zip_longest 有什麼關係？**
+A: Python 可用 `"".join(a + b for a, b in itertools.zip_longest(word1, word2, fillvalue=""))` 一行解決。`zip_longest` 會用 `fillvalue` 填充較短的序列，語意上等同本題的交替邏輯。面試中展示這種寫法可以加分，但要能解釋底層原理。
 </Callout>
 
 ## 理解測驗

@@ -25,10 +25,11 @@ Rate Limiter 通常放在 **API Gateway** 或 **Middleware** 層，在請求到�
 
 ## 需求分析
 
-- **功能性需求**：按用戶/IP/API key 限流、可配置限流規則（每秒/每分鐘 N 次）、超過限制返回 429
-- **非功能性需求**：低延遲（限流判斷 < 1ms）、高可用、分散式環境下準確
-- **限流粒度**：用戶級、IP 級、API 級、全局級
-- **軟限流 vs 硬限流**：軟限流允許短暫超額，硬限流嚴格拒絕
+- **功能性需求**：按用戶/IP/API key 限流、可配置限流規則（每秒/每分鐘 N 次）、超過限制返回 HTTP 429 Too Many Requests 並附上 `Retry-After` Header 告知用戶何時可以重試
+- **非功能性需求**：低延遲（限流判斷 < 1ms，不能因為限流反而拖慢正常請求）、高可用（限流器掛了要 fail-open 還是 fail-close？）、分散式環境下準確
+- **限流粒度**：用戶級（每個登入用戶 100 req/min）、IP 級（防爬蟲，每個 IP 1,000 req/min）、API 級（某個耗資源的 API 全域 500 req/s）、全局級（系統總流量上限 50,000 req/s）。可以疊加多層，如「每個用戶每分鐘 100 次 + 全域每秒 10,000 次」
+- **軟限流 vs 硬限流**：軟限流允許短暫超額（如允許超過 10%，超過後降級回應而非拒絕），適合用戶體驗優先的場景。硬限流嚴格拒絕超額請求，適合保護後端不被壓垮或防止 API 濫用
+- **fail-open vs fail-close**：限流器本身出問題時，fail-open = 放行所有請求（保可用性），fail-close = 拒絕所有請求（保安全性）。大多數場景選 fail-open，因為限流器故障時寧可暫時不限流也不要整個服務停擺
 
 ## 注意事項
 
@@ -121,14 +122,30 @@ app.use(async (req, res, next) => {
 
 <Diagram data='{"nodes":[{"id":"client","label":"Client","type":"muted"},{"id":"gateway","label":"API Gateway","type":"default"},{"id":"limiter","label":"Rate Limiter (Middleware)","type":"highlight"},{"id":"redis","label":"Redis (Counters)","type":"highlight"},{"id":"rules","label":"Rules Config","type":"default"},{"id":"api","label":"Backend API","type":"default"}],"edges":[{"from":"client","to":"gateway","label":"request"},{"from":"gateway","to":"limiter","label":"check rate"},{"from":"limiter","to":"redis","label":"read/update counter"},{"from":"limiter","to":"rules","label":"load rules"},{"from":"limiter","to":"api","label":"allowed → forward"},{"from":"limiter","to":"client","label":"denied → 429"}]}' />
 
+**架構圖解讀**：Client 請求先到 API Gateway，Gateway 內嵌的 Rate Limiter Middleware 攔截請求。Middleware 從 Rules Config 載入限流規則（如「用戶級每分鐘 100 次」），然後向 Redis 讀取/更新該用戶的計數器。如果未超限，請求被放行到 Backend API；如果超限，直接回傳 429 給 Client，請求不會到達後端。
+
 ## 實戰補充
 
-<Callout type="tip" title="四種演算法比較">
-- **Token Bucket**：允許短暫的突發流量（桶裡的 token 可以一次用完），最常用
-- **Leaky Bucket**：固定速率處理請求，多餘的排隊或丟棄，適合需要平滑流量的場景
-- **Fixed Window Counter**：簡單但有邊界問題（窗口交界處可能有兩倍流量）
-- **Sliding Window Log**：最精確但記憶體用量大（記錄每個請求的時間戳）
-- **Sliding Window Counter**：結合 Fixed Window 和 Sliding Window Log 的優點，用加權計算
+<Callout type="tip" title="演算法選擇指南">
+**如何選擇限流演算法？根據你的場景需求：**
+
+| 演算法 | 允許突發 | 記憶體用量 | 精確度 | 實作複雜度 | 適合場景 |
+|--------|---------|-----------|--------|-----------|---------|
+| Token Bucket | 是（桶滿時可瞬間消耗） | 低（2 個變數） | 中 | 低 | API Gateway 通用限流（最推薦） |
+| Leaky Bucket | 否（固定速率流出） | 低（佇列） | 中 | 低 | 需要平滑流量的場景（如資料庫寫入） |
+| Fixed Window | 否 | 極低（1 個計數器） | 低（邊界問題） | 極低 | 粗略限流，對精確度要求不高 |
+| Sliding Window Log | 否 | 高（存每個請求時間戳） | 最高 | 中 | 需要精確計數且流量不大 |
+| Sliding Window Counter | 部分 | 低 | 高 | 中 | Fixed Window 精度不夠但 Log 記憶體太大時的折衷 |
+
+**經驗法則**：80% 的場景用 Token Bucket 就夠了。需要精確計數（如計費 API）用 Sliding Window Counter。需要絕對平滑的輸出速率用 Leaky Bucket。
+
+**面試常見問題與參考答案**：
+
+**Q：如果有人用大量不同 IP 發動 DDoS，IP 級限流還有用嗎？**
+A：單獨的 IP 限流不夠，需要多層防禦：IP 限流 + 全局限流 + 行為分析（如正常用戶不會每秒請求同一個 API 100 次）。更上層可以用 WAF（如 Cloudflare）在網路邊緣就擋掉。
+
+**Q：限流規則怎麼配置和更新？**
+A：用 Config Service（如 etcd、Consul）集中管理，限流器定期拉取最新規則（如每 30 秒）。這樣不需要重啟服務就能動態調整限流閾值。
 </Callout>
 
 ## 理解測驗
@@ -142,7 +159,7 @@ app.use(async (req, res, next) => {
 ## 重點整理
 
 <Callout type="tip" title="一句話記住">
-**Rate Limiter = Token Bucket（允許突發）或 Sliding Window（精確計數）+ Redis 集中式計數，放在 API Gateway 攔截。**
+**Gateway 攔截、Redis 計數、429 拒絕。** 記憶口訣：「攔數拒」— 在 Gateway 攔截、用 Redis 計數、超限就 429 拒絕。演算法八成選 Token Bucket。
 </Callout>
 
 | 概念 | 說明 |

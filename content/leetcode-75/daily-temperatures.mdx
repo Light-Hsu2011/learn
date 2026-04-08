@@ -25,7 +25,7 @@ description: "單調遞減 Stack 追蹤尚未找到更暖天數的日子"
 
 ## 解題思路
 
-<StepDiagram data='[{"title":"初始化 Stack","description":"Stack 存索引（不是溫度值），方便計算天數差","icon":"1"},{"title":"遍歷每一天","description":"從左到右遍歷溫度陣列","icon":"2"},{"title":"彈出較冷的","description":"如果當前溫度 > Stack 頂端的溫度，彈出並計算天數差","icon":"3"},{"title":"壓入當前","description":"將當前索引壓入 Stack","icon":"4"},{"title":"Stack 剩餘","description":"遍歷結束後 Stack 中剩餘的索引，answer 為 0","icon":"5"}]' />
+<StepDiagram data='[{"title":"初始化","description":"建立空的 Stack（存索引而非溫度值），建立 answer 陣列初始化為全 0","icon":"1"},{"title":"遍歷每一天","description":"for i = 0 到 n-1，取出 temperatures[i] 作為當前溫度","icon":"2"},{"title":"彈出較冷的","description":"while Stack 非空且 temperatures[i] > temperatures[stack.peek()]：彈出 prevIdx，設 answer[prevIdx] = i - prevIdx","icon":"3"},{"title":"壓入當前索引","description":"將 i 壓入 Stack，等待未來某天的更高溫度來彈出它","icon":"4"},{"title":"Stack 剩餘","description":"遍歷結束後 Stack 中剩餘的索引表示之後沒有更高溫度，answer 維持初始值 0","icon":"5"}]' />
 
 ## 程式碼
 
@@ -90,17 +90,34 @@ def dailyTemperatures(temperatures: list[int]) -> list[int]:
 |--|------|-------|
 | 本解法 | O(n) | O(n) |
 
+雖然有 while 迴圈嵌套在 for 迴圈內，但每個索引最多被 push 和 pop 各一次，總操作數 ≤ 2n，因此時間 O(n)。Stack 最大深度為 n（溫度單調遞減時），空間 O(n)。
+
+## 邊界情況
+
+- **溫度單調遞減**：例如 `[5,4,3,2,1]`，沒有任何天之後有更高溫度，answer 全為 0。Stack 不斷累積、不彈出
+- **溫度單調遞增**：例如 `[1,2,3,4,5]`，每個新溫度都比前一個高，answer = `[1,1,1,1,0]`。每個元素 push 後立刻被下一個彈出
+- **所有溫度相同**：例如 `[30,30,30]`，相同溫度不算更高，answer 全為 0
+
 ## 圖解
 
 <Diagram data='{"nodes":[{"id":"day0","label":"Day 0: 73°","type":"muted"},{"id":"day1","label":"Day 1: 74°","type":"default"},{"id":"stack","label":"Stack (遞減): [75, 71, 69]","type":"highlight"},{"id":"day5","label":"Day 5: 72° 來了","type":"highlight"},{"id":"pop","label":"彈出 69, 71 (比72冷)","type":"muted"},{"id":"result","label":"answer[4]=1, answer[3]=2","type":"default"}],"edges":[{"from":"day0","to":"day1","label":"74>73 彈出"},{"from":"stack","to":"day5","label":"新溫度"},{"from":"day5","to":"pop","label":"比較"},{"from":"pop","to":"result","label":"計算天數差"}]}' />
 
+圖表展示 Stack 的彈出機制：當 Day 5 的 72° 到來時，Stack 頂端的 69°（Day 4）和 71°（Day 3）都比 72° 冷，依序被彈出。彈出時計算天數差：answer[4] = 5-4 = 1，answer[3] = 5-3 = 2。
+
 ## 進階觀點
 
 <Callout type="tip" title="面試追問">
-- 為什麼是 O(n) 而不是 O(n^2)？雖然有 while 迴圈，但每個索引最多被 push 和 pop 各一次，所以總操作數是 O(2n) = O(n)。
-- Stack 存索引而不是溫度值的原因：需要用索引計算天數差 `i - prevIdx`。
-- 這是「單調遞減 Stack」的經典應用。「Next Greater Element」系列題都用同樣的模式。
-- 變體：如果要找「之前最近的更暖天」，從右往左遍歷或反轉邏輯即可。
+- **Q: 為什麼是 O(n) 而不是 O(n^2)？**
+  A: 雖然有 while 迴圈，但每個索引最多被 push 一次和 pop 一次，所以 push 總次數 ≤ n，pop 總次數 ≤ n，整體操作數 ≤ 2n = O(n)。這是「均攤分析」的經典案例。
+
+- **Q: Stack 為什麼存索引而不是溫度值？**
+  A: 因為需要用索引計算天數差 `answer[prevIdx] = i - prevIdx`。如果只存溫度值，就無法知道那一天是哪一天。溫度值可以透過 `temperatures[stack.peek()]` 間接取得。
+
+- **Q: 這個模式還能用在哪些題？**
+  A: 這是「單調遞減 Stack」的經典應用。LeetCode 496/503（Next Greater Element I/II）、42（Trapping Rain Water）、84（Largest Rectangle in Histogram）都用同樣的「遇到更大元素就彈出」模式。
+
+- **Q: 如果要找「之前最近的更暖天」？**
+  A: 從右往左遍歷，用同樣的單調 Stack。或者在結果陣列上反推：如果 answer[j] 指向 i，代表 i 是 j 之後最近的更暖天，反過來 j 就是 i 之前最近的更暖天。
 </Callout>
 
 ## 理解測驗

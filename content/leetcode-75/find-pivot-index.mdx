@@ -29,7 +29,7 @@ description: "用總和減去左前綴和來判斷是否存在左右和相等的
 
 ## 解題思路
 
-<StepDiagram data='[{"title":"算總和","description":"totalSum = sum(nums)","icon":"1"},{"title":"初始化左和","description":"leftSum = 0","icon":"2"},{"title":"遍歷每個索引","description":"rightSum = totalSum - leftSum - nums[i]","icon":"3"},{"title":"判斷","description":"若 leftSum == rightSum，回傳 i","icon":"4"},{"title":"累加","description":"leftSum += nums[i]，繼續下一個","icon":"5"}]' />
+<StepDiagram data='[{"title":"算總和","description":"先遍歷一次陣列，計算 totalSum = sum(nums)，例如 [1,7,3,6,5,6] → 28","icon":"1"},{"title":"初始化左和","description":"leftSum = 0，代表索引 0 左邊沒有元素","icon":"2"},{"title":"遍歷每個索引","description":"對每個 i，算 rightSum = totalSum - leftSum - nums[i]（總和減去左邊和支點本身）","icon":"3"},{"title":"判斷","description":"若 leftSum == rightSum，找到 pivot，回傳 i","icon":"4"},{"title":"累加","description":"leftSum += nums[i]，把當前元素加入左邊，繼續檢查下一個索引","icon":"5"}]' />
 
 ## 程式碼
 
@@ -85,19 +85,34 @@ def pivotIndex(nums: list[int]) -> int:
 |--|------|-------|
 | 本解法 | O(n) | O(1) |
 
-計算總和 O(n) + 遍歷 O(n) = O(n)。
+先算總和遍歷一次 O(n)，再從左到右掃描一次 O(n)，每步做常數次加法和比較。兩次遍歷合計 O(n)。只用 totalSum、leftSum 兩個變數，空間 O(1)。
+
+## 邊界情況
+
+- **pivot 在索引 0**：例如 `[2,1,-1]`，leftSum = 0，rightSum = 1 + (-1) = 0，回傳 0
+- **pivot 在最後一個索引**：例如 `[-1,1,2]`，leftSum = -1+1 = 0，rightSum = 0，回傳 2
+- **不存在 pivot**：例如 `[1,2,3]`，任何位置左右和都不相等，回傳 -1
 
 ## 圖解
 
 <Diagram data='{"nodes":[{"id":"input","label":"[1,7,3,6,5,6] total=28","type":"default"},{"id":"try3","label":"i=3: left=11, right=28-11-6=11","type":"highlight"},{"id":"result","label":"leftSum == rightSum → 回傳 3","type":"muted"}],"edges":[{"from":"input","to":"try3","label":"試 i=3"},{"from":"try3","to":"result","label":"相等!"}]}' />
 
+圖表展示找到 pivot 的關鍵步驟：陣列總和為 28，在 i=3 時 leftSum = 1+7+3 = 11，rightSum = 28 - 11 - 6 = 11，左右相等，索引 3 即為 pivot。
+
 ## 進階觀點
 
 <Callout type="tip" title="面試追問">
-- **索引 0 可以是 pivot 嗎？** 可以，左邊為空（和為 0），如果右邊也是 0 就成立。
-- **有多個 pivot 怎麼辦？** 題目要求回傳最左邊的那個，所以從左往右掃描找到第一個就回傳。
-- **含有負數時？** 演算法依然正確，因為用的是精確的加法比較。
-- **跟「前綴和陣列」的關係？** 這題不需要額外建立前綴和陣列，用一個變數即可。
+- **Q: 索引 0 可以是 pivot 嗎？**
+  A: 可以。左邊為空，和定義為 0。如果 rightSum = totalSum - nums[0] 也等於 0，索引 0 就是 pivot。例如 `[0,0,0]` 的 pivot 是 0。
+
+- **Q: 有多個 pivot 怎麼辦？**
+  A: 題目要求回傳最左邊的那個，所以從左往右掃描找到第一個就回傳。如果要找所有 pivot，改為收集到 list 即可。
+
+- **Q: 含有負數時演算法還正確嗎？**
+  A: 正確。演算法用的是精確的整數加法比較，不涉及排序或大小假設。負數會使 leftSum 可能先增後減，但公式 `rightSum = totalSum - leftSum - nums[i]` 始終成立。
+
+- **Q: 跟前綴和陣列的關係？**
+  A: 這題本質上就是找前綴和陣列中 `prefix[i] == totalSum - prefix[i+1]` 的位置。但不需要額外建立前綴和陣列，用一個 leftSum 變數逐步累加即可。
 </Callout>
 
 ## 理解測驗

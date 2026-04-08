@@ -24,9 +24,11 @@ Abstract Factory 屬於**建立型模式（Creational Pattern）**，重點在�
 
 ## 什麼時候用？
 
-- 你的系統需要支援多種「產品家族」（例如不同平台的 UI 元件）
-- 一系列相關的物件必須一起使用，不能混搭
-- 你想在不改動客戶端程式碼的情況下切換整套產品
+用以下 if/then 條件判斷：
+
+- **如果**你的系統需要支援多種「產品家族」（Product Family，指一組彼此相關且必須搭配使用的產品，例如 Windows 的 Button + TextBox）→ 用 Abstract Factory
+- **如果**混用不同家族的產品會導致錯誤（例如 MacButton 搭配 WindowsTextBox）→ 用 Abstract Factory 保證一致性
+- **如果**你只需要建立單一種類的產品（沒有家族概念）→ Factory Method 就夠了
 
 ## 什麼時候不該用？
 
@@ -37,6 +39,8 @@ Abstract Factory 屬於**建立型模式（Creational Pattern）**，重點在�
 ## 執行流程
 
 <StepDiagram data='[{"title":"定義產品介面","description":"為每種產品定義各自的介面（如 IButton、ITextBox）","icon":"1"},{"title":"定義抽象工廠","description":"宣告建立每種產品的方法（CreateButton、CreateTextBox）","icon":"2"},{"title":"實作具體產品","description":"每個家族各自實作所有產品介面","icon":"3"},{"title":"實作具體工廠","description":"每個具體工廠產出同一家族的所有產品","icon":"4"},{"title":"客戶端透過抽象工廠操作","description":"切換工廠就切換整套產品，客戶端程式碼不用改","icon":"5"}]' />
+
+流程解讀：Abstract Factory 的核心是「產品家族的一致性保證」。抽象工廠定義了建立每種產品的方法，每個具體工廠負責產出同一家族的全套產品。Client 只透過抽象工廠和產品介面操作，切換家族只需換具體工廠。結構上的限制確保你不可能拿到 WindowsButton + MacTextBox 的混搭組合。
 
 ## 程式碼範例
 
@@ -272,6 +276,8 @@ System.out.println(factory.createTextBox().render());
 
 <Diagram data='{"nodes":[{"id":"client","label":"Client","type":"muted"},{"id":"abstract-factory","label":"UIFactory (interface)","type":"highlight"},{"id":"concrete-factory","label":"WindowsUIFactory / MacUIFactory","type":"default"},{"id":"abstract-product-a","label":"Button (interface)","type":"default"},{"id":"abstract-product-b","label":"TextBox (interface)","type":"default"},{"id":"concrete-products","label":"WindowsButton, MacButton, ...","type":"default"}],"edges":[{"from":"client","to":"abstract-factory","label":"uses"},{"from":"concrete-factory","to":"abstract-factory","label":"implements"},{"from":"abstract-factory","to":"abstract-product-a","label":"creates"},{"from":"abstract-factory","to":"abstract-product-b","label":"creates"},{"from":"concrete-products","to":"abstract-product-a","label":"implements"},{"from":"concrete-products","to":"abstract-product-b","label":"implements"}]}' />
 
+結構解讀：Client 只依賴 UIFactory 介面和產品介面（Button、TextBox），不知道具體實作。每個 ConcreteFactory（WindowsUIFactory、MacUIFactory）負責產出同一家族的所有產品。切換平台只需換工廠實例，Client 程式碼完全不用改。新增家族（如 LinuxUIFactory）只需新增工廠和對應產品，但新增產品種類（如 Checkbox）需要修改所有工廠介面。
+
 ## 實戰補充
 
 <Callout type="tip" title="資深開發者經驗">
@@ -290,10 +296,29 @@ System.out.println(factory.createTextBox().render());
 
 <Quiz data='{"question":"以下哪個場景最適合用 Abstract Factory？","options":["建立一個簡單的日誌記錄器","應用程式需要支援多種資料庫，每種資料庫有對應的 Connection、Command、Reader","把字串轉成數字","讀取 CSV 檔案"],"answer":1,"explanation":"多種資料庫各有一整套相關物件（Connection、Command、Reader），且必須使用同一家族的元件，正是 Abstract Factory 的經典場景。"}' />
 
+## 面試常見問題
+
+**Q: Abstract Factory 最大的缺點是什麼？如何緩解？**
+
+A: 新增產品種類時，所有工廠介面和具體工廠都要修改。例如原本只有 Button 和 TextBox，新增 Checkbox 時，IUIFactory 要加方法、WindowsUIFactory 和 MacUIFactory 都要實作。緩解方式：(1) 用泛型 Factory Method 如 `Create<T>()`；(2) 改用 Prototype Registry，每個家族用一組原型物件。
+
+**Q: 實務中 Abstract Factory 最常見的應用場景是什麼？**
+
+A: 跨平台 UI 框架和資料庫 Provider 切換。ADO.NET 的 `DbProviderFactory` 就是 Abstract Factory — `SqlClientFactory` 產出 SqlConnection + SqlCommand，`NpgsqlFactory` 產出 NpgsqlConnection + NpgsqlCommand，業務程式碼透過抽象介面操作，切換資料庫只需換 Factory。
+
+## 相關模式
+
+| 模式 | 關係 |
+|------|------|
+| **Factory Method** | Abstract Factory 內部通常包含多個 Factory Method，各負責建立一種產品 |
+| **Singleton** | Abstract Factory 本身常實作為 Singleton，確保全域只有一個工廠入口 |
+| **Prototype** | 可以替代 Abstract Factory — 用原型物件的 Clone 來建立產品，不需要每個家族都寫一個工廠類別 |
+| **Builder** | 都是建立型模式，但 Builder 關注「建構步驟」，Abstract Factory 關注「產品家族一致性」 |
+
 ## 重點整理
 
 <Callout type="tip" title="一句話記住">
-**Abstract Factory = 一次建立一整套風格一致的產品，切換工廠就切換整套。**
+**Abstract Factory = IKEA 風格套組：選一個風格，整套家具自動搭配。** 口訣：「換工廠換全套，混搭免擔心」
 </Callout>
 
 | 概念 | 說明 |

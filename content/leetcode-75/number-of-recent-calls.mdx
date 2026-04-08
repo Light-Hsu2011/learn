@@ -29,7 +29,7 @@ Queue（佇列）就像這張紙 — 新的從後面加入，太舊的從前面�
 
 ## 解題思路
 
-<StepDiagram data='[{"title":"接收 ping(t)","description":"將時間 t 加入 Queue 尾端","icon":"1"},{"title":"移除過期請求","description":"當 Queue 前端的時間 < t - 3000，彈出","icon":"2"},{"title":"回傳數量","description":"Queue 中剩餘的元素數量就是答案","icon":"3"}]' />
+<StepDiagram data='[{"title":"接收 ping(t)","description":"呼叫 queue.Enqueue(t) 將時間戳加入 Queue 尾端","icon":"1"},{"title":"移除過期請求","description":"用 while 迴圈檢查 Queue 前端，若 queue.Peek() 小於 t - 3000 就 Dequeue 移除","icon":"2"},{"title":"回傳數量","description":"Queue.Count 就是時間窗口 [t-3000, t] 內的請求數","icon":"3"}]' />
 
 ## 程式碼
 
@@ -98,18 +98,31 @@ class RecentCounter:
 |--|------|-------|
 | 本解法 | O(1) 攤銷 | O(W) |
 
-W 是時間窗口大小（最多 3000ms 內的請求數）。每個元素最多入隊出隊各一次。
+W 是時間窗口大小（最多 3000ms 內的請求數）。Time 為 O(1) 攤銷，因為每個元素最多入隊出隊各一次，雖然單次 ping 可能移除多個過期元素，但分攤到所有操作後每個元素只被處理兩次。Space 為 O(W) 是因為 Queue 最多同時存放時間窗口內的所有請求。
+
+## 邊界情況
+
+- **第一次 ping**：Queue 為空直接加入，不會進入 while 移除迴圈，回傳 1
+- **所有 ping 時間間隔都在 3000ms 內**：不會有任何元素被移除，Queue 持續增長
+- **連續大量密集 ping 後很久才來一次**：單次 ping 可能一次移除大量過期元素，但攤銷仍為 O(1)
 
 ## 圖解
 
 <Diagram data='{"nodes":[{"id":"q1","label":"Queue: [1]","type":"default"},{"id":"q2","label":"Queue: [1, 100]","type":"default"},{"id":"q3","label":"Queue: [1, 100, 3001]","type":"default"},{"id":"q4","label":"Queue: [100, 3001, 3002]","type":"highlight"}],"edges":[{"from":"q1","to":"q2","label":"ping(100)"},{"from":"q2","to":"q3","label":"ping(3001)"},{"from":"q3","to":"q4","label":"ping(3002), 移除 1"}]}' />
 
+圖表展示了 Queue 的狀態隨每次 ping 的變化。關鍵步驟在 ping(3002) 時：時間窗口變為 [2, 3002]，Queue 前端的 1 小於 2 被移除，最終 Queue 剩 3 個元素即為答案。
+
 ## 進階觀點
 
 <Callout type="tip" title="面試追問">
-**為什麼用 Queue 而不是 Array？** Queue 的 FIFO 特性天然適合時間窗口問題，舊的永遠在前面。
+**Q: 為什麼用 Queue 而不是 Array？**
+A: Queue 的 FIFO 特性天然適合時間窗口問題 — 請求按時間遞增加入，過期的一定在前端，只需從前端移除。Array 也能做但語意不如 Queue 清晰。
 
-**TypeScript 的 shift() 效能問題**：`Array.shift()` 是 O(n)，生產環境應考慮用 linked list 或 circular buffer。Python 的 `deque.popleft()` 是 O(1)。
+**Q: TypeScript 的 `Array.shift()` 效能問題如何解決？**
+A: `Array.shift()` 是 O(n) 因為要移動後續所有元素。生產環境可改用 linked list 實現真正的 O(1) dequeue，或用 circular buffer。Python 的 `deque.popleft()` 底層是雙向鏈結串列，已經是 O(1)。
+
+**Q: 如果要支援任意時間窗口大小怎麼做？**
+A: 把 3000 改為建構子參數即可，邏輯完全不變。也可以用 Binary Search（`bisect_left`）在排序的 list 中找到窗口左邊界，但 Queue 方案更簡潔。
 
 **變體**：滑動窗口中位數、滑動窗口最大值（LC 239）。
 </Callout>

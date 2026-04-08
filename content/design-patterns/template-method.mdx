@@ -42,6 +42,8 @@ Template Method 屬於**行為型模式（Behavioral Pattern）**，重點在於
 
 <StepDiagram data='[{"title":"定義抽象類別","description":"撰寫 Template Method，按順序呼叫各步驟","icon":"1"},{"title":"標記固定步驟","description":"在父類別中實作不需要變化的步驟","icon":"2"},{"title":"標記抽象步驟","description":"宣告為 abstract，強制子類別實作","icon":"3"},{"title":"提供 Hook 方法","description":"可選步驟，子類別可以覆寫也可以不覆寫","icon":"4"},{"title":"子類別實作","description":"繼承父類別，填入自訂步驟的具體邏輯","icon":"5"}]' />
 
+流程解讀：Template Method 把步驟分為三種：(1) 固定步驟 — 父類別直接實作，子類別不能覆寫（private 或 final）。(2) 抽象步驟 — 父類別宣告為 abstract，子類別必須實作。(3) Hook 方法（鉤子方法，指父類別提供的空實作方法，子類別可選擇性覆寫以插入自訂邏輯）— 父類別提供預設空實作，子類別可選擇性覆寫。Template Method 本身標記為 `final`/`sealed`，確保子類別不能改變流程順序。
+
 ## 程式碼範例
 
 ### C# 版本
@@ -296,6 +298,8 @@ jsonMiner.mine("data.json");
 
 <Diagram data='{"nodes":[{"id":"client","label":"Client","type":"muted"},{"id":"abstract","label":"AbstractClass (DataMiner)","type":"highlight"},{"id":"concrete_a","label":"ConcreteClass A (CsvMiner)","type":"default"},{"id":"concrete_b","label":"ConcreteClass B (JsonMiner)","type":"default"}],"edges":[{"from":"client","to":"abstract","label":"calls templateMethod()"},{"from":"concrete_a","to":"abstract","label":"extends"},{"from":"concrete_b","to":"abstract","label":"extends"}]}' />
 
+結構解讀：Client 呼叫 AbstractClass 的 Template Method，由父類別控制步驟順序。ConcreteClass A 和 B 各自覆寫特定步驟，但不能改變流程。這體現了「好萊塢原則（Hollywood Principle，即 Don't call us, we'll call you）」— 框架呼叫你的程式碼，而非你呼叫框架。
+
 ## 實戰補充
 
 <Callout type="tip" title="資深開發者經驗">
@@ -316,10 +320,28 @@ jsonMiner.mine("data.json");
 
 <Quiz data='{"question":"為什麼 Template Method 要標記為 final 或 sealed？","options":["提升執行效能","防止子類別覆寫整個演算法流程","減少記憶體使用","讓編譯器產生更好的錯誤訊息"],"answer":1,"explanation":"Template Method 的目的是固定流程骨架，如果子類別可以覆寫 Template Method 本身，就失去了控制流程的意義。"}' />
 
+## 面試常見問題
+
+**Q: Template Method 和 Strategy 都能自訂行為，怎麼選？**
+
+A: 核心差異是「繼承 vs 組合」和「控制範圍」。Template Method 用繼承，父類別控制整體流程，子類別只能自訂指定步驟。Strategy 用組合，Client 可以在執行時動態切換整個策略。選擇標準：如果流程骨架固定、只有個別步驟需要自訂 → Template Method；如果行為需要動態切換且不想被繼承綁死 → Strategy。
+
+**Q: Hook Method 是什麼？什麼時候用？**
+
+A: Hook Method 是 Template Method 中提供的「空方法」（有預設實作但什麼都不做），子類別可以選擇性覆寫。例如 `beforeExecute()`、`afterExecute()`。用途是在不強制子類別實作的前提下提供擴展點。Abstract Method 是強制實作，Hook Method 是選擇性擴展。
+
+## 相關模式
+
+| 模式 | 關係 |
+|------|------|
+| **Strategy** | 都能實現可替換行為，但 Template Method 用繼承固定流程，Strategy 用組合動態替換。口訣：「Template 固定流程改步驟，Strategy 保持結構換策略」 |
+| **Factory Method** | Factory Method 常出現在 Template Method 內部，作為其中一個可覆寫的步驟 |
+| **Hook Method** | Template Method 中的可選擴展點，與 Abstract Method（必須實作）相對 |
+
 ## 重點整理
 
 <Callout type="tip" title="一句話記住">
-**Template Method = 流程固定、細節自訂：父類別說「先做 A 再做 B」，子類別決定 A 和 B 怎麼做。**
+**Template Method = 考卷模式：框架印好了，你只需填答案。** 口訣：「父類定流程，子類填細節」
 </Callout>
 
 | 概念 | 說明 |

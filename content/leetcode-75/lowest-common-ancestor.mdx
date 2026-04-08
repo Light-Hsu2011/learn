@@ -29,7 +29,7 @@ description: "用後序遍歷從底部向上尋找兩個節點的最低公共祖
 
 ## 解題思路
 
-<StepDiagram data='[{"title":"Base Case","description":"null 回傳 null；遇到 p 或 q 就回傳自己","icon":"1"},{"title":"遞迴左子樹","description":"在左子樹找 p 或 q","icon":"2"},{"title":"遞迴右子樹","description":"在右子樹找 p 或 q","icon":"3"},{"title":"判斷結果","description":"左右都找到 → 自己就是 LCA；只有一邊 → 往上傳遞該邊的結果","icon":"4"}]' />
+<StepDiagram data='[{"title":"Base Case","description":"node 為 null 回傳 null；node 等於 p 或 q 時直接回傳 node 本身","icon":"1"},{"title":"遞迴左子樹","description":"left = LCA(root.left, p, q) 在左子樹中搜尋 p 或 q","icon":"2"},{"title":"遞迴右子樹","description":"right = LCA(root.right, p, q) 在右子樹中搜尋 p 或 q","icon":"3"},{"title":"判斷結果","description":"left 和 right 都非 null 代表 p、q 分居兩側，當前節點就是 LCA；只有一邊非 null 則往上傳遞","icon":"4"}]' />
 
 ## 程式碼
 
@@ -90,16 +90,28 @@ def lowestCommonAncestor(root: TreeNode, p: TreeNode, q: TreeNode) -> TreeNode:
 |--|------|-------|
 | 本解法 | O(n) | O(h) |
 
+Time O(n) 是因為最壞情況需要遍歷所有節點才能找到 p 和 q。Space O(h) 是遞迴 call stack 深度，平衡樹 O(log n)，偏斜樹 O(n)。
+
+## 邊界情況
+
+- **p 是 q 的祖先**：如 p=5, q=4 且 4 在 5 的子樹中，遞迴到 5 時直接回傳 5（LCA 就是 p 本身）
+- **p 和 q 是同一個節點**：base case 直接回傳該節點
+- **p 和 q 分別在根的左右兩側**：左右子樹各回傳一個非 null，根節點就是 LCA
+
 ## 圖解
 
 <Diagram data='{"nodes":[{"id":"n3","label":"3 ← LCA","type":"highlight"},{"id":"n5","label":"5 (找到 p)","type":"highlight"},{"id":"n1","label":"1 (找到 q)","type":"highlight"},{"id":"n6","label":"6","type":"muted"},{"id":"n2","label":"2","type":"muted"},{"id":"n0","label":"0","type":"muted"},{"id":"n8","label":"8","type":"muted"}],"edges":[{"from":"n3","to":"n5","label":"左: 找到 p"},{"from":"n3","to":"n1","label":"右: 找到 q"},{"from":"n5","to":"n6","label":""},{"from":"n5","to":"n2","label":""},{"from":"n1","to":"n0","label":""},{"from":"n1","to":"n8","label":""}]}' />
 
+圖表展示了 p=5, q=1 的查找過程：左子樹找到 p=5 回傳非 null，右子樹找到 q=1 回傳非 null，兩邊都非 null 代表 p 和 q 分居兩側，根節點 3 就是 LCA。
+
 ## 進階觀點
 
 <Callout type="tip" title="面試追問">
-**如果 p 或 q 不在樹中怎麼辦？** 這個解法假設 p 和 q 都存在。如果不確定，需要額外用 boolean flag 確認兩個都找到了。
+**Q: 如果 p 或 q 不在樹中怎麼辦？**
+A: 當前解法假設 p 和 q 都存在。若不確定，需要加兩個 boolean flag（foundP、foundQ）在遍歷完整棵樹後確認兩者都被找到。如果只找到一個，回傳 null 而非錯誤的 LCA。
 
-**BST 版本（LC 235）**：如果是 BST，可以利用 BST 性質 — 若 p.val 和 q.val 都小於 root，往左走；都大於 root，往右走；分岔時 root 就是 LCA。O(h) 時間。
+**Q: BST 版本（LC 235）如何利用 BST 性質？**
+A: 如果 p.val 和 q.val 都小於 root.val，LCA 一定在左子樹；都大於 root.val 則在右子樹。當 p 和 q 的值分岔（一個小於 root 一個大於 root），root 就是 LCA。Time O(h)，不需遍歷所有節點。
 
 **變體題**：LC 1644 LCA II（節點可能不存在）、LC 1676 LCA IV（多個節點的 LCA）。
 </Callout>

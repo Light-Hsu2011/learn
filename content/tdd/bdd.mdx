@@ -28,11 +28,11 @@ TDD 從**技術角度**出發（測試函式），BDD 從**使用者行為**出�
 
 ## 核心觀念
 
-- **Given-When-Then**：描述場景的三段式結構——前提、動作、預期結果
-- **Gherkin 語法**：一種結構化的自然語言格式，用來撰寫 BDD 場景
-- **Feature File**：用 Gherkin 寫成的場景檔案，是活的文件（Living Documentation）
-- **Step Definition**：把 Gherkin 語句對應到實際的測試程式碼
-- **Ubiquitous Language**：團隊共同使用的業務語言，消除溝通落差
+- **Given-When-Then**：描述場景的三段式結構——Given（系統的初始狀態/前提條件）、When（使用者或系統觸發的動作）、Then（預期的結果或狀態變化）。對應到 AAA 模式：Given = Arrange、When = Act、Then = Assert
+- **Gherkin 語法**：一種結構化的自然語言格式，用來撰寫 BDD 場景。關鍵字包括 `Feature`、`Scenario`、`Given`、`When`、`Then`、`And`、`But`。Gherkin 支援多國語言，可以用中文寫場景
+- **Feature File**：用 Gherkin 寫成的場景檔案（`.feature`），是活的文件（Living Documentation）。每個 Feature 對應一個使用者故事（User Story），包含多個 Scenario
+- **Step Definition**：把 Gherkin 語句對應到實際的測試程式碼。一個 Step Definition 可以被多個 Scenario 共用，用正則表達式擷取參數
+- **Ubiquitous Language**：團隊共同使用的業務語言，消除溝通落差。BDD 場景用業務語言而非技術語言描述——寫「顧客點擊結帳」而不是「POST /api/checkout」
 
 ## 常見誤區
 
@@ -181,6 +181,18 @@ def order_total_should_be(order):
 
 <Diagram data='{"nodes":[{"id":"bdd","label":"BDD（行為驅動開發）","type":"highlight"},{"id":"gwt","label":"Given-When-Then","type":"default"},{"id":"gherkin","label":"Gherkin 語法","type":"default"},{"id":"feature","label":"Feature File","type":"default"},{"id":"step","label":"Step Definition","type":"default"},{"id":"tdd","label":"TDD","type":"muted"},{"id":"tools","label":"SpecFlow / Cucumber","type":"muted"}],"edges":[{"from":"bdd","to":"gwt","label":"核心格式"},{"from":"gwt","to":"gherkin","label":"結構化語法"},{"from":"gherkin","to":"feature","label":"寫成場景檔"},{"from":"feature","to":"step","label":"對應到程式碼"},{"from":"step","to":"tdd","label":"用 TDD 實作"},{"from":"tools","to":"feature","label":"執行場景"}]}' />
 
+此圖展示 BDD 的完整流程鏈：從 Given-When-Then 格式出發，用 Gherkin 語法寫成 Feature File，透過 Step Definition 對應到測試程式碼，最終用 TDD 實作功能讓場景通過。注意：BDD 的價值不只在程式碼層，更在於 Discovery 階段的團隊溝通。
+
+## BDD vs 普通 Unit Test：何時選 BDD
+
+| 判斷條件 | 用 BDD | 用普通 Unit Test |
+|----------|--------|-----------------|
+| 需要 PM/QA 參與討論場景 | 是 | 否 |
+| 核心業務流程（如結帳、退款） | 是 | 否 |
+| 底層工具函式、數學計算 | 否 | 是 |
+| 需要活文件讓非技術人員理解 | 是 | 否 |
+| 團隊沒有 PM/QA 協作的文化 | 否（先建文化再用工具） | 是 |
+
 ## 實戰補充
 
 <Callout type="tip" title="資深開發者的經驗">
@@ -201,7 +213,7 @@ def order_total_should_be(order):
 ## 重點整理
 
 <Callout type="tip" title="一句話記住">
-**BDD = 用 Given-When-Then 說人話定義行為，讓 PM、QA、Dev 對功能有共同理解。**
+**口訣：「假設...當...那麼...」—— 三個人坐下來把故事說清楚，BDD 的價值在溝通不在語法。**
 </Callout>
 
 | 概念 | 說明 |

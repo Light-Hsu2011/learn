@@ -24,11 +24,11 @@ description: "AAA 模式、測試命名、單一斷言原則，寫出可維護�
 
 ## 核心觀念
 
-- **AAA 模式（Arrange-Act-Assert）**：每個測試分成三個區塊——準備、執行、驗證
-- **測試命名慣例**：`MethodName_Scenario_ExpectedResult`，一看就知道在測什麼
-- **單一斷言原則**：每個測試只驗證一件事，失敗時立刻知道哪裡出問題
-- **FIRST 原則**：Fast、Isolated、Repeatable、Self-Validating、Timely
-- **不要測試實作細節**：測試行為（What），不要測試怎麼做（How）
+- **AAA 模式（Arrange-Act-Assert）**：每個測試分成三個區塊——準備（建立物件和資料）、執行（呼叫被測方法，通常只有一行）、驗證（檢查結果）。三個區塊之間用空行分隔，視覺上一目瞭然
+- **測試命名慣例**：`MethodName_Scenario_ExpectedResult`，一看就知道在測什麼。例如 `CalculateTotal_EmptyCart_ReturnsZero`。另一種流行的格式是 `should_returnZero_when_cartIsEmpty`（BDD 風格）
+- **單一斷言原則**：每個測試只驗證一件事，失敗時立刻知道哪裡出問題。例外：當多個 Assert 都在驗證同一個行為的不同面向時（如檢查回傳物件的多個欄位），放在一個測試裡是合理的
+- **FIRST 原則**：**F**ast（單個測試在毫秒級完成）、**I**solated（不依賴其他測試的執行順序或外部狀態）、**R**epeatable（在任何機器、任何時間跑結果都一樣）、**S**elf-Validating（自動判斷通過或失敗，不需要人眼檢查 log）、**T**imely（與產品程式碼同步寫，不是事後補）
+- **不要測試實作細節**：測試行為（What），不要測試怎麼做（How）。判斷標準：如果你重構內部結構但外部行為不變，測試不該壞掉。如果壞了，代表你測了實作細節
 
 ## 常見誤區
 
@@ -158,6 +158,41 @@ class TestOrder:
 
 <Diagram data='{"nodes":[{"id":"aaa","label":"AAA 模式","type":"highlight"},{"id":"naming","label":"命名慣例","type":"highlight"},{"id":"first","label":"FIRST 原則","type":"highlight"},{"id":"fast","label":"Fast (快速)","type":"default"},{"id":"isolated","label":"Isolated (隔離)","type":"default"},{"id":"repeatable","label":"Repeatable (可重複)","type":"default"},{"id":"self","label":"Self-Validating (自驗證)","type":"default"},{"id":"timely","label":"Timely (及時)","type":"default"}],"edges":[{"from":"first","to":"fast","label":"毫秒級完成"},{"from":"first","to":"isolated","label":"不依賴其他測試"},{"from":"first","to":"repeatable","label":"任何環境結果相同"},{"from":"first","to":"self","label":"自動判斷通過/失敗"},{"from":"first","to":"timely","label":"與產品程式碼同步寫"},{"from":"aaa","to":"naming","label":"搭配使用"},{"from":"naming","to":"first","label":"共同提升品質"}]}' />
 
+此圖展示三大核心實踐的關係：AAA 模式管測試的結構、命名慣例管測試的可讀性、FIRST 原則管測試的品質。三者互相搭配，缺一不可。
+
+## Bad vs Good 對比
+
+```csharp
+// BAD: 多個不相關斷言、名稱無意義、沒有 AAA 結構
+[Fact]
+public void Test1()
+{
+    var order = new Order();
+    order.AddItem(new Item("A", 100));
+    Assert.Equal(100, order.CalculateTotal(0));
+    order.AddItem(new Item("B", 200));
+    Assert.Equal(300, order.CalculateTotal(0));
+    Assert.NotNull(order.Items);
+    Assert.True(order.Items.Count > 0);
+}
+
+// GOOD: 一個測試一個概念、AAA 清晰、命名即文件
+[Fact]
+public void CalculateTotal_TwoItems_ReturnsSumOfPrices()
+{
+    // Arrange
+    var order = new Order();
+    order.AddItem(new Item("Book", 100m));
+    order.AddItem(new Item("Pen", 50m));
+
+    // Act
+    var total = order.CalculateTotal(discount: 0m);
+
+    // Assert
+    Assert.Equal(150m, total);
+}
+```
+
 ## 實戰補充
 
 <Callout type="tip" title="資深開發者的經驗">
@@ -178,7 +213,7 @@ class TestOrder:
 ## 重點整理
 
 <Callout type="tip" title="一句話記住">
-**好的測試 = 好的文件。用 AAA 結構化、用好名字說故事、用 FIRST 原則驗證品質。**
+**口訣：「三 A 排排站、名字說故事、FIRST 保品質」—— 好測試讓未來的你說聲謝謝。**
 </Callout>
 
 | 概念 | 說明 |

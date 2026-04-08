@@ -28,7 +28,7 @@ description: "用迭代或遞迴將 Linked List 的指針方向全部反轉"
 
 ## 解題思路
 
-<StepDiagram data='[{"title":"初始化","description":"prev = null, curr = head","icon":"1"},{"title":"保存下一個","description":"next = curr.next（先記住，否則斷鏈就找不到了）","icon":"2"},{"title":"反轉指針","description":"curr.next = prev（指向前一個）","icon":"3"},{"title":"前進","description":"prev = curr, curr = next","icon":"4"},{"title":"重複直到結束","description":"curr 為 null 時，prev 就是新的 head","icon":"5"}]' />
+<StepDiagram data='[{"title":"初始化","description":"設 prev = null 作為反轉後的尾端、curr = head 作為當前處理節點","icon":"1"},{"title":"保存下一個","description":"先執行 next = curr.next 保存原本的下一個節點，否則改 curr.next 後就斷鏈了","icon":"2"},{"title":"反轉指針","description":"執行 curr.next = prev 讓當前節點指向前一個節點，完成這個節點的反轉","icon":"3"},{"title":"前進","description":"prev = curr 把前指針推進、curr = next 把當前指針推進到下一個待處理節點","icon":"4"},{"title":"重複直到結束","description":"當 curr 為 null 時所有節點已反轉，prev 指向原尾端即新的 head","icon":"5"}]' />
 
 ## 程式碼
 
@@ -120,18 +120,30 @@ def reverseListRecursive(head: Optional[ListNode]) -> Optional[ListNode]:
 | 迭代 | O(n) | O(1) |
 | 遞迴 | O(n) | O(n) call stack |
 
+迭代 Time O(n) 是因為 curr 從 head 走到 null 恰好 n 步，每步做常數操作。Space O(1) 是因為只用 prev、curr、next 三個變數。遞迴 Space O(n) 是因為遞迴深度等於鏈表長度，每層呼叫佔用一個 stack frame。
+
+## 邊界情況
+
+- **空鏈表**：head 為 null，迭代直接回傳 null（不進入迴圈），遞迴在 base case 回傳
+- **單一節點**：`[1]` 不需要反轉，兩種解法都直接回傳 head
+- **兩個節點**：`[1,2]` 只需一步反轉 — 迭代跑一輪迴圈、遞迴只遞迴一次
+
 ## 圖解
 
 <Diagram data='{"nodes":[{"id":"s0","label":"prev=null, curr=1→2→3","type":"default"},{"id":"s1","label":"null←1, curr=2→3","type":"default"},{"id":"s2","label":"null←1←2, curr=3","type":"default"},{"id":"s3","label":"null←1←2←3, curr=null","type":"highlight"},{"id":"result","label":"新 head = 3→2→1→null","type":"highlight"}],"edges":[{"from":"s0","to":"s1","label":"反轉 1"},{"from":"s1","to":"s2","label":"反轉 2"},{"from":"s2","to":"s3","label":"反轉 3"},{"from":"s3","to":"result","label":"return prev"}]}' />
 
+圖表展示了迭代反轉 `[1,2,3]` 的三步過程：每步把 curr 的 next 指向 prev，然後推進指針。當 curr 變成 null 時 prev 指向 3，就是新的 head，形成 `3→2→1→null`。
+
 ## 進階觀點
 
 <Callout type="tip" title="面試追問">
-**迭代 vs 遞迴**：面試官常要求兩種都寫。迭代省空間 O(1)，遞迴更直觀但有 O(n) call stack 開銷。
+**Q: 迭代和遞迴各自的優缺點是什麼？**
+A: 迭代 O(1) 空間、沒有 stack overflow 風險，但需要手動管理三個指針。遞迴更直觀（信任子問題已解決），但 O(n) call stack 空間，鏈表極長時可能溢位。面試中兩種都要能寫。
+
+**Q: 遞迴解法中 `head.next.next = head` 為什麼不會造成環？**
+A: 因為緊接著的 `head.next = null` 斷開了原本的正向連結。這兩行必須搭配：先建立反向連結，再斷開正向連結。如果只做第一步不做第二步，最末兩個節點會形成環。
 
 **Reverse Linked List 是超高頻基礎題**，許多進階題都以它為子步驟：LC 92 Reverse Linked List II（部分反轉）、LC 25 Reverse Nodes in k-Group、LC 234 Palindrome Linked List。
-
-**面試陷阱**：忘記先保存 `next` 就直接改 `curr.next`，導致斷鏈。
 </Callout>
 
 ## 理解測驗

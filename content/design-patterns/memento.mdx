@@ -43,6 +43,8 @@ Memento 屬於**行為型模式（Behavioral Pattern）**，重點在於安全�
 
 <StepDiagram data='[{"title":"定義 Memento","description":"封裝 Originator 的內部狀態快照","icon":"1"},{"title":"定義 Originator","description":"建立 Memento 和從 Memento 恢復狀態","icon":"2"},{"title":"定義 Caretaker","description":"負責保管 Memento，但不能查看或修改其內容","icon":"3"},{"title":"保存狀態","description":"Originator 建立 Memento，Caretaker 存起來","icon":"4"},{"title":"恢復狀態","description":"Caretaker 取出 Memento，Originator 從中恢復","icon":"5"}]' />
 
+流程解讀：Memento 的核心是「封裝性」。Memento 是一個不可變的黑盒子（Immutable，指物件建立後其內部狀態不能被修改），只有 Originator 知道怎麼讀寫它的內容。Caretaker 用 Stack 或 List 保管多個 Memento，實現多層 Undo。恢復時從 Stack 中 Pop 出最近的 Memento，交給 Originator 還原。
+
 ## 程式碼範例
 
 ### C# 版本
@@ -324,6 +326,8 @@ if (lastSave != null) hero.restore(lastSave);
 
 <Diagram data='{"nodes":[{"id":"client","label":"Client","type":"muted"},{"id":"caretaker","label":"Caretaker (SaveManager)","type":"default"},{"id":"originator","label":"Originator (GameCharacter)","type":"highlight"},{"id":"memento","label":"Memento (GameMemento)","type":"default"}],"edges":[{"from":"client","to":"caretaker","label":"requests save/load"},{"from":"caretaker","to":"memento","label":"stores"},{"from":"originator","to":"memento","label":"creates / restores from"}]}' />
 
+結構解讀：三個角色各有嚴格的權限分工。Originator 是唯一能「建立」和「讀取」Memento 內容的角色。Caretaker 只負責「保管」Memento，不能查看或修改其內部（就像銀行保管箱，銀行保管但不能打開）。Client 透過 Caretaker 請求存檔/讀檔，但實際的狀態捕獲和恢復由 Originator 完成。這種設計確保了封裝性不被破壞。
+
 ## 實戰補充
 
 <Callout type="tip" title="資深開發者經驗">
@@ -344,10 +348,29 @@ if (lastSave != null) hero.restore(lastSave);
 
 <Quiz data='{"question":"Memento Pattern 和 Command Pattern 的 Undo 機制有什麼差異？","options":["完全一樣","Memento 保存完整狀態快照，Command 透過反向操作來撤銷","Memento 更快","Command 不能做 Undo"],"answer":1,"explanation":"Command 的 Undo 是執行反向操作（例如 Insert 的 Undo 是 Delete），Memento 是直接回復到之前保存的完整狀態。兩者可以搭配使用。"}' />
 
+## 面試常見問題
+
+**Q: 如何處理 Memento 的記憶體問題？**
+
+A: 四種策略：(1) 限制數量 — 只保留最近 N 個快照（如 Undo 最多 50 步），超過就丟棄最舊的。(2) Delta Encoding — 只儲存與上一個快照的差異而非完整狀態。(3) 序列化到磁碟 — 把 Memento 序列化成 JSON/Binary 存到檔案系統。(4) 壓縮 — 對序列化後的資料做壓縮。選擇取決於場景：編輯器用限制數量，版本控制用 Delta，長期保存用序列化。
+
+**Q: 在多執行緒環境下，Memento 有什麼問題？**
+
+A: 如果 Originator 的狀態在 Save 過程中被其他執行緒修改，快照可能不一致。解法：(1) Save 時加鎖（`lock`/`synchronized`）。(2) 用不可變資料結構（Immutable Collections），Copy-on-Write 自然保證一致性。(3) 在 Save 時做 deep copy 而非引用。
+
+## 相關模式
+
+| 模式 | 關係 |
+|------|------|
+| **Command** | 搭配使用 — Command 記錄「做了什麼操作」（用於反向 Undo），Memento 記錄「之前的完整狀態」（用於快照 Undo） |
+| **Iterator** | Iterator 的走訪位置可以用 Memento 保存為「書籤」，稍後從該位置繼續走訪 |
+| **Prototype** | 都涉及物件狀態的複製，但 Prototype 的目的是建立新物件，Memento 的目的是回復舊狀態 |
+| **State** | State 管理物件的「當前行為」，Memento 保存物件的「歷史快照」。可搭配使用實現狀態機的回滾 |
+
 ## 重點整理
 
 <Callout type="tip" title="一句話記住">
-**Memento Pattern = 遊戲存檔：拍下物件狀態的快照，隨時可以讀檔回到過去。**
+**Memento Pattern = 遊戲存檔：拍快照不破壞封裝，讀檔回到任何時間點。** 口訣：「存檔不偷看，讀檔不破壞」
 </Callout>
 
 | 概念 | 說明 |

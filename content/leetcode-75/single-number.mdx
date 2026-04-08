@@ -33,7 +33,7 @@ XOR（互斥或）就像這個魔法：
 
 ## 解題思路
 
-<StepDiagram data='[{"title":"初始化","description":"result = 0","icon":"1"},{"title":"逐一 XOR","description":"result ^= nums[i]","icon":"2"},{"title":"成對消除","description":"相同數字 XOR 為 0，自動消除","icon":"3"},{"title":"剩餘即答案","description":"最後 result 就是只出現一次的數字","icon":"4"}]' />
+<StepDiagram data='[{"title":"初始化","description":"result = 0（XOR 的恆等元素，0 XOR 任何數 = 那個數）","icon":"1"},{"title":"逐一 XOR","description":"遍歷陣列，每個元素和 result 做 XOR：result ^= nums[i]","icon":"2"},{"title":"成對消除","description":"相同數字 XOR 為 0（a^a=0），成對出現的數字在累積過程中互相抵消","icon":"3"},{"title":"剩餘即答案","description":"所有成對數字消除後，result 中只剩下那個出現一次的數字","icon":"4"}]' />
 
 ## 程式碼
 
@@ -72,17 +72,34 @@ def singleNumber(nums: list[int]) -> int:
 |--|------|-------|
 | 本解法 | O(n) | O(1) |
 
+遍歷陣列一次做 n 次 XOR 運算，每次 O(1)，因此時間 O(n)。只用一個整數變數累積結果，空間 O(1)。
+
+## 邊界情況
+
+- **陣列只有一個元素**：例如 `[7]`，0 XOR 7 = 7，直接回傳該元素
+- **包含負數**：例如 `[-1,1,1]`，XOR 位元運算對負數（補碼表示）同樣適用，結果為 -1
+- **包含 0**：例如 `[0,1,1]`，0 XOR 0 = 0，成對的 1 消除後剩 0
+
 ## 圖解
 
 <Diagram data='{"nodes":[{"id":"input","label":"[4, 1, 2, 1, 2]","type":"default"},{"id":"step1","label":"0 ^ 4 = 4","type":"muted"},{"id":"step2","label":"4 ^ 1 = 5","type":"muted"},{"id":"step3","label":"5 ^ 2 = 7","type":"muted"},{"id":"step4","label":"7 ^ 1 = 6","type":"muted"},{"id":"step5","label":"6 ^ 2 = 4","type":"highlight"}],"edges":[{"from":"input","to":"step1","label":"XOR"},{"from":"step1","to":"step2","label":"XOR"},{"from":"step2","to":"step3","label":"XOR"},{"from":"step3","to":"step4","label":"1消除"},{"from":"step4","to":"step5","label":"2消除"}]}' />
 
+圖表展示逐步 XOR 的過程：每個數字依序 XOR 進 result。雖然中間結果看似雜亂（4→5→7→6），但成對的 1 和 2 最終互相消除，只剩下唯一出現一次的 4。
+
 ## 進階觀點
 
 <Callout type="tip" title="面試追問">
-- **137. Single Number II**：其他數字出現三次，用「逐位元統計」或「有限狀態機」解。
-- **260. Single Number III**：有兩個數字各出現一次，先全部 XOR 得到 a^b，再用 lowbit 分組。
-- XOR 的三大性質：交換律 `a^b = b^a`、結合律 `(a^b)^c = a^(b^c)`、自反性 `a^a = 0`。
-- 為什麼不用 HashSet？HashSet 需要 O(n) 額外空間，XOR 只要 O(1)。
+- **Q: 137. Single Number II 怎麼解？**
+  A: 其他數字出現三次，用「逐位元統計」：對每個 bit 位統計所有數字在該位上 1 的個數，mod 3 後剩下的就是唯一數字的 bit。也可以用「有限狀態機」用兩個變數 ones/twos 追蹤每個 bit 出現次數。
+
+- **Q: 260. Single Number III 怎麼解？**
+  A: 有兩個數字 a, b 各出現一次。先全部 XOR 得到 `a^b`，取其 lowbit（`x & -x`）作為分組依據。這個 bit 位上 a 和 b 一定不同，用它將所有數字分成兩組，各組內再 XOR 就分別得到 a 和 b。
+
+- **Q: 為什麼不用 HashSet？**
+  A: HashSet 需要 O(n) 額外空間來存見過的元素，而 XOR 只要一個整數變數就能達到 O(1) 空間。題目要求 O(1) 空間，XOR 是唯一滿足的做法。
+
+- **Q: XOR 的核心性質有哪些？**
+  A: 交換律 `a^b = b^a`、結合律 `(a^b)^c = a^(b^c)`、自反性 `a^a = 0`、恆等性 `a^0 = a`。自反性和恆等性是成對消除的關鍵。
 </Callout>
 
 ## 理解測驗

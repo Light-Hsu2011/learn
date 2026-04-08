@@ -43,6 +43,8 @@ Iterator 屬於**行為型模式（Behavioral Pattern）**，重點在於提供�
 
 <StepDiagram data='[{"title":"定義 Iterator 介面","description":"宣告 HasNext、Next 等走訪方法","icon":"1"},{"title":"定義 IterableCollection 介面","description":"宣告 CreateIterator 方法","icon":"2"},{"title":"實作具體集合","description":"儲存元素並建立對應的迭代器","icon":"3"},{"title":"實作具體 Iterator","description":"追蹤目前位置，實作走訪邏輯","icon":"4"},{"title":"Client 使用迭代器","description":"透過 HasNext/Next 統一走訪，不關心底層結構","icon":"5"}]' />
 
+流程解讀：Iterator 把「走訪邏輯」從集合中抽離。集合只負責儲存元素和建立 Iterator，Iterator 負責追蹤走訪位置和決定走訪順序。同一個集合可以提供多種 Iterator（正向、反向、篩選），Client 透過統一的 HasNext/Next 介面走訪，完全不需要知道底層是陣列、鏈結串列還是資料庫。
+
 ## 程式碼範例
 
 ### C# 版本
@@ -262,6 +264,8 @@ for (String song : playlist.filterBy("Bohemian"))
 
 <Diagram data='{"nodes":[{"id":"client","label":"Client","type":"muted"},{"id":"iterable","label":"IterableCollection (Playlist)","type":"highlight"},{"id":"iterator","label":"Iterator Interface","type":"default"},{"id":"concrete_iter","label":"ConcreteIterator","type":"default"}],"edges":[{"from":"client","to":"iterable","label":"requests iterator"},{"from":"iterable","to":"iterator","label":"creates"},{"from":"concrete_iter","to":"iterator","label":"implements"},{"from":"client","to":"iterator","label":"traverses via"}]}' />
 
+結構解讀：Client 向 IterableCollection 請求一個 Iterator，Collection 建立並回傳對應的 ConcreteIterator。Client 之後只透過 Iterator Interface（HasNext/Next）走訪，完全不知道底層是陣列、連結串列還是資料庫。同一個 Collection 可以同時建立多個獨立的 Iterator，各自追蹤自己的走訪位置。
+
 ## 實戰補充
 
 <Callout type="tip" title="資深開發者經驗">
@@ -282,10 +286,29 @@ for (String song : playlist.filterBy("Bohemian"))
 
 <Quiz data='{"question":"什麼情況下你需要手動實作 Iterator Pattern？","options":["使用陣列的 for 迴圈","開發自訂樹狀結構的走訪邏輯","用 LINQ 查詢 List","用 forEach 走訪 Map"],"answer":1,"explanation":"陣列、List、Map 等內建集合已經實作了 Iterator。只有自訂資料結構（如樹、圖）需要手動實作，提供特定的走訪策略。"}' />
 
+## 面試常見問題
+
+**Q: Internal Iterator 和 External Iterator 有什麼差別？**
+
+A: External Iterator 由 Client 控制走訪步調（手動呼叫 `Next()`），如 Java 的 `Iterator`。Internal Iterator 由集合自己控制走訪（傳入 callback），如 JavaScript 的 `forEach()`。External 更靈活（可以提前中斷、同時走訪兩個集合），Internal 更簡潔。
+
+**Q: Lazy Evaluation 在 Iterator 中如何應用？**
+
+A: Lazy Evaluation（惰性求值，指延遲到真正需要時才計算）讓 Iterator 可以處理無限序列或超大資料集。C# 的 `yield return`、Python 的 `yield` 都實現了 Lazy Evaluation — 每次 `Next()` 才計算下一個元素，不需要一次把所有元素載入記憶體。
+
+## 相關模式
+
+| 模式 | 關係 |
+|------|------|
+| **Composite** | Iterator 常用來走訪 Composite 的樹狀結構，提供 DFS 或 BFS 等走訪策略 |
+| **Visitor** | 都用來操作集合中的元素，但 Iterator 專注「走訪順序」，Visitor 專注「對不同型別做不同操作」 |
+| **Factory Method** | Collection 的 `CreateIterator()` 就是一個 Factory Method，由具體集合決定建立哪種 Iterator |
+| **Memento** | Iterator 的走訪位置可以用 Memento 保存，實現「書籤」功能 |
+
 ## 重點整理
 
 <Callout type="tip" title="一句話記住">
-**Iterator Pattern = 統一的「下一個」按鈕：不管集合長什麼樣，走訪方式都一樣。**
+**Iterator Pattern = 播放器按鈕：不管歌單存在哪，按「下一首」就對了。** 口訣：「統一走訪，隱藏結構」
 </Callout>
 
 | 概念 | 說明 |

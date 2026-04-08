@@ -27,7 +27,7 @@ description: "用排序雙指針或 HashMap 找出最多配對使兩數之和等
 
 ## 解題思路
 
-<StepDiagram data='[{"title":"排序","description":"將 nums 排序","icon":"1"},{"title":"雙指針","description":"left = 0, right = n-1","icon":"2"},{"title":"判斷和","description":"sum == k → 配對成功，count++，兩端都移動","icon":"3"},{"title":"調整","description":"sum < k → left++，sum > k → right--","icon":"4"},{"title":"回傳","description":"直到 left >= right，回傳 count","icon":"5"}]' />
+<StepDiagram data='[{"title":"排序","description":"呼叫 Array.Sort 將 nums 升序排列，為雙指針做準備","icon":"1"},{"title":"雙指針","description":"left = 0 指向最小值，right = n-1 指向最大值","icon":"2"},{"title":"判斷和","description":"計算 sum = nums[left] + nums[right]。若 sum == k 則配對成功，count++，left++ 且 right--","icon":"3"},{"title":"調整","description":"sum < k 表示需要更大的數，left++；sum > k 表示需要更小的數，right--","icon":"4"},{"title":"回傳","description":"left ≥ right 時所有可能配對都已檢查，回傳 count","icon":"5"}]' />
 
 ## 程式碼
 
@@ -108,16 +108,26 @@ def maxOperations(nums: list[int], k: int) -> int:
 | 排序+雙指針 | O(n log n) | O(1) |
 | HashMap | O(n) | O(n) |
 
+排序法瓶頸在排序 O(n log n)，雙指針本身只需 O(n)。HashMap 法每個元素最多被查找和插入各一次，均為 O(1) 攤銷，總計 O(n)，但需要 O(n) 空間存放計數。
+
+## 邊界情況
+
+- **所有元素相同**：例如 `[3,3,3,3]`, `k=6`，每兩個配一對，共 2 對
+- **沒有任何配對**：例如 `[1,2,3]`, `k=10`，所有 sum 都小於 k，回傳 0
+- **k 小於陣列最小值的兩倍**：排序後 `nums[0] + nums[1] > k`，不可能有配對
+
 ## 圖解
 
 <Diagram data='{"nodes":[{"id":"input","label":"sorted: [1,2,3,4] k=5","type":"default"},{"id":"pair1","label":"1+4=5 ✓ count=1","type":"highlight"},{"id":"pair2","label":"2+3=5 ✓ count=2","type":"highlight"},{"id":"result","label":"回傳 2","type":"muted"}],"edges":[{"from":"input","to":"pair1","label":"left=0,right=3"},{"from":"pair1","to":"pair2","label":"left=1,right=2"},{"from":"pair2","to":"result","label":"left>=right"}]}' />
 
+圖表展示排序後的雙指針配對過程：最小的 1 和最大的 4 相加恰好等於 5，配對成功。接著 2 和 3 相加也是 5，再次配對。兩個指針相遇後結束，共找到 2 對。
+
 ## 進階觀點
 
 <Callout type="tip" title="面試追問">
-- **兩種方法如何選擇？** 如果陣列已排序或空間有限，用雙指針。如果要求 O(n) 時間且允許額外空間，用 HashMap。
-- **跟 Two Sum 的關係？** Two Sum 找一對，這題找最多對。Two Sum 用 HashMap O(n)，這題同理。
-- **如果允許一個元素用多次？** 那就變成不同的問題（如 Coin Change 系列）。
+- **兩種方法如何選擇？** 排序+雙指針：時間 O(n log n)、空間 O(1)，適合空間敏感的場景。HashMap：時間 O(n)、空間 O(n)，適合追求最快時間。若面試官要求「不修改原陣列」，HashMap 更合適（排序會改變原陣列）。
+- **跟 Two Sum 的關係？** Two Sum 找一對就停，本題找所有配對。Two Sum 的 HashMap 解法可直接擴展：找到配對後不停止，而是消耗一個計數繼續掃描。
+- **如果允許一個元素用多次？** 變成 unbounded 問題，類似 Coin Change。需要 DP 或 greedy 根據具體約束決定。
 </Callout>
 
 ## 理解測驗

@@ -26,7 +26,7 @@ description: "用前綴積和後綴積相乘得到每個位置除自身外的乘
 
 ## 解題思路
 
-<StepDiagram data='[{"title":"前綴積","description":"prefix[i] = nums[0] × nums[1] × ... × nums[i-1]","icon":"1"},{"title":"後綴積","description":"suffix[i] = nums[i+1] × nums[i+2] × ... × nums[n-1]","icon":"2"},{"title":"合併","description":"answer[i] = prefix[i] × suffix[i]","icon":"3"}]' />
+<StepDiagram data='[{"title":"前綴積","description":"從左到右遍歷，answer[i] 存放 nums[0]×nums[1]×...×nums[i-1]，answer[0]=1（左邊沒有元素）","icon":"1"},{"title":"後綴積","description":"從右到左遍歷，用變數 suffix 累積 nums[i+1]×...×nums[n-1]，每步將 answer[i] 乘上 suffix","icon":"2"},{"title":"合併","description":"兩次遍歷後 answer[i] = 左邊所有元素乘積 × 右邊所有元素乘積，恰好跳過 nums[i]","icon":"3"}]' />
 
 ## 程式碼
 
@@ -102,18 +102,26 @@ def productExceptSelf(nums: list[int]) -> list[int]:
 |--|------|-------|
 | 本解法 | O(n) | O(1) |
 
-兩次遍歷 O(n)。輸出陣列不計入額外空間，suffix 變數為 O(1)。
+第一次從左到右遍歷 O(n) 建前綴積，第二次從右到左遍歷 O(n) 乘後綴積，合計 O(2n) = O(n)。輸出陣列是題目要求的回傳值不計入額外空間，只用一個 suffix 變數，空間 O(1)。
+
+## 邊界情況
+
+- **陣列包含一個 0**：只有 0 所在位置的 answer 不為 0（等於其他元素的乘積），其餘位置因為乘到 0 而全部是 0
+- **陣列包含多個 0**：所有位置的 answer 都是 0，因為無論哪個位置，其他元素中至少有一個 0
+- **陣列包含負數**：演算法不受影響，負負得正由乘法自動處理
 
 ## 圖解
 
 <Diagram data='{"nodes":[{"id":"nums","label":"nums: [1,2,3,4]","type":"default"},{"id":"prefix","label":"前綴積: [1,1,2,6]","type":"highlight"},{"id":"suffix","label":"後綴積: [24,12,4,1]","type":"highlight"},{"id":"result","label":"answer: [24,12,8,6]","type":"muted"}],"edges":[{"from":"nums","to":"prefix","label":"左→右"},{"from":"nums","to":"suffix","label":"右→左"},{"from":"prefix","to":"result","label":"相乘"},{"from":"suffix","to":"result","label":"相乘"}]}' />
 
+圖表展示 `[1,2,3,4]` 的兩趟掃描。前綴積 `[1,1,2,6]` 表示：index 0 左邊沒有元素（1），index 1 左邊是 1，index 2 左邊乘積是 1x2=2，index 3 是 1x2x3=6。後綴積同理從右算起。兩者對應位置相乘得到最終答案。
+
 ## 進階觀點
 
 <Callout type="tip" title="面試追問">
-- **為什麼不能用除法？** 陣列可能含有 0，除以 0 會出問題。題目也明確禁止。
-- **如果允許除法？** 先算全部乘積，再除以各自值。但要處理 0 的特殊情況（0 個零、1 個零、多個零）。
-- **這個前綴/後綴技巧還能用在哪？** Trapping Rain Water、Minimum Cost to Make Array Equal 等題。
+- **為什麼不能用除法？** 題目明確禁止。即使允許，陣列含 0 時會除以零。需要分三種情況處理：零個 0（正常除法）、一個 0（只有 0 的位置有非零結果）、多個 0（全部為 0）。邏輯複雜且容易出錯。
+- **如果允許除法？** 先算全部乘積 P，answer[i] = P / nums[i]。但必須特別處理上述 0 的三種情況，面試時容易遺漏邊界。
+- **這個前綴/後綴技巧還能用在哪？** Trapping Rain Water（前綴最大高度 × 後綴最大高度）、Range Sum Query（前綴和查詢區間和）都使用類似的「預計算左右兩側資訊」策略。
 </Callout>
 
 ## 理解測驗

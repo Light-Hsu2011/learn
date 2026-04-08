@@ -34,7 +34,7 @@ DFS 時我們追蹤兩個資訊：「如果這步走左，目前的長度」和�
 
 ## 解題思路
 
-<StepDiagram data='[{"title":"DFS 帶方向資訊","description":"對每個節點追蹤「往左的 ZigZag 長度」和「往右的 ZigZag 長度」","icon":"1"},{"title":"走左子樹","description":"左子樹繼承「往右的長度 +1」（因為上一步走左，下一步要走右才延續）","icon":"2"},{"title":"走右子樹","description":"右子樹繼承「往左的長度 +1」","icon":"3"},{"title":"方向不對則重置","description":"如果方向不匹配，從 0 重新開始","icon":"4"},{"title":"更新全域最大值","description":"每個節點都更新答案","icon":"5"}]' />
+<StepDiagram data='[{"title":"DFS 帶方向資訊","description":"dfs(node, left, right) 中 left 代表最後一步走左到此的 ZigZag 長度，right 同理","icon":"1"},{"title":"走左子樹","description":"呼叫 dfs(node.left, right+1, 0)：延續上步走右的長度加 1（交替），同時重置 right 為 0","icon":"2"},{"title":"走右子樹","description":"呼叫 dfs(node.right, 0, left+1)：延續上步走左的長度加 1（交替），同時重置 left 為 0","icon":"3"},{"title":"方向不對則重置","description":"傳入 0 代表該方向的 ZigZag 從頭開始 — 例如連續走兩次左就不是 ZigZag","icon":"4"},{"title":"更新全域最大值","description":"每個節點執行 maxLen = max(maxLen, left, right) 追蹤全域最優解","icon":"5"}]' />
 
 ## 程式碼
 
@@ -112,16 +112,28 @@ def longestZigZag(root: Optional[TreeNode]) -> int:
 |--|------|-------|
 | 本解法 | O(n) | O(h) |
 
+Time O(n) 是因為每個節點恰好被 DFS 訪問一次，每次做常數操作（比較和更新 maxLen）。Space O(h) 是遞迴 call stack 深度，h 為樹高。
+
+## 邊界情況
+
+- **只有根節點**：沒有任何邊，ZigZag 長度為 0
+- **全部偏向同一方向**：如只有右子鏈 `1→2→3→4`，沒有方向交替，最長 ZigZag 為 0
+- **完全二元樹**：每個節點都有左右子，最長 ZigZag 路徑等於樹高 h（從根開始交替走）
+
 ## 圖解
 
 <Diagram data='{"nodes":[{"id":"r","label":"root(0,0)","type":"default"},{"id":"l1","label":"左子(1,0)","type":"default"},{"id":"r2","label":"右子(0,2)","type":"default"},{"id":"l3","label":"左子(3,0)","type":"highlight"},{"id":"r4","label":"右子(0,1)","type":"default"}],"edges":[{"from":"r","to":"l1","label":"走左"},{"from":"r","to":"r2","label":"走右"},{"from":"l1","to":"r2","label":"走右 zigzag"},{"from":"r2","to":"l3","label":"走左 zigzag"},{"from":"l3","to":"r4","label":"走右 zigzag"}]}' />
 
+圖表展示了 ZigZag 長度的傳遞方式：每次交替方向時長度加 1，方向不交替時重置為 0。走左時繼承 right+1（因為是上一步走右的延續），走右時繼承 left+1。
+
 ## 進階觀點
 
 <Callout type="tip" title="面試追問">
-**為什麼用兩個參數 left/right 而不是一個方向？** 每個節點可以是某條 ZigZag 路徑的中間點，同時需要知道「從左來」和「從右來」的長度，才能正確延續。
+**Q: 為什麼用兩個參數 left/right 而不是一個方向標記？**
+A: 每個節點可能同時是兩條 ZigZag 路徑的終點 — 一條最後一步走左到此、一條最後一步走右到此。用兩個參數分別追蹤，才能在往子樹走時正確選擇延續哪條路徑。只用一個方向標記會丟失另一條路徑的資訊。
 
-**常見錯誤**：只追蹤一個方向，忘了每個節點都可以作為新 ZigZag 路徑的起點。
+**Q: 為什麼每個節點都要更新 maxLen 而不只在葉子更新？**
+A: ZigZag 路徑不一定終止在葉子。例如某個節點只有左子樹，從右邊來的 ZigZag 無法繼續走右延續，但這條 ZigZag 的長度可能已是全域最大。
 
 **變體題**：LC 543 Diameter of Binary Tree（最長路徑，不限方向交替）。
 </Callout>

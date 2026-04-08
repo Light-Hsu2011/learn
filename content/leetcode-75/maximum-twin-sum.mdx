@@ -30,7 +30,7 @@ description: "用快慢指針找中點、反轉後半段，配對求最大 twin 
 
 ## 解題思路
 
-<StepDiagram data='[{"title":"找中點","description":"快慢指針找到後半段起點","icon":"1"},{"title":"反轉後半段","description":"把後半段 Linked List 反轉","icon":"2"},{"title":"配對比較","description":"head 從前走、反轉後的從後走，計算每對 twin sum","icon":"3"},{"title":"取最大值","description":"紀錄過程中的最大 twin sum","icon":"4"}]' />
+<StepDiagram data='[{"title":"找中點","description":"slow 每走 1 步、fast 走 2 步，fast 到尾時 slow 在中點（後半段起點）","icon":"1"},{"title":"反轉後半段","description":"從 slow 開始用 prev/curr 迭代反轉，讓後半段尾變頭","icon":"2"},{"title":"配對比較","description":"left 從 head 往右走、right 從反轉後的頭往右走，每步計算 left.val + right.val","icon":"3"},{"title":"取最大值","description":"用 maxSum = max(maxSum, left.val + right.val) 持續更新最大 twin sum","icon":"4"}]' />
 
 ## 程式碼
 
@@ -135,14 +135,28 @@ def pairSum(head: Optional[ListNode]) -> int:
 |--|------|-------|
 | 本解法 | O(n) | O(1) |
 
+Time 為 O(n) 是因為三個步驟各自遍歷半條鏈表：找中點 n/2 步、反轉 n/2 步、配對比較 n/2 步，合計 3n/2 = O(n)。Space 為 O(1) 是因為反轉在原鏈表上操作，只用了常數個指針。
+
+## 邊界情況
+
+- **最短鏈表（2 個節點）**：`[1,2]` 只有一對 twin，直接回傳 1+2=3
+- **所有值相同**：如 `[5,5,5,5]`，每對 twin sum 都是 10，答案為 10
+- **最大值在中間配對**：如 `[1,100,100,1]`，需要正確配對 (1,1) 和 (100,100)，答案 200
+
 ## 圖解
 
 <Diagram data='{"nodes":[{"id":"orig","label":"5→4→2→1","type":"muted"},{"id":"mid","label":"中點: 2","type":"default"},{"id":"rev","label":"後半反轉: 1→2","type":"default"},{"id":"pair1","label":"5+1=6","type":"highlight"},{"id":"pair2","label":"4+2=6","type":"default"},{"id":"result","label":"最大 twin sum = 6","type":"highlight"}],"edges":[{"from":"orig","to":"mid","label":"快慢指針"},{"from":"mid","to":"rev","label":"反轉"},{"from":"rev","to":"pair1","label":"配對"},{"from":"rev","to":"pair2","label":"配對"}]}' />
 
+圖表展示了 `[5,4,2,1]` 的處理流程：先找到中點 2、反轉後半段得到 `1→2`，然後 left=5 配 right=1（和 6）、left=4 配 right=2（和 6），最大 twin sum 為 6。
+
 ## 進階觀點
 
 <Callout type="tip" title="面試追問">
-**替代方案**：也可以用 Stack 存前半段，再逐一和後半段配對。但空間複雜度 O(n)。面試中提到兩種方法再選最優解會加分。
+**Q: 除了反轉後半段，還有什麼方法？**
+A: 用 Stack 存前半段的值，再遍歷後半段時逐一 pop 配對。空間 O(n/2) = O(n)。也可以把所有值存入 Array 再用雙指針，同樣 O(n) 空間。反轉法是唯一 O(1) 空間的方案。
+
+**Q: 反轉後半段會破壞原鏈表，面試時要注意什麼？**
+A: 面試時先問面試官是否允許修改輸入。如果不允許，需要在計算完畢後再反轉一次恢復原狀，或改用 O(n) 空間的方案。
 
 **這題結合了三個基礎技巧**：快慢指針、反轉 Linked List、雙指針遍歷。面試官常考這種「組合技」。
 

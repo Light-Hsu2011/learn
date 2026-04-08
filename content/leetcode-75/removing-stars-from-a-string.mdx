@@ -28,7 +28,7 @@ description: "用 Stack 模擬星號刪除操作逐字元處理字串"
 
 ## 解題思路
 
-<StepDiagram data='[{"title":"初始化 Stack","description":"建立空的 Stack（或用陣列模擬）","icon":"1"},{"title":"遍歷字串","description":"逐字元處理","icon":"2"},{"title":"普通字元","description":"推入 Stack","icon":"3"},{"title":"星號","description":"彈出 Stack 頂端（刪除前一個字元）","icon":"4"},{"title":"組合結果","description":"Stack 中剩餘字元即為答案","icon":"5"}]' />
+<StepDiagram data='[{"title":"初始化 Stack","description":"建立空的 Stack（或用陣列模擬），用來追蹤目前「還活著」的字元","icon":"1"},{"title":"遍歷字串","description":"for 迴圈從左到右逐字元掃描字串 s","icon":"2"},{"title":"普通字元","description":"若當前字元不是 *，push 進 Stack。例如遇到 l,e,e,t 依序推入","icon":"3"},{"title":"星號","description":"若當前字元是 *，呼叫 stack.pop() 彈出最上面的字元（等同退格刪除）","icon":"4"},{"title":"組合結果","description":"遍歷結束後，Stack 中剩餘字元從底到頂就是答案。用 join 拼接成字串","icon":"5"}]' />
 
 ## 程式碼
 
@@ -84,18 +84,31 @@ def removeStars(s: str) -> str:
 |--|------|-------|
 | 本解法 | O(n) | O(n) |
 
-每個字元最多被 push 和 pop 各一次。
+每個字元最多被 push 一次和 pop 一次，總操作數 ≤ 2n，因此時間 O(n)。Stack 最大深度等於最終結果長度，最壞為 n（無星號時），空間 O(n)。
+
+## 邊界情況
+
+- **沒有星號**：例如 `"abc"`，所有字元依序 push，結果就是原字串
+- **星號在開頭**：題目保證星號左邊一定有非星號字元可刪，所以不會出現 `"*abc"` 這種無效輸入
+- **全部被刪除**：例如 `"ab**"`，兩個字元被兩個星號依序刪掉，Stack 為空，回傳空字串
 
 ## 圖解
 
 <Diagram data='{"nodes":[{"id":"input","label":"s = leet**cod*e","type":"default"},{"id":"s1","label":"push l,e,e,t","type":"default"},{"id":"s2","label":"pop t, pop e (兩個*)","type":"highlight"},{"id":"s3","label":"push c,o,d","type":"default"},{"id":"s4","label":"pop d (一個*)","type":"highlight"},{"id":"s5","label":"push e","type":"default"},{"id":"result","label":"stack: [l,e,c,o,e] → lecoe","type":"muted"}],"edges":[{"from":"input","to":"s1","label":"l,e,e,t"},{"from":"s1","to":"s2","label":"*,*"},{"from":"s2","to":"s3","label":"c,o,d"},{"from":"s3","to":"s4","label":"*"},{"from":"s4","to":"s5","label":"e"},{"from":"s5","to":"result","label":"join"}]}' />
 
+圖表展示 Stack 的操作過程：先推入 l,e,e,t，遇到兩個星號依序彈出 t 和 e。再推入 c,o,d，一個星號彈出 d。最後推入 e，Stack 剩 [l,e,c,o,e] 即為答案。
+
 ## 進階觀點
 
 <Callout type="tip" title="面試追問">
-- **能否不用 Stack？** 可以用一個 write 指針在原陣列上操作（類似 String Compression），遇到 `*` 就 write--。
-- **C# 為什麼要 Reverse？** C# 的 `Stack<T>.ToArray()` 是從頂端開始輸出（後進先出），需要反轉。用 `StringBuilder` 或 `List<char>` 可以避免。
-- **如果星號可以刪除多個字元呢？** 那需要數字+星號的格式，解法會更複雜。
+- **Q: 能否不用 Stack？**
+  A: 可以用一個 write 指針在字元陣列上原地操作。遇到普通字元寫入 `arr[write++]`，遇到星號就 `write--`。最後取 `arr[0..write-1]`。原理跟 Stack 相同，但省去 Stack 的額外結構開銷。
+
+- **Q: C# 為什麼要 Reverse？**
+  A: C# 的 `Stack<T>.ToArray()` 是從頂端開始輸出（後進先出），所以順序是反的。改用 `List<char>` 模擬 Stack（用 `Add` 和 `RemoveAt(Count-1)`）可以避免反轉，join 時順序就是正確的。
+
+- **Q: 如果星號可以刪除多個字元呢？**
+  A: 那需要數字+星號的格式（例如 `"abc3*"` 代表刪 3 個字元），遇到星號時先解析前面的數字 k，再 pop k 次。需要額外處理數字的解析邏輯。
 </Callout>
 
 ## 理解測驗

@@ -25,15 +25,20 @@ description: "從需求分析到架構設計，完整走過 TinyURL 系統設計
 
 ## 需求分析
 
-- **功能性需求**：輸入長 URL 回傳短 URL、短 URL 重定向到長 URL、可選自訂短碼、設定過期時間
-- **非功能性需求**：低延遲（重定向 < 100ms）、高可用（99.99%）、短碼不可預測
-- **讀寫比**：讀遠大於寫（100:1），架構要針對讀取優化
-- **短碼長度**：Base62（a-z, A-Z, 0-9）7 位 = 62^7 ≈ 3.5 兆組合，足夠使用
+- **功能性需求**：輸入長 URL 回傳短 URL、短 URL 重定向到長 URL、可選自訂短碼（用戶指定 `mylink` 作為短碼）、設定過期時間（預設 5 年，可自訂）
+- **非功能性需求**：低延遲（重定向 P99 < 100ms，意味著 99% 的請求在 100ms 內完成）、高可用（99.99% = 每年最多 52 分鐘停機）、短碼不可預測（不能讓人猜到下一個短碼是什麼，避免被掃描）
+- **讀寫比**：讀遠大於寫（100:1），架構要針對讀取優化。具體數字：每日 1 億寫入 = 1,157 writes/s，每日 100 億讀取 = 115,740 reads/s
+- **短碼長度計算**：Base62（a-z, A-Z, 0-9）。6 位 = 62^6 ≈ 568 億（5 年每日 1 億 = 1,825 億，不夠）。7 位 = 62^7 ≈ 3.5 兆（綽綽有餘）。所以選 7 位
+- **儲存估算**：每筆記錄約 500 bytes（短碼 7B + 長 URL 平均 200B + 時間戳 + 索引開銷）。5 年 1,825 億筆 x 500B ≈ 91TB，需要 Sharding
 
 ## 注意事項
 
 <Callout type="warning" title="Hash 碰撞處理">
-無論用什麼 Hash 函數（MD5、SHA256），截取前 7 位都有碰撞風險。必須在寫入前檢查是否已存在，碰撞時要有重試或追加字元的機制。用自增 ID + Base62 編碼可以完全避免碰撞。
+無論用什麼 Hash 函數（MD5、SHA256），截取前 7 位都有碰撞風險。MD5 產生 128 bit，截取 7 個 Base62 字元只用了約 42 bit，碰撞機率隨資料量指數上升（生日悖論）。
+
+處理碰撞的具體流程：1. 對長 URL 做 Hash 取前 7 位 → 2. 查詢 DB 該短碼是否已存在 → 3. 如已存在且對應不同長 URL，追加一個隨機字元重新 Hash → 4. 重複直到找到未使用的短碼。缺點是每次寫入都要查 DB。
+
+推薦方案：用分散式 ID 生成器（Snowflake）產生全域唯一 ID，再 Base62 編碼，完全避免碰撞且不需要查 DB。
 </Callout>
 
 ## 設計流程
@@ -106,12 +111,25 @@ app.get("/:code", async (req, res) => {
 
 <Diagram data='{"nodes":[{"id":"client","label":"Client","type":"muted"},{"id":"lb","label":"Load Balancer","type":"default"},{"id":"api","label":"API Servers","type":"default"},{"id":"cache","label":"Redis Cache","type":"highlight"},{"id":"db","label":"DB (Sharded by code)","type":"highlight"},{"id":"idgen","label":"ID Generator (Snowflake)","type":"default"}],"edges":[{"from":"client","to":"lb","label":"HTTP request"},{"from":"lb","to":"api","label":"route"},{"from":"api","to":"cache","label":"check cache first"},{"from":"api","to":"db","label":"cache miss → query"},{"from":"api","to":"idgen","label":"get unique ID"}]}' />
 
+**架構圖解讀**：Client 發送 HTTP 請求到 Load Balancer，LB 分配到 API Server。建立短網址時，API Server 向 ID Generator（Snowflake）取得唯一 ID，Base62 編碼後存入 DB。讀取短網址時，先查 Redis Cache（命中率可達 80%+），Cache Miss 才查 DB。DB 按 short_code 做 Sharding，確保讀寫均勻分佈。
+
 ## 實戰補充
 
 <Callout type="tip" title="301 vs 302 重定向">
 - **301 Moved Permanently**：瀏覽器會快取，下次直接跳轉不經過伺服器。省伺服器資源，但無法追蹤點擊次數。
 - **302 Found**：每次都經過伺服器再跳轉。可以追蹤點擊數據、做 A/B 測試。
 - 實務上 bit.ly 等服務使用 **301** 搭配非同步日誌記錄來兼顧效能和追蹤。
+
+**面試常見問題與參考答案**：
+
+**Q：如果同一個長 URL 被多次提交，要回傳同一個短碼嗎？**
+A：看需求。如果要去重，就對長 URL 做 Hash 當 Cache Key 先查一次；如果不去重（不同用戶想各自追蹤點擊數），就每次產生新短碼。bit.ly 選擇不去重，因為每個用戶需要獨立的點擊統計。
+
+**Q：短碼用完了怎麼辦？**
+A：7 位 Base62 有 3.5 兆組合，每日 1 億個也夠用 96 年。真的不夠就擴展到 8 位（62^8 = 218 兆）。也可以回收過期的短碼。
+
+**Q：如何處理惡意 URL？**
+A：寫入時用 URL 黑名單 + Google Safe Browsing API 檢查。重定向時加一個中間頁面警告用戶「你即將離開本站」。
 </Callout>
 
 ## 理解測驗
@@ -125,7 +143,7 @@ app.get("/:code", async (req, res) => {
 ## 重點整理
 
 <Callout type="tip" title="一句話記住">
-**短網址 = Base62(唯一 ID) + Redis 快取 + 讀寫分離，核心挑戰是短碼生成的唯一性和讀取的低延遲。**
+**唯一 ID → Base62 → Redis 快取 → 快速重定向。** 記憶口訣：「生碼存查」— 生成唯一 ID、編碼為短碼、存入快取、查詢重定向。核心挑戰就兩個：短碼唯一性和讀取低延遲。
 </Callout>
 
 | 概念 | 說明 |

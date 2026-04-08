@@ -29,7 +29,7 @@ description: "用固定大小滑動窗口計算子字串中的母音數量"
 
 ## 解題思路
 
-<StepDiagram data='[{"title":"初始窗口","description":"計算前 k 個字元中母音的數量","icon":"1"},{"title":"滑動","description":"右邊進來的字元是母音就 +1","icon":"2"},{"title":"移除","description":"左邊離開的字元是母音就 -1","icon":"3"},{"title":"更新最大值","description":"每次滑動後比較並更新 maxVowels","icon":"4"}]' />
+<StepDiagram data='[{"title":"初始窗口","description":"計算前 k 個字元中母音的數量，例如 s=abciiidef, k=3 → [abc] 含 1 個母音(a)","icon":"1"},{"title":"滑動：加入新字元","description":"窗口右邊界向右移一格，新進來的字元 s[i] 如果是母音(aeiou) 就 count++","icon":"2"},{"title":"滑動：移除舊字元","description":"窗口左邊界離開的字元 s[i-k] 如果是母音就 count--，保持窗口大小固定為 k","icon":"3"},{"title":"更新最大值","description":"每次滑動後 maxVowels = max(maxVowels, count)，遍歷完回傳 maxVowels","icon":"4"}]' />
 
 ## 程式碼
 
@@ -96,18 +96,37 @@ def maxVowels(s: str, k: int) -> int:
 |--|------|-------|
 | 本解法 | O(n) | O(1) |
 
-一次遍歷，母音集合大小固定為 O(1)。
+- **Time**：初始化窗口 O(k) + 滑動 O(n-k) = O(n)，每步只做常數次 Set 查找和加減
+- **Space**：母音集合固定 5 個字元，count 和 maxCount 為常數，不隨 n 增長
+
+## 邊界情況
+
+- **k 等於字串長度**：只有一個窗口，初始化計算的母音數就是答案，滑動迴圈不會執行
+- **字串全是母音（如 `"aeiou"`）**：初始窗口就達到 k，maxCount = k，可以在第一步就提前回傳
+- **字串沒有母音（如 `"bcdfg"`）**：每個窗口的母音數都是 0，maxCount 始終為 0
+- **k 等於 1**：窗口大小為 1，問題退化為「字串中是否包含母音」，有母音則答案 1，否則 0
 
 ## 圖解
 
 <Diagram data='{"nodes":[{"id":"input","label":"s=abciiidef, k=3","type":"default"},{"id":"w1","label":"[abc] vowels=1","type":"default"},{"id":"w2","label":"[bci] vowels=1","type":"default"},{"id":"w3","label":"[cii] vowels=2","type":"default"},{"id":"w4","label":"[iii] vowels=3","type":"highlight"},{"id":"result","label":"maxVowels = 3","type":"muted"}],"edges":[{"from":"input","to":"w1","label":"初始"},{"from":"w1","to":"w2","label":"滑動"},{"from":"w2","to":"w3","label":"滑動"},{"from":"w3","to":"w4","label":"滑動"},{"from":"w4","to":"result","label":"最大值"}]}' />
 
+圖表展示了窗口滑動過程：初始窗口 `[abc]` 含 1 個母音(a)，滑到 `[cii]` 時變成 2 個，最終 `[iii]` 達到最大值 3。
+每次滑動只需加上新進字元、減去離開字元，不需重新計算整個窗口。
+
 ## 進階觀點
 
 <Callout type="tip" title="面試追問">
-- **跟上一題（Maximum Average Subarray）的差別？** 本質相同，只是「窗口值」從數字之和變成滿足條件的元素計數。
-- **如果窗口大小不固定？** 那就要用可變大小的滑動窗口（如 Longest Substring Without Repeating Characters）。
-- **提前終止？** 如果 maxCount == k，可以直接回傳（窗口裡全是母音）。
+**Q: 跟 Maximum Average Subarray 的差別？**
+A: 本質相同，都是固定大小滑動窗口。差別只在「窗口值」的定義：Maximum Average 累加數字求平均，本題計算滿足條件（是母音）的元素個數。框架完全一樣。
+
+**Q: 如果窗口大小不固定怎麼辦？**
+A: 改用可變大小的滑動窗口，需要額外的 left 指標和收縮條件。例如 Longest Substring Without Repeating Characters 就是窗口在違反條件時收縮左邊。
+
+**Q: 有沒有提前終止的優化？**
+A: 如果 `maxCount == k`，可以直接回傳，因為窗口裡全是母音，不可能更好。這在母音密集的字串中能節省不少遍歷。
+
+**Q: 用 HashSet 判斷母音 vs 直接用字元比較，哪個更好？**
+A: HashSet 查找是 O(1) 但有常數開銷（hash 計算）。直接比較 5 個字元（`c == 'a' || c == 'e' || ...`）在實務中更快，因為分支預測器對少量比較很高效。面試中兩者都可以。
 </Callout>
 
 ## 理解測驗

@@ -24,11 +24,11 @@ description: "Unit → Integration → E2E 的比例與策略，找到測試的�
 
 ## 核心觀念
 
-- **Unit Test（底層）**：測試單一函式或類別，毫秒級完成，數量最多
-- **Integration Test（中層）**：測試元件之間的互動，如 API + Database，秒級完成
-- **E2E Test（頂層）**：模擬使用者操作完整流程，分鐘級完成，數量最少
-- **速度與信心度的 Trade-off**：底層快但信心低，頂層慢但信心高
-- **Testing Trophy**：Kent C. Dodds 提出的變體，強調 Integration Test 的價值最高
+- **Unit Test（底層）**：測試單一函式或類別，毫秒級完成，數量最多。一個典型的中型專案可能有數百到數千個 Unit Test
+- **Integration Test（中層）**：測試元件之間的互動，如 API + Database，秒級完成。驗證的是元件「接起來」後有沒有問題，例如 SQL 查詢是否正確、HTTP 回應格式是否對
+- **E2E Test（頂層）**：模擬使用者操作完整流程（打開瀏覽器、點擊、填表單），分鐘級完成，數量最少。常用工具：Playwright（跨瀏覽器推薦）、Cypress（前端生態整合好）
+- **速度與信心度的 Trade-off**：底層快但只驗證單元邏輯（信心度低），頂層慢但最接近真實使用者行為（信心度高）。投資策略：底層廣撒網抓邏輯錯誤，頂層只覆蓋最關鍵的使用者路徑（Happy Path + 主要錯誤路徑）
+- **Testing Trophy**：Kent C. Dodds 提出的變體，把中間的 Integration Test 畫得最大，主張它的投資報酬率最高。理由：Integration Test 能用中等的速度抓到最多真實世界的 Bug，因為大部分 Bug 出在元件之間的整合
 
 ## 常見誤區
 
@@ -138,6 +138,17 @@ def test_create_order_valid_request(client, db):
 
 <Diagram data='{"nodes":[{"id":"pyramid","label":"測試金字塔","type":"highlight"},{"id":"unit","label":"Unit Test (70%)","type":"default"},{"id":"integration","label":"Integration Test (20%)","type":"default"},{"id":"e2e","label":"E2E Test (10%)","type":"default"},{"id":"trophy","label":"Testing Trophy","type":"muted"},{"id":"icecream","label":"冰淇淋甜筒 (反模式)","type":"muted"}],"edges":[{"from":"pyramid","to":"unit","label":"底層：大量、快速"},{"from":"pyramid","to":"integration","label":"中層：適量"},{"from":"pyramid","to":"e2e","label":"頂層：少量、慢速"},{"from":"trophy","to":"integration","label":"強調整合測試價值"},{"from":"icecream","to":"e2e","label":"頂重底輕，危險"}]}' />
 
+此圖呈現三種模型的關係：傳統金字塔強調 Unit Test 為基礎，Testing Trophy 把重心移到 Integration Test，而冰淇淋甜筒是大家都該避免的反模式。沒有哪個模型是絕對正確的——前端專案偏向 Trophy，後端 API 偏向傳統金字塔。
+
+## 不同專案類型的比例建議
+
+| 專案類型 | Unit | Integration | E2E | 說明 |
+|----------|------|-------------|-----|------|
+| **後端 API** | 70% | 25% | 5% | 商業邏輯多，Unit Test 價值最高 |
+| **前端 SPA** | 30% | 50% | 20% | 偏向 Testing Trophy，Integration Test 驗證元件互動 |
+| **微服務** | 50% | 40% | 10% | 服務間整合是主要風險，Integration Test 比重高 |
+| **CLI 工具** | 80% | 15% | 5% | 以純邏輯為主，Unit Test 覆蓋最有效 |
+
 ## 實戰補充
 
 <Callout type="tip" title="資深開發者的經驗">
@@ -158,7 +169,7 @@ def test_create_order_valid_request(client, db):
 ## 重點整理
 
 <Callout type="tip" title="一句話記住">
-**測試金字塔 = 底層多（Unit）、中層適量（Integration）、頂層少（E2E），用速度換信心。**
+**口訣：「底廣頂尖像金字塔，快的多寫慢的少寫，倒過來就是甜筒災難」。**
 </Callout>
 
 | 層級 | 速度 | 信心度 | 成本 | 建議比例 |

@@ -43,6 +43,8 @@ Interpreter 屬於**行為型模式（Behavioral Pattern）**，重點在於用�
 
 <StepDiagram data='[{"title":"定義文法","description":"用 BNF 或類似符號描述語言的規則","icon":"1"},{"title":"建立 Expression 介面","description":"定義 Interpret 方法","icon":"2"},{"title":"實作終端表達式","description":"文法中不可再分解的基本元素","icon":"3"},{"title":"實作非終端表達式","description":"由其他表達式組合而成的複合規則","icon":"4"},{"title":"建立語法樹並解釋","description":"Client 組合表達式成樹，呼叫 Interpret 求值","icon":"5"}]' />
 
+流程解讀：Interpreter 的流程分兩階段。建構階段：Client 根據文法規則組合 Expression 物件成樹（如 `AND(VIP, OR(HasCoupon, NOT(IsWeekend)))`）。求值階段：呼叫根節點的 `Interpret(context)`，遞迴走訪整棵樹。TerminalExpression（終端表達式，文法中不可再分解的基本元素如變數、常數）從 Context 讀值，NonTerminalExpression（非終端表達式，由其他表達式組合而成的規則如 AND、OR）遞迴求值子表達式再組合結果。
+
 ## 程式碼範例
 
 ### C# 版本
@@ -308,6 +310,8 @@ System.out.println("可享折扣：" + rule.interpret(context)); // true
 
 <Diagram data='{"nodes":[{"id":"client","label":"Client","type":"muted"},{"id":"expression","label":"Expression Interface","type":"highlight"},{"id":"terminal","label":"TerminalExpression (Variable)","type":"default"},{"id":"nonterminal_and","label":"NonTerminal (And)","type":"default"},{"id":"nonterminal_or","label":"NonTerminal (Or)","type":"default"},{"id":"context","label":"Context (Variables Map)","type":"default"}],"edges":[{"from":"client","to":"expression","label":"builds syntax tree"},{"from":"terminal","to":"expression","label":"implements"},{"from":"nonterminal_and","to":"expression","label":"implements"},{"from":"nonterminal_or","to":"expression","label":"implements"},{"from":"expression","to":"context","label":"reads from"}]}' />
 
+結構解讀：Client 把文法規則組合成一棵語法樹（Syntax Tree，指用樹狀結構表示文法中各元素之間的從屬關係）。TerminalExpression（Variable）是葉節點，直接從 Context 讀取值。NonTerminalExpression（And、Or）是內部節點，遞迴呼叫子表達式的 `Interpret()` 來求值。整棵樹的求值從根節點開始，遞迴往下直到所有葉節點回傳值。
+
 ## 實戰補充
 
 <Callout type="tip" title="資深開發者經驗">
@@ -328,10 +332,29 @@ System.out.println("可享折扣：" + rule.interpret(context)); // true
 
 <Quiz data='{"question":"以下哪個是 Interpreter Pattern 在實際應用中的例子？","options":["資料庫的 CRUD 操作","電商促銷規則引擎動態計算折扣條件","網頁的 CSS 樣式","API 的 JSON 回應"],"answer":1,"explanation":"促銷規則引擎把業務規則表示成表達式樹，可以動態組合條件（VIP AND 滿千 OR 有折價券），正是 Interpreter Pattern 的典型應用。"}' />
 
+## 面試常見問題
+
+**Q: Interpreter Pattern 在實務中常見嗎？什麼場景最實用？**
+
+A: 直接手寫 Interpreter Pattern 不常見，但其概念無處不在。最實用的場景是「規則引擎」— 電商的促銷規則、保險的核保條件、權限的 Policy 表達式。這些場景需要業務人員能動態修改規則而不用改程式碼。常見做法是把規則存在資料庫中（如 JSON/DSL 格式），程式讀取後建構表達式樹來求值。
+
+**Q: Interpreter Pattern 為什麼效能不好？有什麼替代方案？**
+
+A: 因為每次求值都要遞迴走訪整棵語法樹，且每個節點都是一個物件（物件分配和虛擬方法呼叫的開銷）。替代方案：(1) ANTLR 等 Parser Generator — 自動產生高效的解析器。(2) 編譯成中間碼（Bytecode）再用虛擬機執行。(3) 用 C# 的 Expression Tree + Compile() 把表達式編譯成委派，效能接近原生程式碼。
+
+## 相關模式
+
+| 模式 | 關係 |
+|------|------|
+| **Composite** | Interpreter 的語法樹本質上就是 Composite 結構 — NonTerminal 包含子 Expression，Terminal 是葉節點 |
+| **Visitor** | 當對語法樹的操作種類多時（求值、優化、轉譯），用 Visitor 比在 Expression 中堆方法更好 |
+| **Iterator** | 用來走訪語法樹的節點 |
+| **Flyweight** | Terminal Expression 如果出現頻繁（如同一個變數被引用多次），可以用 Flyweight 共享 |
+
 ## 重點整理
 
 <Callout type="tip" title="一句話記住">
-**Interpreter Pattern = 自訂小語言：定義文法規則，用物件結構來解讀和執行。**
+**Interpreter Pattern = 自訂小語言的計算機：把規則變成樹，遞迴求值。** 口訣：「簡單文法用 Interpreter，複雜文法用 Parser Generator」
 </Callout>
 
 | 概念 | 說明 |

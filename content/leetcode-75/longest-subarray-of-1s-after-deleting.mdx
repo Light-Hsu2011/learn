@@ -93,16 +93,33 @@ def longestSubarray(nums: list[int]) -> int:
 |--|------|-------|
 | 本解法 | O(n) | O(1) |
 
+- **Time**：left 和 right 各最多走 n 步，合計 O(2n) = O(n)，每步只做常數操作
+- **Space**：只用了 left、zeroCount、maxLen 三個變數，不隨輸入增長
+
 ## 圖解
 
 <Diagram data='{"nodes":[{"id":"input","label":"[1,1,0,1,1,1,0,1,1]","type":"default"},{"id":"window","label":"窗口 [1,1,0,1,1,1] len=6","type":"highlight"},{"id":"delete","label":"刪除 0 → [1,1,1,1,1] len=5","type":"highlight"},{"id":"result","label":"maxLen = 5","type":"muted"}],"edges":[{"from":"input","to":"window","label":"允許 1 個 0"},{"from":"window","to":"delete","label":"刪除操作"},{"from":"delete","to":"result","label":"窗口長度-1"}]}' />
 
+圖表展示了核心策略：滑動窗口最多允許包含 1 個 0，找到最長的窗口 `[1,1,0,1,1,1]` 長度為 6。
+因為必須刪除一個元素（那個 0），實際全 1 子陣列長度為 6-1=5。
+
+## 邊界情況
+
+- **全部是 1**：沒有 0 可以刪除，但題目要求必須刪一個元素，所以答案是 n-1。窗口覆蓋整個陣列，`right - left = n - 1` 正好正確
+- **全部是 0**：窗口最多包含 1 個 0，長度為 1，`right - left = 0`，答案為 0（刪掉那個 0 後沒有 1）
+- **只有一個元素**：`[1]` → 刪掉後為空，答案 0；`[0]` → 刪掉後也為空，答案 0
+
 ## 進階觀點
 
 <Callout type="tip" title="面試追問">
-- **為什麼是 right - left 而不是 right - left + 1？** 因為必須刪除一個元素，等於窗口長度少 1。
-- **全是 1 的陣列怎麼辦？** 仍然必須刪除一個，所以答案是 n-1。我們的公式 right-left 在全 1 時，最大窗口為整個陣列，right-left = n-1，正好正確。
-- **跟 Max Consecutive Ones III 的本質差異？** 翻轉是「不減少元素數量」，刪除是「減少一個」，所以答案差 1。
+**Q: 為什麼是 right - left 而不是 right - left + 1？**
+A: 正常滑動窗口長度是 `right - left + 1`，但這題必須刪除一個元素，所以長度要減 1，變成 `right - left + 1 - 1 = right - left`。
+
+**Q: 全是 1 的陣列怎麼辦？**
+A: 仍然必須刪除一個元素，所以答案是 n-1。公式 `right - left` 在全 1 時，最大窗口覆蓋整個陣列（left=0, right=n-1），`right - left = n - 1`，正好正確。
+
+**Q: 跟 Max Consecutive Ones III 的本質差異？**
+A: 翻轉是「把 0 變 1，元素數量不變」，刪除是「移除一個元素，總長度少 1」。兩者的滑動窗口邏輯完全相同（允許 k=1 個 0），但翻轉版答案是 `right - left + 1`，刪除版是 `right - left`，差了 1。
 </Callout>
 
 ## 理解測驗

@@ -38,6 +38,8 @@ Facade 屬於**結構型模式（Structural Pattern）**，重點在於如何組
 
 <StepDiagram data='[{"title":"辨識子系統","description":"列出 Client 需要互動的所有子系統元件","icon":"1"},{"title":"找出常用操作","description":"分析 Client 最常執行的操作流程","icon":"2"},{"title":"設計 Facade 介面","description":"將常用操作封裝成簡潔的方法","icon":"3"},{"title":"實作 Facade","description":"Facade 內部協調各子系統元件完成工作","icon":"4"},{"title":"Client 使用 Facade","description":"Client 透過 Facade 操作，必要時仍可直接存取子系統","icon":"5"}]' />
 
+流程解讀：Facade 的設計從「分析 Client 的常用操作」開始，而非從子系統的能力出發。把 Client 最常執行的多步驟流程封裝成一個方法（如 `PlaceOrder` 封裝了庫存檢查 + 付款 + 出貨 + 通知）。Facade 本身不包含業務邏輯，只做「協調」— 按正確順序呼叫子系統、處理錯誤流程。Client 仍保有直接存取子系統的自由。
+
 ## 程式碼範例
 
 ### C# 版本
@@ -295,6 +297,8 @@ String orderId = facade.placeOrder("PROD-001", 299.99, "台北市信義區", "us
 
 <Diagram data='{"nodes":[{"id":"client","label":"Client","type":"muted"},{"id":"facade","label":"Facade (OrderFacade)","type":"highlight"},{"id":"inventory","label":"InventoryService","type":"default"},{"id":"payment","label":"PaymentService","type":"default"},{"id":"shipping","label":"ShippingService","type":"default"},{"id":"notification","label":"NotificationService","type":"default"}],"edges":[{"from":"client","to":"facade","label":"uses"},{"from":"facade","to":"inventory","label":"coordinates"},{"from":"facade","to":"payment","label":"coordinates"},{"from":"facade","to":"shipping","label":"coordinates"},{"from":"facade","to":"notification","label":"coordinates"}]}' />
 
+結構解讀：Client 只呼叫 Facade 的一個方法（`PlaceOrder`），Facade 內部協調四個子系統：先檢查庫存、再處理付款、然後出貨、最後發通知。Client 不需要知道背後有幾個子系統、呼叫順序是什麼。重要的是 Facade 不會阻止 Client 直接存取子系統 — 如果 Client 需要更細緻的控制，仍可繞過 Facade 直接操作。
+
 ## 實戰補充
 
 <Callout type="tip" title="資深開發者經驗">
@@ -309,10 +313,29 @@ Facade 是你每天都在寫但可能不自覺的模式。任何 Service Layer�
 
 <Quiz data='{"question":"以下哪個場景最適合用 Facade Pattern？","options":["你需要為物件動態添加功能","你需要將多個微服務的呼叫整合成前端的單一 API","你需要在執行時切換演算法","你需要將物件組合成樹狀結構"],"answer":1,"explanation":"整合多個微服務呼叫成單一 API（BFF 模式）是 Facade 的經典應用，將複雜的多步驟流程封裝成簡單的介面。"}' />
 
+## 面試常見問題
+
+**Q: Facade 和 Service Layer 有什麼關係？**
+
+A: Service Layer 本質上就是一組 Facade。在 DDD 中，Application Service 負責協調 Domain Service 和 Repository，對外提供簡化的 API — 這就是 Facade 的應用。差異在於 Service Layer 通常包含交易邊界（Transaction Boundary）和授權檢查，而純 Facade 只做協調轉發。
+
+**Q: Facade 什麼時候會變成反模式？**
+
+A: 當 Facade 變成 God Class（承擔過多責任，方法越加越多）時就是反模式。判斷標準：如果 Facade 的方法數量超過 10 個，或方法之間沒有邏輯關聯 → 需要拆分成多個 Facade，每個負責一個業務領域。
+
+## 相關模式
+
+| 模式 | 關係 |
+|------|------|
+| **Adapter** | 都是包裝層，但 Facade 簡化複雜的多子系統介面，Adapter 轉換單一不相容介面 |
+| **Mediator** | 都是協調者，但 Facade 是單向的（Client → 子系統），Mediator 是雙向的（同事之間互相協調） |
+| **Singleton** | Facade 常設計為 Singleton，因為通常只需要一個入口 |
+| **Abstract Factory** | Facade 可以用 Abstract Factory 來建立子系統的物件，進一步解耦 |
+
 ## 重點整理
 
 <Callout type="tip" title="一句話記住">
-**Facade Pattern = 在複雜子系統前面放一個簡單的「櫃台」，讓 Client 不用面對複雜的內部細節。**
+**Facade Pattern = 飯店櫃台：一個電話搞定所有事，但你也可以自己跑。** 口訣：「簡化入口不鎖門，櫃台協調不做事」
 </Callout>
 
 | 概念 | 說明 |

@@ -29,7 +29,7 @@ description: "用 GCD 長度截取候選字串並驗證是否能重複拼成原�
 
 ## 解題思路
 
-<StepDiagram data='[{"title":"檢查可行性","description":"若 str1+str2 !== str2+str1，則不存在公因子字串","icon":"1"},{"title":"求 GCD 長度","description":"對兩字串長度求最大公因數","icon":"2"},{"title":"截取候選","description":"取 str1 的前 gcd_len 個字元作為答案","icon":"3"}]' />
+<StepDiagram data='[{"title":"檢查可行性","description":"拼接 str1+str2 與 str2+str1 比較，若不相等代表不存在任何公因子字串，直接回傳空字串","icon":"1"},{"title":"求 GCD 長度","description":"用歐幾里得演算法對 len(str1) 和 len(str2) 求最大公因數，例如 GCD(6,3)=3","icon":"2"},{"title":"截取候選","description":"取 str1 的前 gcd_len 個字元作為答案，因為拼接檢查已保證該子字串能重複組成兩字串","icon":"3"}]' />
 
 ## 程式碼
 
@@ -78,18 +78,31 @@ def gcdOfStrings(str1: str, str2: str) -> str:
 |--|------|-------|
 | 本解法 | O(n + m) | O(n + m) |
 
-拼接比較需要 O(n+m)，GCD 計算為 O(log(min(n,m)))。
+拼接比較需要逐字元比對 O(n+m)，GCD 計算為 O(log(min(n,m)))，瓶頸在拼接比較。空間上，拼接產生兩個長度為 n+m 的新字串。
+
+## 邊界情況
+
+- **兩字串完全相同**：例如 `"ABC"` 和 `"ABC"`，GCD 長度等於字串本身長度，答案就是字串自身
+- **其中一個是另一個的倍數**：例如 `"ABCABC"` 和 `"ABC"`，GCD(6,3)=3，答案為 `"ABC"`
+- **完全無公因子**：例如 `"LEET"` 和 `"CODE"`，拼接檢查不通過，直接回傳空字串
 
 ## 圖解
 
 <Diagram data='{"nodes":[{"id":"s1","label":"str1: ABCABC","type":"default"},{"id":"s2","label":"str2: ABC","type":"default"},{"id":"check","label":"拼接檢查相等","type":"highlight"},{"id":"gcd","label":"GCD(6,3) = 3","type":"highlight"},{"id":"result","label":"ABC","type":"muted"}],"edges":[{"from":"s1","to":"check","label":""},{"from":"s2","to":"check","label":""},{"from":"check","to":"gcd","label":"通過"},{"from":"gcd","to":"result","label":"取前3字元"}]}' />
 
+圖表展示兩階段判斷：先確認 `ABCABC+ABC` 是否等於 `ABC+ABCABC`（兩者都是 `ABCABCABC`，通過）。再用數學 GCD 算出公因子長度為 3，直接截取前 3 字元 `ABC` 即為答案。
+
 ## 進階觀點
 
 <Callout type="tip" title="面試追問">
-- **為什麼 str1+str2 === str2+str1 就保證有公因子？** 這是充要條件 — 若存在公因子 t，兩字串都由 t 重複組成，交換拼接順序不影響結果。
-- **暴力法怎麼做？** 從最長可能的候選開始（即較短字串），逐步縮短到能整除兩個長度的長度，逐一驗證。
-- **時間複雜度的瓶頸在哪？** 在字串拼接比較，不是 GCD 計算。
+- **Q: 為什麼 `str1+str2 == str2+str1` 就保證有公因子？**
+  A: 這是充要條件。若存在公因子 t，兩字串可表示為 t 的重複拼接（str1 = t^a, str2 = t^b），拼接後 t^(a+b) = t^(b+a) 自然相等。反過來，若拼接相等，可以數學歸納證明 str1 的前 GCD(n,m) 個字元必定能重複組成兩字串。
+
+- **Q: 暴力法怎麼做？**
+  A: 從較短字串的長度開始，由大到小檢查每個能同時整除 n 和 m 的候選長度 L。取 str1 的前 L 個字元為候選 t，驗證 t 重複 n/L 次是否等於 str1、重複 m/L 次是否等於 str2。找到第一個就回傳。最壞要檢查所有公因數，每次驗證 O(n+m)。
+
+- **Q: 時間複雜度的瓶頸在哪？**
+  A: 在字串拼接比較 O(n+m)，需要逐字元比對兩個長度為 n+m 的字串。GCD 計算用歐幾里得演算法只需 O(log(min(n,m)))，substring 截取 O(GCD(n,m))，都被拼接比較的 O(n+m) 主導。
 </Callout>
 
 ## 理解測驗

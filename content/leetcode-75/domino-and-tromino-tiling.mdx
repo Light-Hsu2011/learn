@@ -30,7 +30,7 @@ description: "狀態轉移方程推導 2×N 棋盤用 Domino 和 Tromino 的鋪�
 
 ## 解題思路
 
-<StepDiagram data='[{"title":"觀察規律","description":"列舉 n=1,2,3,4 的鋪法數：1,2,5,11","icon":"1"},{"title":"定義狀態","description":"f(n) = 完整填滿 2×n 的方法數","icon":"2"},{"title":"推導遞推式","description":"f(n) = 2*f(n-1) + f(n-3)","icon":"3"},{"title":"滾動計算","description":"只需記住前三個值，逐步推進","icon":"4"},{"title":"取模","description":"每步對 10^9+7 取模避免溢位","icon":"5"}]' />
+<StepDiagram data='[{"title":"觀察規律","description":"手動列舉小 case：n=1→1, n=2→2, n=3→5, n=4→11。嘗試找出遞推關係","icon":"1"},{"title":"定義狀態","description":"f(n) = 完整填滿 2×n 棋盤的方法數。注意是「完全填滿」不是「部分填滿」","icon":"2"},{"title":"推導遞推式","description":"f(n) = 2×f(n-1) + f(n-3)。2×f(n-1) 來自 Tromino 兩個方向各延伸 f(n-1)，f(n-3) 來自純 Domino 組合","icon":"3"},{"title":"滾動計算","description":"f(n) 只依賴 f(n-1) 和 f(n-3)，可用三個變數滾動計算。也可直接用陣列更直觀","icon":"4"},{"title":"取模","description":"每步對 10^9+7 取模，防止乘法中間結果溢位 64 位整數","icon":"5"}]' />
 
 ## 程式碼
 
@@ -91,17 +91,29 @@ def numTilings(n: int) -> int:
 |--|------|-------|
 | 本解法 | O(n) | O(n)（可優化為 O(1)） |
 
+- **Time**：從 3 到 n 線性遍歷，每步只做一次乘法、一次加法和一次取模
+- **Space**：用長度 n+1 的陣列存中間結果。若改用三個滾動變數可降到 O(1)
+
 ## 圖解
 
 <Diagram data='{"nodes":[{"id":"n1","label":"n=1: 1種","type":"muted"},{"id":"n2","label":"n=2: 2種","type":"muted"},{"id":"n3","label":"n=3: 5種","type":"highlight"},{"id":"n4","label":"n=4: 11種","type":"highlight"},{"id":"formula","label":"f(n) = 2f(n-1) + f(n-3)","type":"default"}],"edges":[{"from":"n1","to":"n3","label":"f(n-2)→間接"},{"from":"n2","to":"n3","label":"f(n-1)×2"},{"from":"n3","to":"n4","label":"f(n-1)×2"},{"from":"n1","to":"n4","label":"f(n-3)"},{"from":"formula","to":"n4","label":"公式"}]}' />
 
+圖表展示了遞推關係：f(4)=11 來自 2×f(3) + f(1) = 2×5 + 1 = 11。
+公式中 2×f(n-1) 對應 Tromino 上下兩個方向延伸的鋪法，f(n-3) 對應三個直立 Domino 的組合。
+
 ## 進階觀點
 
 <Callout type="tip" title="面試追問">
-- 遞推式 `f(n) = 2*f(n-1) + f(n-3)` 怎麼推導？考慮最後一列的填充方式：可以放一個直立 Domino（對應 f(n-1)），放兩個橫放 Domino（對應 f(n-2)），或放 Tromino 加 Domino 組合（引入 f(n-3) 項）。
-- 也可以用「完整狀態」和「部分突出狀態」兩個 DP 陣列來推導，更直觀但稍微複雜。
-- n 非常大時可以用矩陣快速冪優化到 O(log n)。
+- **遞推式 f(n) = 2×f(n-1) + f(n-3) 怎麼推導？** 定義兩個狀態：f(n) 是完整填滿 2×n 的方法數，g(n) 是 2×n 加一個突出格的方法數。轉移：f(n) = f(n-1) + f(n-2) + 2×g(n-1)，g(n) = g(n-1) + f(n-2)。消去 g(n) 後化簡得到 f(n) = 2×f(n-1) + f(n-3)。
+- **用兩個 DP 陣列的做法？** 定義 full[n]（完整填滿）和 partial[n]（有一格突出），轉移更直觀：full[n] = full[n-1] + full[n-2] + 2×partial[n-1]，partial[n] = partial[n-1] + full[n-2]。
+- **n 極大時怎麼辦？** f(n) 的遞推涉及 f(n-1)、f(n-3)，可以建構 3×3 轉移矩陣，用矩陣快速冪在 O(log n) 內計算。
 </Callout>
+
+## 邊界情況
+
+- **n 等於 1**：只能放一塊直立 Domino，回傳 1
+- **n 等於 2**：兩塊直立或兩塊橫放，共 2 種，回傳 2
+- **n 等於 1000（題目上限）**：結果是超大數字，必須每步取模避免溢位。注意 C# 中 2×dp[i-1] 可能超過 int 範圍，建議用 long
 
 ## 理解測驗
 

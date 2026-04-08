@@ -39,6 +39,8 @@ Flyweight 屬於**結構型模式（Structural Pattern）**，重點在於如何
 
 <StepDiagram data='[{"title":"分析物件狀態","description":"區分哪些是內在狀態（可共享），哪些是外在狀態（每個不同）","icon":"1"},{"title":"定義 Flyweight","description":"只包含內在狀態的共享物件","icon":"2"},{"title":"建立 Flyweight Factory","description":"用 Pool/Cache 管理共享物件，已存在就返回，不存在才建立","icon":"3"},{"title":"外在狀態由 Client 傳入","description":"使用 Flyweight 時，Client 把外在狀態作為參數傳給方法","icon":"4"},{"title":"大量使用","description":"數千個邏輯物件實際上只引用少數幾個 Flyweight 實例","icon":"5"}]' />
 
+流程解讀：Flyweight 的第一步也是最關鍵的一步是「狀態分析」。把每個欄位歸類為 Intrinsic State（內在狀態，所有使用者共同的，如粒子的顏色和材質）或 Extrinsic State（外在狀態，每個使用者獨有的，如粒子的位置和速度）。Intrinsic State 存在共享的 Flyweight 物件中，Extrinsic State 存在 Context 物件中或在每次呼叫時作為參數傳入。Factory 用 Dictionary/Map 作為物件池，確保同一種 Flyweight 只建立一次。
+
 ## 程式碼範例
 
 ### C# 版本
@@ -288,6 +290,8 @@ System.out.printf("Particles: %d, Shared types: %d%n",
 
 <Diagram data='{"nodes":[{"id":"client","label":"Client","type":"muted"},{"id":"factory","label":"FlyweightFactory","type":"highlight"},{"id":"flyweight","label":"Flyweight (ParticleType)","type":"default"},{"id":"context","label":"Context (Particle)","type":"default"}],"edges":[{"from":"client","to":"factory","label":"requests flyweight"},{"from":"factory","to":"flyweight","label":"creates / returns cached"},{"from":"context","to":"flyweight","label":"references (shared)"},{"from":"client","to":"context","label":"manages extrinsic state"}]}' />
 
+結構解讀：Client 向 FlyweightFactory 請求 Flyweight，Factory 檢查快取中是否已存在：有就直接回傳，沒有才建立新的。Context（Particle）持有 Flyweight 的共享參考，同時保存自己獨有的外在狀態（位置、速度）。一萬個 Particle 可以共用同一個 ParticleType 實例，大幅節省記憶體。
+
 ## 實戰補充
 
 <Callout type="tip" title="資深開發者經驗">
@@ -302,10 +306,29 @@ Flyweight 在你身邊無處不在，只是通常被包裝得看不出來。.NET
 
 <Quiz data='{"question":"以下哪個不是 Flyweight Pattern 的使用前提？","options":["系統需要大量相似物件","物件的大部分狀態可以外部化","記憶體使用量是瓶頸","物件必須是可變的（Mutable）"],"answer":3,"explanation":"Flyweight 物件通常設計成 Immutable 以確保共享安全。「物件必須是可變的」不是前提，反而是需要避免的。"}' />
 
+## 面試常見問題
+
+**Q: 如何判斷一個物件的狀態是 Intrinsic 還是 Extrinsic？**
+
+A: 問兩個問題：(1) 這個狀態對所有使用者都一樣嗎？一樣 → Intrinsic（如粒子的顏色、材質）。(2) 這個狀態每個使用者不同嗎？不同 → Extrinsic（如粒子的位置、速度）。Intrinsic State 放在 Flyweight 裡共享，Extrinsic State 由 Client 在每次呼叫時傳入。
+
+**Q: Flyweight 和 Object Pool 有什麼差別？**
+
+A: Flyweight 是共享 — 多個 Client 同時引用同一個物件。Object Pool 是借用 — Client 從池中借出物件、用完歸還，同一時間只有一個 Client 使用。Flyweight 適合唯讀共享物件，Object Pool 適合建立成本高且需要重複使用的可變物件（如資料庫連線）。
+
+## 相關模式
+
+| 模式 | 關係 |
+|------|------|
+| **Singleton** | Flyweight Factory 通常是 Singleton，集中管理共享物件池 |
+| **Composite** | Composite 的 Leaf 節點可以用 Flyweight 實作，大幅減少記憶體（如文件中的字元物件） |
+| **Strategy** | Flyweight 物件可以作為共享的 Strategy — 無狀態的策略只需要一個實例 |
+| **Factory Method** | Flyweight Factory 內部用 Factory Method 建立新的 Flyweight 實例 |
+
 ## 重點整理
 
 <Callout type="tip" title="一句話記住">
-**Flyweight Pattern = 把重複的部分共享，獨有的部分外傳，用少量物件支撐大量需求。**
+**Flyweight Pattern = 圖書館模式：一本書大家共讀，不用人手一本。** 口訣：「共同的共享，不同的外傳」
 </Callout>
 
 | 概念 | 說明 |

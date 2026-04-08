@@ -24,19 +24,32 @@ Singleton 屬於**建立型模式（Creational Pattern）**，重點在於控制
 
 ## 什麼時候用？
 
-- 你需要全域共用的資源（例如設定檔管理器、連線池、日誌記錄器）
-- 物件的建立成本很高，且整個應用程式只需要一份
-- 你需要一個集中的協調點（例如執行緒池管理器）
+用以下 if/then 條件判斷：
+
+- **如果**整個應用程式確實只能有一份該資源（例如設定檔管理器、連線池），且多份實例會導致資料不一致或資源浪費 → 用 Singleton
+- **如果**物件的建立成本極高（需要讀取大量設定、建立網路連線），且整個應用生命週期只需要一份 → 用 Singleton
+- **如果**你只是想要「方便存取」而非「嚴格唯一」→ 用 DI 容器的 Singleton Scope 而非手寫 Singleton
+
+### 常見應用場景
+
+| 場景 | 原因 |
+|------|------|
+| 設定檔管理器 | 整個應用只需讀取一次設定，多份實例浪費 I/O |
+| 連線池管理 | 連線數必須集中控制，多份池會超出連線上限 |
+| 日誌記錄器 | 集中寫入避免 race condition 和檔案鎖定衝突 |
+| 快取管理器 | 多份快取會造成資料不一致 |
 
 ## 什麼時候不該用？
 
 <Callout type="warning" title="過度設計警告">
-Singleton 常被濫用為「全域變數的包裝」。如果你的物件不需要嚴格限制為一個實例，使用 DI 容器的 Singleton Scope 是更好的選擇。Singleton 會讓單元測試變困難，因為它引入了隱藏的全域狀態。
+Singleton 常被濫用為「全域變數的包裝」。判斷標準：如果移除唯一性限制、改用普通的 DI 注入也能正常運作 → 你不需要 Singleton，改用 DI 容器的 Singleton Scope（如 .NET 的 `services.AddSingleton`）。手寫 Singleton 會讓單元測試變困難，因為它引入了隱藏的全域狀態（Hidden Global State，指物件的依賴關係無法從建構子看出來，而是藏在 static 存取中）。
 </Callout>
 
 ## 執行流程
 
 <StepDiagram data='[{"title":"私有建構子","description":"將 constructor 設為 private，防止外部直接 new","icon":"1"},{"title":"靜態實例欄位","description":"類別內部持有自己的唯一實例","icon":"2"},{"title":"提供存取方法","description":"透過靜態方法（如 GetInstance）回傳唯一實例","icon":"3"},{"title":"延遲初始化","description":"第一次被呼叫時才建立實例（Lazy Initialization）","icon":"4"},{"title":"全域共用","description":"所有呼叫者取得的都是同一個實例","icon":"5"}]' />
+
+流程解讀：Singleton 的核心機制是「控制建立入口」。Private 建構子封死了外部 `new` 的路，靜態欄位確保全域只有一份參考，而延遲初始化（Lazy Initialization，指第一次使用時才建立物件而非程式啟動時就建立）既節省資源又避免了啟動時的不必要開銷。在多執行緒環境中，延遲初始化必須搭配執行緒安全機制（如 C# 的 `Lazy&lt;T&gt;`、Java 的 Double-Checked Locking）才能確保只建立一次。
 
 ## 程式碼範例
 
@@ -164,6 +177,8 @@ System.out.println(config1.getDatabaseConnection());
 
 <Diagram data='{"nodes":[{"id":"client","label":"Client","type":"muted"},{"id":"singleton","label":"Singleton (AppConfig)","type":"highlight"},{"id":"instance","label":"static instance","type":"default"}],"edges":[{"from":"client","to":"singleton","label":"getInstance()"},{"from":"singleton","to":"instance","label":"creates / returns"}]}' />
 
+結構解讀：Client 透過 `getInstance()` 靜態方法存取 Singleton，永遠不會直接碰到建構子。Singleton 類別內部管理唯一的 static instance，第一次呼叫時建立、後續呼叫直接回傳。這確保了不管多少個 Client 呼叫，拿到的都是同一個物件參考。
+
 ## 實戰補充
 
 <Callout type="tip" title="資深開發者經驗">
@@ -182,10 +197,33 @@ System.out.println(config1.getDatabaseConnection());
 
 <Quiz data='{"question":"為什麼現代開發建議用 DI 容器的 Singleton Scope 取代手寫 Singleton？","options":["因為 DI 容器跑得比較快","因為手寫 Singleton 不能用 private constructor","因為 DI 容器讓測試時可以輕鬆替換為 mock","因為 DI 容器不需要寫任何程式碼"],"answer":2,"explanation":"手寫 Singleton 讓單元測試很難替換依賴。DI 容器管理的 Singleton 可以在測試時輕鬆注入 mock 物件，保持可測試性。"}' />
 
+## 面試常見問題
+
+**Q: Singleton 為什麼會讓單元測試變困難？如何解決？**
+
+A: Singleton 透過靜態方法存取，無法在測試中替換為 mock。解法有二：(1) 改用 DI 容器的 Singleton Scope，透過介面注入依賴，測試時可以替換；(2) 如果必須手寫 Singleton，提供 `Reset()` 方法（僅限測試環境）或用 interface 包裝存取。
+
+**Q: 多執行緒環境下，Singleton 初始化可能出什麼問題？**
+
+A: 兩個執行緒同時檢查 instance 為 null，可能各自建立一個實例，破壞唯一性。解法因語言而異：C# 用 `Lazy&lt;T&gt;`（內建執行緒安全）；Java 用 Double-Checked Locking（`volatile` + `synchronized`）或 enum；Python 因 GIL 較少出問題，但仍建議用 `threading.Lock`。
+
+**Q: Singleton 和靜態類別（Static Class）有什麼差異？**
+
+A: Singleton 是物件，可以實作介面、被繼承、支援多型，也能透過 DI 注入。靜態類別不是物件，無法實作介面，無法作為參數傳遞。當你需要可替換性（如測試時 mock）→ 用 Singleton；當操作純粹是工具方法且不需要狀態 → 用靜態類別。
+
+## 相關模式
+
+| 模式 | 關係 |
+|------|------|
+| **Factory Method / Abstract Factory** | 工廠本身常實作為 Singleton，確保全域只有一個工廠入口 |
+| **Facade** | Facade 有時也會設計為 Singleton，作為子系統的唯一入口 |
+| **Flyweight** | Flyweight Factory 通常是 Singleton，集中管理共享物件池 |
+| **State / Strategy** | State 和 Strategy 的具體實作如果是無狀態的（Stateless），可以用 Singleton 避免重複建立 |
+
 ## 重點整理
 
 <Callout type="tip" title="一句話記住">
-**Singleton Pattern = 確保全世界只有一個實例，大家都共用它。**
+**Singleton Pattern = 全域唯一、集中管理、私有建構。** 口訣：「Private 建構堵死門，Static 方法開唯一窗」
 </Callout>
 
 | 概念 | 說明 |

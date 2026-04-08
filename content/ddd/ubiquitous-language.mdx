@@ -24,10 +24,10 @@ Ubiquitous Language 是 DDD 所有戰術與戰略模式的前提。沒有統一�
 
 ## 核心觀念
 
-- **術語不一致 = Bug 的溫床**：業務說「訂單」，工程師寫 `Transaction`，QA 測「購買紀錄」— 三個詞指同一件事，但每次溝通都要翻譯，翻譯就會出錯
-- **程式碼即文件**：變數名、方法名、類別名都要使用 Ubiquitous Language，讀程式碼就像讀業務規格書
-- **Glossary 是活文件**：建立術語表並持續維護，新進成員靠它上手，老成員靠它對齊
-- **語言隨 Bounded Context 變化**：同一個詞在不同 Context 可能有不同意義，每個 Context 有自己的 Ubiquitous Language
+- **術語不一致 = Bug 的溫床**：業務說「訂單」，工程師寫 `Transaction`，QA 測「購買紀錄」— 三個詞指同一件事，但每次溝通都要翻譯，翻譯就會出錯。具體例子：業務說「取消訂單」，工程師理解為「軟刪除」，但實際上業務意思是「退款 + 恢復庫存 + 通知物流」。一個術語的分歧就可能導致一整條業務流程做錯
+- **程式碼即文件**：變數名、方法名、類別名都要使用 Ubiquitous Language，讀程式碼就像讀業務規格書。判斷標準：把你的類別名和方法名唸給業務人員聽，如果他們聽得懂，就是好的命名
+- **Glossary 是活文件**：建立術語表並持續維護，新進成員靠它上手，老成員靠它對齊。Glossary 的格式建議：術語名稱 + 定義 + 所屬 Bounded Context + 範例 + 同義詞/易混淆詞。存放位置：Wiki 或 repo 的 `docs/glossary.md`
+- **語言隨 Bounded Context 變化**：同一個詞在不同 Context 可能有不同意義。例如「Product」在銷售 Context 有價格和折扣規則，在倉儲 Context 有重量和儲位，在行銷 Context 有 SEO 描述和分類標籤。每個 Context 各自維護自己的定義，不要強迫統一
 
 ## 常見誤區
 
@@ -179,6 +179,8 @@ class Order:
 
 <Diagram data='{"nodes":[{"id":"expert","label":"領域專家 (Domain Expert)","type":"muted"},{"id":"dev","label":"開發者 (Developer)","type":"muted"},{"id":"ul","label":"Ubiquitous Language","type":"highlight"},{"id":"glossary","label":"Glossary（術語表）","type":"default"},{"id":"code","label":"程式碼命名","type":"default"},{"id":"doc","label":"需求文件 / User Story","type":"default"}],"edges":[{"from":"expert","to":"ul","label":"共同建立"},{"from":"dev","to":"ul","label":"共同建立"},{"from":"ul","to":"glossary","label":"記錄於"},{"from":"ul","to":"code","label":"反映在"},{"from":"ul","to":"doc","label":"使用於"}]}' />
 
+此圖展示 Ubiquitous Language 的三向同步：領域專家和開發者共同建立統一語言，這套語言同時反映在 Glossary、程式碼命名、和需求文件中。三者必須保持一致——如果 Glossary 寫「退款」但程式碼寫 `updateBalance`，就代表語言不統一。
+
 ## 實戰補充
 
 <Callout type="tip" title="資深開發者筆記">
@@ -198,7 +200,7 @@ class Order:
 ## 重點整理
 
 <Callout type="tip" title="一句話記住">
-**Ubiquitous Language = 團隊的共同語言，從會議室到程式碼都用同一套術語。**
+**口訣：「開會怎麼說、程式碼就怎麼寫」—— 如果業務說退款你就寫 `refund()`，不是 `updateBalance()`。**
 </Callout>
 
 | 概念 | 說明 |

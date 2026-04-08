@@ -52,6 +52,31 @@ description: "輸入即搜尋的即時體驗：Trie、排名、快取策略"
 
 ### Trie 資料結構（含 Top-K）
 
+**Trie（前綴樹）的核心概念**：Trie 是一棵多叉樹，每個節點代表一個字元，從根節點到任意節點的路徑組成一個前綴。與 Hash Table 不同，Trie 天然支援前綴搜尋——輸入「app」就能找到「apple」、「application」、「appetizer」等所有以「app」開頭的字串。
+
+**Trie 操作的圖解說明**：
+
+假設插入三個查詢：`"cat"(freq:100)`、`"car"(freq:80)`、`"card"(freq:60)`
+
+```
+        root
+         |
+        [c] ← TopK: ["cat":100, "car":80, "card":60]
+         |
+        [a] ← TopK: ["cat":100, "car":80, "card":60]
+        / \
+      [t]  [r] ← TopK: ["car":80, "card":60]
+       |    |
+      (*)  [d] ← TopK: ["card":60]
+            |
+           (*)
+```
+
+- 每個節點儲存 `Children`（子節點 Map）和 `TopK`（此前綴下最熱門的 K 個結果）
+- `(*)` 標記 `IsEndOfWord = true`，表示這是一個完整的查詢詞
+- **查詢 `"ca"`**：從 root → c → a，直接回傳該節點的 TopK = `["cat", "car", "card"]`，時間複雜度 O(L)，L 是前綴長度
+- **為什麼要預存 TopK？** 如果不預存，查詢 `"ca"` 時需要遍歷 `a` 節點下的所有子孫節點來找最熱門的結果。當子孫節點有百萬個時，遍歷時間可能超過 1 秒，完全無法達到 200ms 的延遲要求
+
 ```csharp
 public class TrieNode
 {
@@ -170,11 +195,49 @@ class DataCollectionService:
 
 <Diagram data='{"nodes":[{"id":"client","label":"Client (Browser)","type":"muted"},{"id":"cdn","label":"CDN Cache","type":"default"},{"id":"gateway","label":"API Gateway","type":"highlight"},{"id":"trie","label":"Trie Service (Read)","type":"highlight"},{"id":"cache","label":"Server Cache (Redis)","type":"default"},{"id":"collector","label":"Data Collection","type":"default"},{"id":"analytics","label":"Analytics (Spark)","type":"default"},{"id":"builder","label":"Trie Builder","type":"default"},{"id":"storage","label":"Trie Storage (S3)","type":"muted"}],"edges":[{"from":"client","to":"cdn","label":"Debounce 後查詢"},{"from":"cdn","to":"gateway","label":"Cache Miss"},{"from":"gateway","to":"cache","label":"查 Redis"},{"from":"cache","to":"trie","label":"Cache Miss"},{"from":"client","to":"collector","label":"搜尋記錄（Write Path）"},{"from":"collector","to":"analytics","label":"聚合頻率"},{"from":"analytics","to":"builder","label":"觸發重建"},{"from":"builder","to":"storage","label":"新 Trie 快照"},{"from":"storage","to":"trie","label":"載入新 Trie"}]}' />
 
+上圖清楚呈現了 Read Path 和 Write Path 的分離。Read Path（上半部）：用戶輸入經 Debounce 後，依序查詢 CDN Cache → Redis Cache → Trie Service，任一層命中即回傳，確保 P99 延遲低於 200ms。Write Path（下半部）：搜尋記錄經 Data Collection 收集，由 Analytics（如 Apache Spark）聚合頻率，Trie Builder 離線建構新 Trie 快照存入 S3，Trie Service 定期載入新快照，實現原子替換。
+
 ## 延伸討論
 
 <Callout type="tip" title="進階優化">
-**Trie 分片策略。** 當資料量大到一台機器放不下整棵 Trie 時，可以按首字母分片（a-f 到 Shard 1、g-m 到 Shard 2 等）。API Gateway 根據查詢前綴路由到對應分片。另一個方向是用 Trie + DAAT（Document-At-A-Time）結合個人化因素（用戶搜尋歷史、地理位置）來排序結果，讓建議更精準。
+**Trie 分片策略。** 當資料量大到一台機器放不下整棵 Trie 時，可以按首字母分片（a-f 到 Shard 1、g-m 到 Shard 2 等）。API Gateway 根據查詢前綴路由到對應分片。
+
+**分片的具體考量**：
+- **按首字母分片**的問題：字母分佈不均（英文中 `s` 開頭的查詢比 `z` 多 10 倍以上），導致 Hot Shard 問題
+- **更好的做法**：按 Hash 分片（前綴的前兩個字元做 Hash），確保負載均勻分佈到各節點
+- **分片數量選擇**：如果 Trie 總大小 50 GB，每台機器記憶體 16 GB，至少需要 4 個分片。實務上取 2-3 倍冗餘，部署 8-12 個分片
+
+**Trie 替代方案比較**：
+- **Trie**：前綴搜尋 O(L) 最優，但記憶體佔用大（每個節點需要儲存 Children Map）
+- **Sorted Array + Binary Search**：記憶體更省，但前綴搜尋需要 O(log N) 的二分查找
+- **Inverted Index**：更適合全文搜尋而非前綴搜尋，但 Elasticsearch 在實務中也被用來做自動補全（用 `completion` suggester）
+
+**為什麼不直接用 Elasticsearch？** Elasticsearch 的 Completion Suggester 底層也是 FST（Finite State Transducer，Trie 的壓縮變體），但多了序列化和網路開銷。純記憶體 Trie 的 P99 延遲可達 1-5ms，Elasticsearch 通常在 10-50ms。對於 Google 等級的查詢量，這個差距很重要。
 </Callout>
+
+### 面試常見問題與參考答案
+
+**Q1：如何處理多語系（中文、日文）的自動補全？**
+
+**A1**：中日文沒有天然的字母前綴，需要不同策略：
+1. **拼音轉換**：將中文查詢同時索引其拼音形式。例如「北京」同時索引為 `"beijing"` 和 `"北京"`，用戶輸入 `"bei"` 也能命中
+2. **Character-level Trie**：直接用字元（Unicode）作為 Trie 節點。中文「北京天氣」建立 `北 → 京 → 天 → 氣` 的路徑
+3. **混合策略**：支援拼音、注音、和直接輸入中文字。實務上 Google 搜尋同時支援這三種輸入方式
+
+**Q2：趨勢搜尋（Trending Topic）如何快速出現在建議中？**
+
+**A2**：離線 Trie 重建通常每 15-30 分鐘一次，無法滿足分鐘級別的即時性需求。解決方案：
+1. 在 Trie Service 前加一層 **Trending Cache**（Redis Sorted Set）
+2. Data Collection Service 即時統計最近 10 分鐘的高頻查詢
+3. 查詢時先查 Trending Cache，將結果與 Trie 結果合併
+4. 判斷標準：最近 10 分鐘內查詢次數超過平常同時段 5 倍的查詢詞，視為 Trending
+
+**Q3：如何防止惡意或不當內容出現在搜尋建議中？**
+
+**A3**：三道防線：
+1. **建構時過濾**：Trie Builder 維護一份黑名單（敏感詞、色情關鍵字、仇恨言論），建構 Trie 時直接排除
+2. **即時下架**：提供管理後台 API，能在 1 分鐘內將特定查詢從 Trending Cache 和 Trie 中移除
+3. **人工審核**：新出現的高頻查詢在進入 Trending Cache 前，先經過自動分類器（ML 模型）判斷是否安全，不確定的送人工審核
 
 ## 理解測驗
 
@@ -188,10 +251,17 @@ class DataCollectionService:
 
 | 概念 | 說明 |
 |------|------|
-| **Trie（前綴樹）** | 核心資料結構，按字元逐層儲存，查詢複雜度 O(L) |
-| **Top-K 預計算** | 每個 Trie 節點預存最熱門結果，避免即時遍歷 |
-| **Debounce** | 前端防抖動，減少 50-80% 的 API 請求 |
-| **多層快取** | Browser → CDN → Redis → Trie Service 四層快取 |
-| **Read/Write 分離** | 讀取走 Trie Service，寫入走 Data Collection + 離線重建 |
-| **Trie 分片** | 按首字母或 Hash 分片，水平擴展 |
-| **時間衰減** | 舊搜尋權重降低，讓趨勢搜尋能快速浮現 |
+| **Trie（前綴樹）** | 多叉樹結構，每個節點代表一個字元，查詢複雜度 O(L)，L 為前綴長度 |
+| **Top-K 預計算** | 每個節點預存該前綴下最熱門的 K 個結果，避免查詢時遍歷百萬子孫節點 |
+| **Debounce** | 前端等用戶停止打字 150ms 後才發請求，減少 50-80% 的 API 請求量 |
+| **多層快取** | Browser Cache（本地）→ CDN（邊緣）→ Redis（伺服器）→ Trie（記憶體），命中率逐層提升 |
+| **Read/Write 分離** | Read Path 延遲 P99 低於 200ms；Write Path 每 15-30 分鐘離線重建 Trie 並原子替換 |
+| **Trie 分片** | 按前綴 Hash 分片到多台機器，避免按首字母分片的 Hot Shard 問題 |
+| **時間衰減** | `score = frequency * e^(-lambda * days)`，7 天以上的搜尋權重指數下降 |
+| **Trending Cache** | Redis Sorted Set 即時統計高頻查詢，10 分鐘內查詢量超過常態 5 倍即為 Trending |
+
+<Callout type="tip" title="一句話記住">
+**搜尋自動補全 = Trie 預存 Top-K + Debounce 減請求 + 四層快取壓延遲 + 離線重建不影響讀取。**
+
+記憶口訣：**「Trie 存熱門，防抖減請求，快取壓延遲，離線建新樹」**。
+</Callout>

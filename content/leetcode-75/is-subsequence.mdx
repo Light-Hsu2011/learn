@@ -26,7 +26,7 @@ description: "用雙指針逐字元匹配判斷 s 是否為 t 的子序列"
 
 ## 解題思路
 
-<StepDiagram data='[{"title":"雙指針初始化","description":"i 指向 s 的開頭，j 指向 t 的開頭","icon":"1"},{"title":"遍歷 t","description":"j 逐一往右移動","icon":"2"},{"title":"匹配","description":"若 s[i] == t[j]，i 也往右移（匹配成功）","icon":"3"},{"title":"判斷結果","description":"若 i == s.length，表示 s 全部匹配完成","icon":"4"}]' />
+<StepDiagram data='[{"title":"雙指針初始化","description":"i = 0 指向 s 的第一個待匹配字元，j = 0 指向 t 的當前掃描位置","icon":"1"},{"title":"遍歷 t","description":"while 迴圈中 j 每步都 +1，逐一掃描 t 的每個字元","icon":"2"},{"title":"匹配","description":"若 s[i] == t[j]，表示找到匹配，i++ 移到 s 的下一個待匹配字元","icon":"3"},{"title":"判斷結果","description":"迴圈結束後檢查 i == s.length：若成立代表 s 的所有字元都按順序在 t 中找到了","icon":"4"}]' />
 
 ## 程式碼
 
@@ -76,18 +76,31 @@ def isSubsequence(s: str, t: str) -> bool:
 |--|------|-------|
 | 本解法 | O(n) | O(1) |
 
-n 為 t 的長度，最多遍歷 t 一次。
+j 最多走 n 步（n 為 t 的長度），每步只做一次字元比較，因此時間 O(n)。只用兩個指針變數，空間 O(1)。
+
+## 邊界情況
+
+- **s 為空字串**：i 起始就等於 s.length=0，直接回傳 true。空字串是任何字串的子序列
+- **s 比 t 長**：不可能是子序列，迴圈結束時 i 一定小於 s.length，回傳 false
+- **s 和 t 完全相同**：每步都匹配成功，i 和 j 同步前進，回傳 true
 
 ## 圖解
 
 <Diagram data='{"nodes":[{"id":"s","label":"s: a c e","type":"default"},{"id":"t","label":"t: a h b g d c e","type":"default"},{"id":"match","label":"雙指針匹配","type":"highlight"},{"id":"result","label":"i=3 == s.length → true","type":"muted"}],"edges":[{"from":"s","to":"match","label":"i 指針"},{"from":"t","to":"match","label":"j 指針"},{"from":"match","to":"result","label":"全部匹配完"}]}' />
 
+圖表展示匹配過程：j 掃描 t 的每個字元，i 只在匹配時前進。j=0 時 t[0]='a' 匹配 s[0]='a'，i 前進到 1。j 繼續掃到 j=5 時 t[5]='c' 匹配 s[1]='c'，再到 j=6 匹配 'e'。i=3 等於 s.length，確認是子序列。
+
 ## 進階觀點
 
 <Callout type="tip" title="面試追問">
-- **Follow-up：如果有大量 s 要判斷同一個 t？** 預處理 t，建一個字元→索引列表的 HashMap，對每個 s 用二分搜尋加速，單次查詢 O(m log n)。
-- **跟 LCS 的關係？** 如果 LCS(s, t) 的長度等於 s 的長度，則 s 是 t 的子序列。
-- **空字串是任何字串的子序列嗎？** 是的，空字串是所有字串的子序列。
+- **Q: Follow-up — 如果有大量 s 要判斷同一個 t？**
+  A: 預處理 t：建立 HashMap，key 是字元，value 是該字元出現的所有索引（已排序）。對每個 s，用二分搜尋逐字元查找下一個匹配位置（index 必須遞增）。預處理 O(n)，單次查詢 O(m log n)，m 為 s 長度。比重複跑雙指針 O(k*n) 快很多。
+
+- **Q: 跟 LCS（最長公共子序列）的關係？**
+  A: 如果 LCS(s, t) 的長度等於 s 的長度，代表 s 的每個字元都能按順序在 t 中找到，即 s 是 t 的子序列。但用 LCS 解本題是 O(nm) DP，遠不如雙指針 O(n) 高效。只有在需要「最長公共子序列」本身時才需要 DP。
+
+- **Q: 空字串是任何字串的子序列嗎？**
+  A: 是的。定義上「刪除零個字元」即得到空字串，所以空字串是所有字串（包括空字串自身）的子序列。程式碼中 i=0 直接等於 s.length=0，回傳 true。
 </Callout>
 
 ## 理解測驗

@@ -30,7 +30,7 @@ description: "逐位元分析，根據 c 的每一位決定 a 和 b 需要翻轉
 
 ## 解題思路
 
-<StepDiagram data='[{"title":"逐位元檢查","description":"從最低位到最高位，逐一檢查 a、b、c 的每一位","icon":"1"},{"title":"c 位元 = 1","description":"需要 a|b = 1：若 a 和 b 都是 0，翻轉 1 次","icon":"2"},{"title":"c 位元 = 0","description":"需要 a=0 且 b=0：a 是 1 翻一次，b 是 1 翻一次","icon":"3"},{"title":"累加翻轉數","description":"所有位元的翻轉次數加總","icon":"4"}]' />
+<StepDiagram data='[{"title":"逐位元檢查","description":"用 a&1, b&1, c&1 取最低位，然後右移繼續檢查下一位，直到 a、b、c 都歸零","icon":"1"},{"title":"c 位元 = 1","description":"需要 a|b = 1。若 a=0 且 b=0 → 翻轉 1 次（任選 a 或 b 翻一個）。否則已滿足，不翻","icon":"2"},{"title":"c 位元 = 0","description":"需要 a=0 且 b=0。a 是 1 翻一次，b 是 1 翻一次，最多翻 2 次（用 bitA + bitB 計算）","icon":"3"},{"title":"累加翻轉數","description":"所有位元的翻轉次數加總就是最終答案，例如 a=2(010), b=6(110), c=5(101) → 逐位分析得 flips=3","icon":"4"}]' />
 
 ## 程式碼
 
@@ -102,16 +102,34 @@ def minFlips(a: int, b: int, c: int) -> int:
 |--|------|-------|
 | 本解法 | O(max(log a, log b, log c)) | O(1) |
 
+- **Time**：每次迴圈右移 1 位，最多執行 max(log2(a), log2(b), log2(c)) 次（即最大數的位元數），對於 32 位整數最多 30 次
+- **Space**：只用了 flips 和三個 bit 變數，不隨輸入大小增長
+
+## 邊界情況
+
+- **a、b、c 都是 0**：不進入迴圈，flips = 0，已經滿足 `0 OR 0 == 0`
+- **c 等於 0**：需要把 a 和 b 的所有 1 都翻成 0，flips = popcount(a) + popcount(b)
+- **a 和 b 已經滿足 `a OR b == c`**：每一位都不需要翻轉，flips = 0
+- **a 等於 b**：當 c 某位為 0 且 a 該位為 1 時，需要翻 2 次（a 和 b 都要翻）
+
 ## 圖解
 
 <Diagram data='{"nodes":[{"id":"bits","label":"逐位元比較 a,b,c","type":"default"},{"id":"c1","label":"c=1: 需要 a|b=1","type":"highlight"},{"id":"c0","label":"c=0: 需要 a=b=0","type":"highlight"},{"id":"flip0","label":"都是0 → 翻1次","type":"muted"},{"id":"flip1","label":"有幾個1翻幾次","type":"muted"},{"id":"total","label":"累加所有翻轉","type":"default"}],"edges":[{"from":"bits","to":"c1","label":"c位=1"},{"from":"bits","to":"c0","label":"c位=0"},{"from":"c1","to":"flip0","label":"a=b=0"},{"from":"c0","to":"flip1","label":"計數1"},{"from":"flip0","to":"total","label":"+1"},{"from":"flip1","to":"total","label":"+count"}]}' />
 
+圖表展示了逐位元的決策分支：根據 c 的位元值分成兩條路。
+c=1 時只需確保至少一個 1（最多翻 1 次），c=0 時每個 1 都要翻掉（最多翻 2 次）。
+
 ## 進階觀點
 
 <Callout type="tip" title="面試追問">
-- 為什麼 c=0 時可能需要翻 2 次（a 和 b 都是 1），但 c=1 時最多只翻 1 次？因為 OR 是「至少一個 1 就行」，只要翻一個 0→1 就滿足。但 c=0 要求兩邊都是 0，每個 1 都要翻。
-- 位元運算技巧：也可以用 `(a | b) ^ c` 找出需要改變的位，再用 `a & b & ((a | b) ^ c)` 找出需要額外翻轉的位（a 和 b 都是 1 且 c 是 0 的情況）。
-- 這種逐位元分析的思路也適用於其他位元操作題。
+**Q: 為什麼 c=0 時可能需要翻 2 次，但 c=1 時最多只翻 1 次？**
+A: OR 運算的特性決定了這個不對稱。c=1 只需「至少一個 1」，a 或 b 有一個是 1 就行，都是 0 才翻 1 次。但 c=0 要求 `a OR b = 0`，即 a 和 b 都必須是 0，所以每個 1 都要單獨翻轉，最多 2 次。
+
+**Q: 有沒有不用逐位元迴圈的位元運算解法？**
+A: 有。`(a | b) ^ c` 找出所有「需要改變」的位（OR 結果和 c 不同的位）。但這漏算了 c=0 且 a=b=1 的情況（需要翻 2 次但只計了 1 次）。用 `a & b & ((a | b) ^ c)` 找出這些額外翻轉位，最終答案 = `popcount((a | b) ^ c) + popcount(a & b & ((a | b) ^ c))`。
+
+**Q: 這種逐位元分析的思路還能用在哪些題？**
+A: 所有涉及 AND/OR/XOR 的位元操作題都可以逐位獨立分析，例如 LC 201 Bitwise AND of Numbers Range、LC 477 Total Hamming Distance。關鍵洞察是：位元運算的每一位互相獨立，可以分開處理再合併。
 </Callout>
 
 ## 理解測驗

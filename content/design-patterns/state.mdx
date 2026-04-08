@@ -28,10 +28,12 @@ State 屬於**行為型模式（Behavioral Pattern）**，重點在於用物件�
 
 ## 什麼時候用？
 
-- 物件的行為取決於它的狀態，且狀態在執行時會頻繁切換
-- 程式碼中有大量基於狀態的 if-else 或 switch 判斷
-- 你需要實作狀態機（State Machine）
-- 不同狀態下同一個操作的行為完全不同
+用以下 if/then 條件判斷：
+
+- **如果**物件有 4 個以上的狀態，且不同狀態下同一個操作的行為完全不同 → 用 State
+- **如果**程式碼中有大量 `if (state == "pending")` 這類判斷散佈在多個方法中 → 用 State 重構
+- **如果**你需要實作狀態機（State Machine，指物件有有限個狀態、定義了狀態之間的合法轉換規則）→ 用 State
+- **如果**狀態只有 2-3 個且轉換簡單 → enum + switch 就夠了
 
 ## 什麼時候不該用？
 
@@ -42,6 +44,8 @@ State 屬於**行為型模式（Behavioral Pattern）**，重點在於用物件�
 ## 執行流程
 
 <StepDiagram data='[{"title":"定義 State 介面","description":"宣告所有狀態共用的行為方法","icon":"1"},{"title":"實作具體 State","description":"每個狀態類別實作該狀態下的行為","icon":"2"},{"title":"建立 Context","description":"持有當前狀態的參考，委派行為給狀態","icon":"3"},{"title":"狀態轉換","description":"在狀態類別內部決定下一個狀態","icon":"4"},{"title":"Client 操作","description":"Client 只跟 Context 互動，不需要知道當前狀態","icon":"5"}]' />
+
+流程解讀：State 的精髓是「狀態類別自管轉換」。每個 ConcreteState 知道自己在哪些操作下可以轉到哪個狀態，也知道哪些操作在當前狀態下是非法的。Context 只做委派，不包含任何狀態邏輯。這讓新增狀態時只需新增一個類別並定義它的行為和轉換規則，不需要修改 Context 或其他狀態。
 
 ## 程式碼範例
 
@@ -385,6 +389,8 @@ order.next();   // 訂單已送達，交易完成
 
 <Diagram data='{"nodes":[{"id":"client","label":"Client","type":"muted"},{"id":"context","label":"Context (Order)","type":"highlight"},{"id":"state","label":"State Interface","type":"default"},{"id":"state_a","label":"ConcreteState A (Pending)","type":"default"},{"id":"state_b","label":"ConcreteState B (Processing)","type":"default"},{"id":"state_c","label":"ConcreteState C (Shipped)","type":"default"}],"edges":[{"from":"client","to":"context","label":"uses"},{"from":"context","to":"state","label":"delegates to"},{"from":"state_a","to":"state","label":"implements"},{"from":"state_b","to":"state","label":"implements"},{"from":"state_c","to":"state","label":"implements"}]}' />
 
+結構解讀：Client 只跟 Context（Order）互動，不直接操作 State。Context 持有當前 State 的參考，將行為委派給它。每個 ConcreteState 知道自己的合法轉換（例如 Pending 可以轉到 Processing 或 Cancelled），在方法內部呼叫 `context.SetState(new NextState())` 完成轉換。非法操作會被當前狀態拒絕（如已出貨不能取消）。
+
 ## 實戰補充
 
 <Callout type="tip" title="資深開發者經驗">
@@ -405,10 +411,29 @@ order.next();   // 訂單已送達，交易完成
 
 <Quiz data='{"question":"State Pattern 和 Strategy Pattern 最關鍵的差異是什麼？","options":["State 用介面，Strategy 用抽象類別","State 的各狀態知道彼此存在且會自動切換，Strategy 的各策略互不相識","State 只能用在遊戲，Strategy 只能用在排序","兩者完全一樣，只是名字不同"],"answer":1,"explanation":"State Pattern 的核心是狀態之間的轉換——狀態 A 知道下一步要切到狀態 B。Strategy Pattern 的各策略彼此獨立，由 Client 決定用哪個。"}' />
 
+## 面試常見問題
+
+**Q: State Pattern 和 Strategy Pattern 結構幾乎一樣，怎麼區分？**
+
+A: 三個關鍵差異：(1) 狀態之間的認知 — State 的各狀態知道彼此存在且會自動轉換，Strategy 的各策略互不相識。(2) 切換控制 — State 由狀態物件自己決定轉換，Strategy 由 Client 決定替換。(3) 語意 — State 表達「物件在不同生命階段的行為」，Strategy 表達「同一個操作的不同演算法」。
+
+**Q: 狀態轉換邏輯放在 State 裡面好還是 Context 裡面好？**
+
+A: 放在 State 裡面（如範例）讓每個狀態自管轉換，新增狀態不影響其他狀態，但狀態之間產生了依賴。放在 Context 裡面讓所有轉換邏輯集中管理，容易看到全貌，但 Context 會膨脹。實務建議：狀態數量少且轉換規則簡單 → 放 State 內部；狀態多且轉換複雜 → 抽出獨立的 State Machine 配置。
+
+## 相關模式
+
+| 模式 | 關係 |
+|------|------|
+| **Strategy** | 結構幾乎相同，但意圖不同。State 的狀態會自動轉換，Strategy 的策略由 Client 選擇。口訣：「State 自己換，Strategy 別人換」 |
+| **Singleton / Flyweight** | 無狀態的 ConcreteState（如只有行為沒有欄位）可以用 Singleton 或 Flyweight 共享，避免每次轉換都 new |
+| **Command** | 可搭配使用 — State 決定「能做什麼」，Command 封裝「怎麼做」 |
+| **Mediator** | 狀態機的轉換邏輯複雜時，可以用 Mediator 來集中管理狀態之間的轉換規則 |
+
 ## 重點整理
 
 <Callout type="tip" title="一句話記住">
-**State Pattern = 物件的行為隨狀態自動切換：狀態變了，行為就變了。**
+**State Pattern = 紅綠燈：狀態自動切換，行為跟著變。** 口訣：「狀態管行為，轉換靠自己」
 </Callout>
 
 | 概念 | 說明 |

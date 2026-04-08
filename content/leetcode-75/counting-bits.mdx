@@ -32,7 +32,7 @@ description: "DP 加位元運算，利用已算過的結果推導每個數字的
 
 ## 解題思路
 
-<StepDiagram data='[{"title":"觀察規律","description":"i 的 1 的個數 = (i >> 1) 的 1 的個數 + (i & 1)","icon":"1"},{"title":"DP 遞推","description":"dp[i] = dp[i >> 1] + (i & 1)","icon":"2"},{"title":"從小到大","description":"從 0 開始算，每個數字的結果依賴更小的數字","icon":"3"},{"title":"一次遍歷","description":"O(n) 時間完成所有計算","icon":"4"}]' />
+<StepDiagram data='[{"title":"觀察規律","description":"任何數字 i 右移一位後（i>>1）的 1 的個數已知，只需再看最低位是否為 1","icon":"1"},{"title":"DP 遞推","description":"dp[i] = dp[i >> 1] + (i & 1)。例如 dp[5] = dp[2] + 1 = 2（5=101, 2=10）","icon":"2"},{"title":"從小到大填表","description":"dp[0]=0 為 base case，i 從 1 到 n 遍歷，每個 dp[i] 只依賴 dp[i>>1]（更小的數字，已算過）","icon":"3"},{"title":"一次遍歷","description":"每個 i 只做一次右移和一次 AND，O(n) 時間完成全部計算","icon":"4"}]' />
 
 ## 程式碼
 
@@ -76,16 +76,31 @@ def countBits(n: int) -> list[int]:
 |--|------|-------|
 | 本解法 | O(n) | O(n) |
 
+外層迴圈跑 n 次，每次只做一次右移和一次 AND 運算（O(1)），因此時間 O(n)。結果陣列本身就是 O(n) 空間，無額外空間開銷。
+
+## 邊界情況
+
+- **n = 0**：只有一個元素 dp[0] = 0，回傳 `[0]`
+- **n = 1**：回傳 `[0, 1]`，dp[1] = dp[0] + 1 = 1
+- **n 為 2 的冪次**：例如 n = 8 (1000)，dp[8] = dp[4] + 0 = 1，2 的冪次只有 1 個 bit 為 1
+
 ## 圖解
 
 <Diagram data='{"nodes":[{"id":"n5","label":"5 (101) → 2個1","type":"highlight"},{"id":"n2","label":"2 (10) → 1個1","type":"default"},{"id":"last","label":"最後一位: 1","type":"muted"},{"id":"formula","label":"dp[5] = dp[2] + 1 = 2","type":"highlight"}],"edges":[{"from":"n5","to":"n2","label":"5>>1 = 2"},{"from":"n5","to":"last","label":"5&1 = 1"},{"from":"n2","to":"formula","label":"1"},{"from":"last","to":"formula","label":"+1"}]}' />
 
+圖表展示 dp[5] 的推導過程：5 的二進位是 101，右移一位得到 2（10），dp[2] 已知為 1。再加上 5 的最低位（`5 & 1 = 1`），得到 dp[5] = 1 + 1 = 2。
+
 ## 進階觀點
 
 <Callout type="tip" title="面試追問">
-- 另一個遞推關係：`dp[i] = dp[i & (i-1)] + 1`，其中 `i & (i-1)` 會去掉 i 最低位的 1。
-- 不用 DP 的方法：`__builtin_popcount`（C++）、`Integer.bitCount`（Java）、`bin(i).count('1')`（Python），但時間複雜度每個數字是 O(log n)。
-- Brian Kernighan 演算法：`while (n) { n &= n-1; count++; }` 可以在 O(k) 時間內數出 k 個 1，k 是 1 的個數。
+- **Q: 還有其他遞推關係嗎？**
+  A: `dp[i] = dp[i & (i-1)] + 1`，其中 `i & (i-1)` 會去掉 i 最低位的 1。例如 dp[6] = dp[6&5] + 1 = dp[4] + 1 = 2。這個方法的直覺是：去掉一個 1 後的數字已經算過了，再加回那個 1。
+
+- **Q: 不用 DP 的方法有哪些？**
+  A: `__builtin_popcount`（C++）、`Integer.bitCount`（Java）、`bin(i).count('1')`（Python）都可以直接數 1 的個數。但每個數字要花 O(log n) 時間逐 bit 處理，總時間 O(n log n)，不如 DP 的 O(n)。
+
+- **Q: Brian Kernighan 演算法是什麼？**
+  A: `while (n) { n &= n-1; count++; }` — 每次 `n & (n-1)` 去掉最低位的 1，迴圈次數剛好等於 1 的個數 k。時間 O(k)，比逐 bit 掃描更快（k ≤ log n）。
 </Callout>
 
 ## 理解測驗

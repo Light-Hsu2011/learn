@@ -28,11 +28,11 @@ Domain Events 是解決「一個交易只修改一個 Aggregate」限制的關�
 
 ## 核心觀念
 
-- **過去式命名**：事件描述已經發生的事，用過去式命名 — `OrderPlaced`、`PaymentReceived`、`UserRegistered`
-- **不可變**：事件一旦發出就不能修改，它是一個事實記錄
-- **發布/訂閱模式**：發布者不知道誰在聽，訂閱者不知道誰發的，實現鬆耦合
-- **最終一致性**：跨 Aggregate 的操作透過事件實現最終一致性，而非強一致性
-- **攜帶足夠資訊**：事件要包含訂閱者需要的資料，避免訂閱者回頭查詢
+- **過去式命名**：事件描述已經發生的事，用過去式命名 — `OrderPlaced`、`PaymentReceived`、`UserRegistered`。和 Command（命令）的區別：`PlaceOrder` 是命令（請求做某事），`OrderPlaced` 是事件（報告某事已發生）
+- **不可變**：事件一旦發出就不能修改，它是一個事實記錄。技術上用 `record`（C#）或 `frozen=True`（Python dataclass）或 `readonly`（TypeScript）來強制不可變
+- **發布/訂閱模式**：發布者不知道誰在聽，訂閱者不知道誰發的，實現鬆耦合。這意味著你可以新增訂閱者而不需要改動發布者的程式碼
+- **最終一致性**：跨 Aggregate 的操作透過事件實現最終一致性（Eventual Consistency），而非強一致性（Strong Consistency）。例如：下單後庫存的扣減可能延遲幾毫秒到幾秒，但最終會一致。對使用者體驗的影響需要在 UI 層處理（如「處理中」狀態）
+- **攜帶足夠資訊**：事件要包含訂閱者需要的資料，避免訂閱者回頭查詢。「胖事件」原則：`OrderPlacedEvent` 帶上 `orderId`、`customerId`、`totalAmount`、`items`，而不是只帶一個 `orderId` 讓訂閱者自己去查
 
 ## 常見誤區
 
@@ -223,6 +223,18 @@ class Order(AggregateRoot):
 
 <Diagram data='{"nodes":[{"id":"aggregate","label":"Aggregate (Publisher)","type":"default"},{"id":"event","label":"Domain Event","type":"highlight"},{"id":"handler1","label":"Event Handler A（寄信）","type":"default"},{"id":"handler2","label":"Event Handler B（更新庫存）","type":"default"},{"id":"handler3","label":"Event Handler C（通知）","type":"default"},{"id":"bus","label":"Event Bus / Mediator","type":"muted"}],"edges":[{"from":"aggregate","to":"event","label":"產生"},{"from":"event","to":"bus","label":"發布到"},{"from":"bus","to":"handler1","label":"分發"},{"from":"bus","to":"handler2","label":"分發"},{"from":"bus","to":"handler3","label":"分發"}]}' />
 
+此圖展示事件驅動的廣播模型：Aggregate 產生事件，Event Bus 負責分發，多個 Handler 各自獨立處理。新增或移除 Handler 不需要改動 Aggregate 的程式碼，這就是鬆耦合的體現。
+
+## Domain Event vs Integration Event
+
+| 面向 | Domain Event | Integration Event |
+|------|-------------|-------------------|
+| **作用範圍** | 單一 Bounded Context 內部 | 跨 Bounded Context / 跨服務 |
+| **傳遞方式** | 進程內（MediatR、事件匯流排） | 跨進程（RabbitMQ、Azure Service Bus、Kafka） |
+| **一致性** | 通常同步或同一交易 | 非同步、最終一致性 |
+| **失敗處理** | 可以拋例外回滾交易 | 需要 Retry、Dead Letter Queue |
+| **實作複雜度** | 低 | 高（序列化、冪等性、順序性） |
+
 ## 實戰補充
 
 <Callout type="tip" title="資深開發者筆記">
@@ -244,7 +256,7 @@ class Order(AggregateRoot):
 ## 重點整理
 
 <Callout type="tip" title="一句話記住">
-**Domain Event = 系統裡的廣播，告訴大家「發生了什麼事」，聽到的人各自行動。**
+**口訣：「過去式、不可改、帶足料」—— 事件三要素，少一個就出問題。**
 </Callout>
 
 | 概念 | 說明 |

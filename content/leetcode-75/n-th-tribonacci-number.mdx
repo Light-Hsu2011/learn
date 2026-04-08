@@ -32,7 +32,7 @@ Tribonacci 數列定義：T(0)=0, T(1)=1, T(2)=1，T(n) = T(n-1) + T(n-2) + T(n-
 
 ## 解題思路
 
-<StepDiagram data='[{"title":"初始化","description":"t0=0, t1=1, t2=1","icon":"1"},{"title":"滾動計算","description":"從 i=3 到 n，計算 next = t0 + t1 + t2","icon":"2"},{"title":"更新變數","description":"t0 = t1, t1 = t2, t2 = next","icon":"3"},{"title":"回傳結果","description":"根據 n 的值回傳對應的變數","icon":"4"}]' />
+<StepDiagram data='[{"title":"初始化","description":"t0=0, t1=1, t2=1，對應 T(0)、T(1)、T(2) 三個基礎值","icon":"1"},{"title":"滾動計算","description":"從 i=3 到 n，計算 next = t0 + t1 + t2。例如 i=3 時 next = 0+1+1 = 2","icon":"2"},{"title":"更新變數","description":"t0 ← t1, t1 ← t2, t2 ← next，三個變數像窗口一樣往右滑動一格","icon":"3"},{"title":"回傳結果","description":"迴圈結束後 t2 就是 T(n)。若 n ≤ 2 則直接回傳初始值（0 或 1）","icon":"4"}]' />
 
 ## 程式碼
 
@@ -90,17 +90,29 @@ def tribonacci(n: int) -> int:
 |--|------|-------|
 | 本解法 | O(n) | O(1) |
 
+- **Time**：從 3 到 n 線性遍歷一次，每步只做一次加法和三次賦值
+- **Space**：只用三個滾動變數，不隨 n 增長（相比用陣列的 O(n) 方案大幅節省）
+
 ## 圖解
 
 <Diagram data='{"nodes":[{"id":"t0","label":"t0 = 0","type":"muted"},{"id":"t1","label":"t1 = 1","type":"muted"},{"id":"t2","label":"t2 = 1","type":"highlight"},{"id":"next","label":"next = t0+t1+t2","type":"highlight"},{"id":"shift","label":"滾動：t0←t1←t2←next","type":"default"}],"edges":[{"from":"t0","to":"next","label":"+"},{"from":"t1","to":"next","label":"+"},{"from":"t2","to":"next","label":"+"},{"from":"next","to":"shift","label":"更新"}]}' />
 
+圖表展示了滾動變數的運作方式：三個變數加總得到 next，然後整體右移一格。
+這是 DP 空間優化的經典技巧——當狀態只依賴有限個前驅時，不需要保留整個 DP 陣列。
+
 ## 進階觀點
 
 <Callout type="tip" title="面試追問">
-- 滾動變數是 DP 空間優化的經典技巧：原本需要 O(n) 的陣列，只用三個變數就能解決。
-- 如果 n 非常大（如 10^18），可以用矩陣快速冪將時間降到 O(log n)。
-- Fibonacci / Tribonacci 是理解 DP 的最佳入門題，核心概念：「當前狀態只依賴有限的前幾個狀態」。
+- **滾動變數的核心思想是什麼？** T(n) 只依賴 T(n-1)、T(n-2)、T(n-3)，計算完 T(n) 後 T(n-3) 不再被需要。所以用三個變數輪流覆蓋，將空間從 O(n) 降到 O(1)。這個技巧適用於所有「狀態只依賴常數個前驅」的 DP 題。
+- **n 非常大（如 10^18）怎麼辦？** 用矩陣快速冪：T(n) 的遞推可以表示為矩陣乘法 [[1,1,1],[1,0,0],[0,1,0]]^(n-2) × [T(2),T(1),T(0)]^T，矩陣冪可以用快速冪在 O(log n) 完成。
+- **為什麼 Tribonacci 是 DP 入門的好題？** 它展示了 DP 三大核心：定義狀態（T(n)）、寫出轉移方程（前三項和）、空間優化（滾動變數），而且沒有複雜的決策邏輯。
 </Callout>
+
+## 邊界情況
+
+- **n 等於 0**：直接回傳 0，不進入迴圈
+- **n 等於 1 或 2**：直接回傳 1，不進入迴圈
+- **n 等於 37（題目上限）**：T(37) = 2082876103，仍在 32 位整數範圍內（2^31 - 1 ≈ 21.5 億）
 
 ## 理解測驗
 

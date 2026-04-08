@@ -28,23 +28,25 @@ Replication 解決「太多人要讀同一筆資料」的問題，Sharding 解�
 
 ### Replication（複製）
 
-- **Master-Slave（主從複製）**：寫入只走 Master，讀取可以走多個 Slave。讀寫分離的基礎
-- **Master-Master**：多台都能寫入，但衝突解決複雜。常用於跨地域部署
-- **同步 vs 非同步複製**：同步保證一致性但慢，非同步快但有資料延遲（Replication Lag）
-- **Failover**：Master 掛掉時，自動將 Slave 提升為新 Master
+- **Master-Slave（主從複製）**：寫入只走 Master，讀取可以走多個 Slave。讀寫分離的基礎。適用判斷：讀寫比超過 5:1 且資料庫 CPU 使用率持續超過 60%
+- **Master-Master**：多台都能寫入，但衝突解決複雜（兩台同時修改同一筆資料怎麼辦？）。適用場景：跨地域部署（美國和亞洲各一個 Master，就近寫入降低延遲），但必須有明確的衝突解決策略（如 Last Write Wins 或業務層合併）
+- **同步 vs 非同步複製**：同步複製 — Master 等所有 Slave 確認才回應客戶端，保證一致性但寫入延遲增加 2-5ms。非同步複製 — Master 寫完立刻回應，Slave 背景追趕，快但 Slave 可能延遲數毫秒到數秒（高負載時更久）。選擇標準：金融交易用同步，社群內容用非同步
+- **Failover**：Master 掛掉時自動將 Slave 提升為新 Master。具體操作：MySQL 用 MHA 或 Orchestrator 自動切換，PostgreSQL 用 Patroni + etcd。手動 Failover 的 RTO（恢復時間）通常 10-30 分鐘，自動 Failover 可縮短到 10-30 秒
+- **何時該做 Replication**：單台資料庫的讀取 QPS 超過 5,000、需要高可用（單台掛掉不能停機）、需要異地備份（災難復原）
 
 ### Sharding（分片）
 
-- **水平分片**：按行切分（如用戶 1-1000 在 Shard A，1001-2000 在 Shard B）
-- **垂直分片**：按欄位切分（用戶基本資料在 DB1，訂單在 DB2）
-- **分片鍵（Shard Key）**：決定資料落在哪個分片的欄位，選錯會導致熱點問題
-- **Consistent Hashing**：環形 Hash 空間，新增或移除節點時只需搬移少量資料
+- **水平分片**：按行切分（如用戶 1-1000 在 Shard A，1001-2000 在 Shard B）。每個 Shard 的 Schema 完全相同，只是資料不同。適用判斷：單表行數超過 5,000 萬或單庫容量超過 500GB，且讀寫分離 + Cache 仍撐不住
+- **垂直分片**：按業務拆分（用戶表在 DB1，訂單表在 DB2，商品表在 DB3）。好處是每個庫只處理自己領域的查詢，缺點是跨庫 JOIN 變得困難。通常在水平分片之前先做垂直分片
+- **分片鍵（Shard Key）選擇標準**：高基數（Cardinality 至少數萬以上，避免資料傾斜）、查詢頻繁使用（大部分查詢都帶有此欄位，避免跨分片查詢）、分佈均勻（不會某個值特別多）。好的 Shard Key 範例：user_id（UUID）。差的 Shard Key：country_code（只有幾百個值且分佈極不均勻）
+- **Consistent Hashing**：環形 Hash 空間，新增或移除節點時只需搬移約 1/N 的資料（N 為節點數），而傳統 `hash % N` 在節點數變化時幾乎所有資料都要重新分配。實務上搭配 Virtual Node（每個物理節點映射 100-200 個虛擬節點），讓資料分佈更均勻
+- **何時該做 Sharding**：先確認已經做了讀寫分離、加了 Cache、優化了慢查詢、做了垂直分片，這些都不夠時才考慮。Sharding 的代價：跨分片 JOIN 需要應用層處理、分散式事務複雜度高、資料遷移和再平衡痛苦
 
 ### 分片策略比較
 
-- **Range-based**：按範圍分（如日期、ID 區間），查詢連續資料快，但容易熱點
-- **Hash-based**：對 Shard Key 做 Hash，分布均勻，但範圍查詢需要查所有分片
-- **Directory-based**：用查找表記錄資料在哪個分片，靈活但多一次查詢
+- **Range-based**：按範圍分（如用戶 ID 1-100 萬在 Shard A、100-200 萬在 Shard B）。優點：範圍查詢快（如「查 ID 50 萬到 60 萬的用戶」只需查一個 Shard）。缺點：容易熱點（新註冊用戶都集中在最後一個 Shard）。適合：時間序列資料（按月份分片，舊資料可歸檔）
+- **Hash-based**：對 Shard Key 做 Hash 再取餘（如 `hash(user_id) % 4`），分布均勻。優點：不會有熱點。缺點：範圍查詢需要廣播到所有分片（scatter-gather）。適合：用戶資料、訂單資料等需要均勻分佈的場景
+- **Directory-based**：維護一張查找表（Lookup Table）記錄每筆資料在哪個分片。優點：最靈活，可以隨時調整資料分佈。缺點：查找表本身成為瓶頸和 SPOF，每次讀寫多一次查詢。適合：資料分佈規則複雜或需要頻繁調整的場景
 
 ## 常見誤區
 
@@ -125,6 +127,8 @@ public class DbContextFactory
 
 <Diagram data='{"nodes":[{"id":"app","label":"Application","type":"muted"},{"id":"master","label":"Master DB (Write)","type":"highlight"},{"id":"slave1","label":"Slave 1 (Read)","type":"default"},{"id":"slave2","label":"Slave 2 (Read)","type":"default"},{"id":"shard1","label":"Shard A (User 1-1M)","type":"highlight"},{"id":"shard2","label":"Shard B (User 1M-2M)","type":"highlight"},{"id":"shard3","label":"Shard C (User 2M+)","type":"highlight"}],"edges":[{"from":"app","to":"master","label":"write"},{"from":"app","to":"slave1","label":"read"},{"from":"app","to":"slave2","label":"read"},{"from":"master","to":"slave1","label":"replication"},{"from":"master","to":"slave2","label":"replication"},{"from":"app","to":"shard1","label":"hash routing"},{"from":"app","to":"shard2","label":"hash routing"},{"from":"app","to":"shard3","label":"hash routing"}]}' />
 
+**架構圖解讀**：上半部分是讀寫分離架構 — Application 寫入走 Master DB，讀取走 Slave 1/2，Master 透過 Replication 將資料同步到 Slave。下半部分是 Sharding 架構 — Application 根據 user_id 的 Hash 值決定路由到哪個 Shard。實務中通常先部署上半部分（讀寫分離），等 Master 寫入也撐不住或資料量過大時，再加入下半部分（Sharding）。
+
 ## 實戰補充
 
 <Callout type="tip" title="Replication Lag 的實務處理">
@@ -145,7 +149,7 @@ public class DbContextFactory
 ## 重點整理
 
 <Callout type="tip" title="一句話記住">
-**Replication 解決讀取瓶頸，Sharding 解決容量瓶頸 — 先讀寫分離，再加 Cache，最後才 Sharding。**
+**讀不夠就複製，裝不下就切片。** 記憶口訣：「讀複寫切」— 先讀寫分離 → 加 Cache → 垂直分片 → 最後才水平 Sharding。每一步都比下一步簡單，能不往下走就不走。
 </Callout>
 
 | 概念 | 說明 |

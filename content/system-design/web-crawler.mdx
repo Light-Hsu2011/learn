@@ -45,6 +45,12 @@ description: "大規模爬取網頁的系統設計：排程、去重、禮貌原
 
 <Callout type="warning" title="實戰陷阱">
 **Spider Trap 會讓爬蟲陷入無限迴圈。** 有些網站會動態產生無限層的 URL（例如日曆頁面：`/2025/01/01` → `/2025/01/02` → ...永遠不結束）。務必設定最大爬取深度和每域名最大頁面數。另外，URL 正規化（去除 fragment、統一 trailing slash）是去重的基礎。
+
+**防禦 Spider Trap 的具體策略**：
+1. **最大深度限制**：從 Seed URL 算起，BFS 深度超過 15 層的 URL 直接丟棄（大多數有價值的頁面在 5 層以內）
+2. **每域名頁面上限**：每個域名最多爬取 100,000 頁，達到上限後停止該域名的爬取
+3. **URL 長度限制**：URL 超過 2,048 字元的直接丟棄（動態生成的 Trap URL 通常很長）
+4. **URL 模式偵測**：如果連續發現的 URL 只有數字部分在遞增（如日期、頁碼），標記為 Trap 模式並停止追蹤
 </Callout>
 
 ## 設計流程
@@ -52,6 +58,19 @@ description: "大規模爬取網頁的系統設計：排程、去重、禮貌原
 <StepDiagram data='[{"title":"初始化 Seed URLs","description":"將起始網址放入 URL Frontier 作為爬取起點","icon":"1"},{"title":"URL Frontier 排程","description":"根據優先級和 Politeness 規則，決定下一個要爬取的 URL","icon":"2"},{"title":"DNS 解析與 robots.txt 檢查","description":"解析域名 IP，檢查該 URL 是否被 robots.txt 禁止","icon":"3"},{"title":"Fetcher 下載頁面","description":"HTTP 請求下載網頁內容，處理 redirect、timeout、encoding","icon":"4"},{"title":"內容解析與儲存","description":"Parser 提取文字內容和 metadata，存入 Content Store","icon":"5"},{"title":"URL 提取與去重","description":"從 HTML 中提取超連結，經過 Bloom Filter 去重後加回 Frontier","icon":"6"},{"title":"循環執行","description":"重複步驟 2-6，直到 Frontier 為空或達到爬取上限","icon":"7"}]' />
 
 ## 架構設計
+
+### BFS 爬取策略詳解
+
+爬蟲使用廣度優先搜尋（BFS）而非深度優先搜尋（DFS）的原因：
+
+| 比較維度 | BFS（廣度優先） | DFS（深度優先） |
+|----------|----------------|----------------|
+| **重要頁面優先** | 離 Seed 越近的頁面通常越重要（首頁 > 分類頁 > 文章頁），BFS 自然先爬到 | DFS 可能一路深入冷門頁面，遲遲爬不到重要內容 |
+| **陷阱防禦** | 同一深度的所有 URL 並行處理，不會被單一路徑的 Trap 卡住 | 容易沿著 Trap 路徑一路往下，浪費大量資源 |
+| **負載均衡** | 同一層的 URL 通常分佈在多個域名，天然分散請求 | 可能長時間集中在同一個域名上 |
+| **記憶體用量** | 需要儲存整層的 URL（較大），但實務上用 URL Frontier 的 Queue 結構管理 | 理論上只需儲存當前路徑的 URL（較小），但實務差異不大 |
+
+**BFS 的具體執行方式**：不是真的用傳統的 Queue 做 BFS，而是透過 URL Frontier 的優先級佇列實現。每個 URL 的優先級由多個因素決定：**PageRank 分數**（該頁面被多少其他頁面連結）、**域名權重**（`.gov`、`.edu` 比一般網站高）、**頁面更新頻率**（經常變更的頁面優先重爬）。
 
 ### URL Frontier（優先級佇列 + Politeness）
 
@@ -97,6 +116,21 @@ public class UrlFrontier
 
 ### Bloom Filter 去重
 
+Bloom Filter 是一種空間效率極高的機率型資料結構，用來回答「這個元素是否可能存在於集合中」。它有兩個特性：
+- **可能的 False Positive**：說「存在」時可能是錯的（把沒見過的 URL 誤判為已爬過，導致漏爬）
+- **絕對沒有 False Negative**：說「不存在」時一定是對的（不會重複爬取已爬過的 URL）
+
+**Bloom Filter 的運作原理**：
+1. 準備一個 m 位的位元陣列（Bit Array），初始全部為 0
+2. 設計 k 個不同的 Hash 函數（實務上用 MurmurHash3 搭配不同 seed）
+3. **插入**：將 URL 經過 k 個 Hash 函數，得到 k 個位置，將這些位置設為 1
+4. **查詢**：將 URL 經過 k 個 Hash 函數，檢查 k 個位置是否都為 1。全為 1 代表「可能存在」，任一為 0 代表「一定不存在」
+
+**參數選擇指南**：
+- **m（位元數）**：`m = -(n * ln(p)) / (ln2)^2`，n 是預期元素數，p 是目標 False Positive Rate
+- **k（Hash 函數數）**：`k = (m/n) * ln2`，約為 `m/n * 0.693`
+- 範例：10 億 URL、0.01% FPR → m ≈ 192 億位 ≈ 2.4 GB，k ≈ 13 個 Hash 函數
+
 ```typescript
 class BloomFilter {
   private bitArray: Uint8Array;
@@ -128,6 +162,13 @@ class BloomFilter {
 // 10 億 URL、0.01% false positive rate → 約 2.4 GB 記憶體
 const filter = new BloomFilter(1_000_000_000, 0.0001);
 ```
+
+**為什麼不用 HashSet？** 10 億個 URL（平均 100 字元）用 HashSet 存需要約 100 GB 記憶體，而 Bloom Filter 只需 2.4 GB。代價是 0.01% 的 False Positive Rate，意味著每 10,000 個新 URL 中有 1 個被誤判為「已爬過」而漏爬，這在爬蟲場景中完全可接受。
+
+**Bloom Filter 的限制與替代方案**：
+- **不支援刪除**：一旦位元被設為 1，無法還原。如果需要刪除功能，使用 Counting Bloom Filter（每個位元改為計數器）
+- **容量固定**：建立時就要決定容量，超過預期數量後 FPR 會快速上升。如果無法預估容量，使用 Scalable Bloom Filter（自動擴展）
+- **分散式場景**：多個爬蟲節點共用去重，可以用 Redis 的 `BF.ADD` / `BF.EXISTS`（RedisBloom 模組）實現分散式 Bloom Filter
 
 ### robots.txt 解析與快取
 
@@ -166,11 +207,51 @@ class RobotsChecker:
 
 <Diagram data='{"nodes":[{"id":"seed","label":"Seed URLs","type":"muted"},{"id":"frontier","label":"URL Frontier","type":"highlight"},{"id":"dns","label":"DNS Resolver","type":"default"},{"id":"robots","label":"robots.txt Cache","type":"default"},{"id":"fetcher","label":"Fetcher (多節點)","type":"highlight"},{"id":"parser","label":"HTML Parser","type":"default"},{"id":"store","label":"Content Store","type":"default"},{"id":"extractor","label":"URL Extractor","type":"default"},{"id":"bloom","label":"Bloom Filter","type":"default"},{"id":"schedule","label":"Re-crawl Scheduler","type":"muted"}],"edges":[{"from":"seed","to":"frontier","label":"初始 URL"},{"from":"frontier","to":"dns","label":"排程取出"},{"from":"dns","to":"robots","label":"檢查權限"},{"from":"robots","to":"fetcher","label":"允許爬取"},{"from":"fetcher","to":"parser","label":"HTML 內容"},{"from":"parser","to":"store","label":"儲存內容"},{"from":"parser","to":"extractor","label":"提取連結"},{"from":"extractor","to":"bloom","label":"URL 去重"},{"from":"bloom","to":"frontier","label":"新 URL 加入"},{"from":"schedule","to":"frontier","label":"定期重爬"}]}' />
 
+上圖展示了爬蟲的核心循環。Seed URLs 進入 URL Frontier 後，經過 DNS 解析和 robots.txt 權限檢查，由多個 Fetcher 節點平行下載頁面。下載的 HTML 經 Parser 提取內容（存入 Content Store）和超連結（經 Bloom Filter 去重後加回 Frontier）。這個循環持續執行直到 Frontier 為空。Re-crawl Scheduler 負責定期把已爬過但可能有更新的 URL 重新加入 Frontier。
+
 ## 延伸討論
 
 <Callout type="tip" title="進階優化">
-**Content Fingerprint 偵測頁面變更。** 不是每次重爬都需要重新索引。用 SimHash 或 MinHash 計算頁面指紋，與上次爬取結果比對。只有指紋變化超過閾值才觸發重新索引，大幅節省下游處理資源。另一個常見優化是根據頁面的歷史變更頻率，動態調整重爬間隔。
+**Content Fingerprint 偵測頁面變更。** 不是每次重爬都需要重新索引。用 SimHash 或 MinHash 計算頁面指紋，與上次爬取結果比對。只有指紋變化超過閾值才觸發重新索引，大幅節省下游處理資源。
+
+**SimHash 的具體做法**：
+1. 將頁面文字內容分詞（Tokenize），產生一組特徵詞
+2. 對每個特徵詞計算 64-bit Hash
+3. 將所有特徵詞的 Hash 加權合併，產生一個 64-bit 的 SimHash 指紋
+4. 兩個頁面的 SimHash 做 XOR，計算 Hamming Distance（不同位元的數量）
+5. **判斷標準**：Hamming Distance ≤ 3 代表「近似相同」（不需要重新索引），> 3 代表「有顯著變更」（觸發重新索引）
+
+**動態重爬間隔**：根據頁面的歷史變更頻率調整重爬間隔。例如：新聞首頁每小時重爬、部落格文章每週重爬、政府公告每月重爬。具體算法：上次爬取到這次爬取之間頁面沒有變更，則下次間隔 × 2（最大 30 天）；有變更則間隔 ÷ 2（最小 1 小時）。
 </Callout>
+
+### 面試常見問題與參考答案
+
+**Q1：如何處理 JavaScript 動態渲染的頁面（SPA）？**
+
+**A1**：傳統爬蟲只下載 HTML 原始碼，無法執行 JavaScript，因此看不到動態渲染的內容。解決方案有三層：
+1. **優先檢查 SSR**：很多 SPA 同時提供 Server-Side Rendering，爬蟲可以透過設定 User-Agent 或請求 `?_escaped_fragment_` 取得靜態 HTML
+2. **Headless Browser**：用 Puppeteer / Playwright 啟動無頭瀏覽器執行 JavaScript，等待頁面渲染完成後再提取內容。代價是速度慢 10-50 倍，且消耗大量記憶體
+3. **混合策略**：先用普通 HTTP 請求嘗試，如果偵測到頁面內容幾乎為空（只有 `<div id="root"></div>`），才改用 Headless Browser 重新爬取
+
+**Q2：10 億頁面的爬蟲需要多少機器？**
+
+**A2**：粗估計算：
+- 目標：1 個月爬完 10 億頁面 → 每秒約 400 頁
+- 每個 Fetcher 節點受 Politeness 限制（同域名 1 秒間隔），假設同時爬取 200 個不同域名 → 每節點每秒 200 頁
+- 需要 2-3 個 Fetcher 節點（含容錯冗餘取 5 個）
+- Bloom Filter：2.4 GB 記憶體，單機可承載
+- Content Store：10 億頁 × 平均 100KB = 100 TB，用 S3 或 HDFS 儲存
+- URL Frontier：用 Redis Cluster 儲存待爬 URL 佇列，約需 50-100 GB
+
+**Q3：URL 正規化（Normalization）具體要做哪些處理？**
+
+**A3**：URL 正規化是去重的前置步驟，確保同一個頁面的不同 URL 表示方式被視為同一個。具體步驟：
+1. 統一轉為小寫：`HTTP://Example.COM` → `http://example.com`
+2. 移除 Fragment：`/page#section1` → `/page`（Fragment 是前端錨點，不影響伺服器回傳內容）
+3. 統一 Trailing Slash：`/page/` 和 `/page` 視為同一個（取決於伺服器設定，通常統一移除）
+4. 移除預設埠號：`http://example.com:80` → `http://example.com`
+5. 排序 Query String 參數：`?b=2&a=1` → `?a=1&b=2`（相同參數不同順序是同一頁）
+6. 移除追蹤參數：`?utm_source=google&utm_medium=cpc` → 移除（這些不影響頁面內容）
 
 ## 理解測驗
 
@@ -184,10 +265,17 @@ class RobotsChecker:
 
 | 概念 | 說明 |
 |------|------|
-| **URL Frontier** | 爬取排程的核心，結合優先級與 Politeness |
-| **BFS 爬取** | 廣度優先確保重要頁面（離 Seed 近）先被爬取 |
-| **Bloom Filter** | 空間效率極高的去重方案，容忍極低 False Positive |
-| **robots.txt** | 遵守網站的爬取規範，快取解析結果 |
-| **Politeness** | 同一域名請求間隔 1-2 秒，避免被封鎖 |
-| **Spider Trap** | 設定最大深度和每域名上限防止無限爬取 |
-| **Content Fingerprint** | 用 SimHash 偵測頁面是否變更，減少不必要的重新索引 |
+| **URL Frontier** | 兩層結構：前端優先級佇列（重要頁面先爬）+ 後端域名佇列（Politeness 間隔控制） |
+| **BFS 爬取** | 廣度優先確保離 Seed 近的重要頁面先被爬取，避免被 Trap 路徑卡住 |
+| **Bloom Filter** | 10 億 URL 只需 2.4 GB 記憶體（HashSet 需 100 GB），代價是 0.01% FPR |
+| **robots.txt** | 遵守網站的爬取規範，快取解析結果（TTL 24 小時），User-Agent 匹配規則 |
+| **Politeness** | 同一域名請求間隔 1-2 秒，遵守 `crawl-delay` 指令，避免被封鎖 IP |
+| **Spider Trap** | 最大深度 15 層 + 每域名上限 10 萬頁 + URL 長度限 2,048 字元 |
+| **Content Fingerprint** | SimHash 的 Hamming Distance ≤ 3 代表未變更，> 3 觸發重新索引 |
+| **URL 正規化** | 小寫化、移除 Fragment、排序 Query String、移除追蹤參數，是去重的前置步驟 |
+
+<Callout type="tip" title="一句話記住">
+**網路爬蟲 = BFS 排程 + Bloom Filter 去重 + Politeness 禮貌 + robots.txt 守法。**
+
+記憶口訣：**「廣度先爬重要頁，布隆去重省記憶，禮貌間隔不被封，規矩守好才持久」**。
+</Callout>

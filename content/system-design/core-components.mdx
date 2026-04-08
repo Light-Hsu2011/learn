@@ -30,30 +30,38 @@ description: "Load Balancer、Cache、Message Queue、CDN 的角色與選擇"
 ### Load Balancer
 
 - **解決問題**：單一伺服器無法處理所有請求，需要把流量分散到多台伺服器
-- **常見演算法**：Round Robin、Weighted Round Robin、Least Connections、IP Hash
-- **L4 vs L7**：L4 在 TCP 層分流（快但粗糙），L7 在 HTTP 層分流（慢但可以根據 URL/Header 路由）
-- **常見選型**：Nginx、HAProxy、AWS ALB/NLB、Envoy
+- **常見演算法**：Round Robin（依序輪流，最簡單）、Weighted Round Robin（高規格機器分更多流量）、Least Connections（分給目前連線最少的伺服器，適合長連線場景）、IP Hash（同一 IP 固定到同一台伺服器，適合需要 Session Affinity 的過渡期）
+- **L4 vs L7**：L4 在 TCP 層分流，只看 IP + Port，速度快、開銷小，適合不需要根據內容路由的場景（如資料庫 Proxy）。L7 在 HTTP 層分流，可以根據 URL Path、Header、Cookie 做智慧路由（如 `/api/*` 到 API 伺服器、`/static/*` 到靜態資源伺服器），適合微服務架構
+- **何時用**：只要有 2 台以上伺服器就需要 LB。單台伺服器也可以放 LB 做健康檢查和未來擴展的準備
+- **怎麼選**：自建環境用 Nginx（最普及、社群資源多）或 HAProxy（效能極佳、TCP 支援好）；AWS 用 ALB（L7，支援 Path-based routing）或 NLB（L4，超高效能）；需要 Service Mesh 用 Envoy
+- **常見陷阱**：LB 本身也會成為 SPOF — 必須部署至少兩台 LB 做 Active-Passive 或 Active-Active。健康檢查（Health Check）設定太寬鬆會把流量導到已經半死不活的伺服器
 
 ### Cache
 
-- **解決問題**：資料庫查詢太慢或太頻繁，用記憶體快取熱點資料
-- **策略**：Cache Aside（最常見）、Write Through、Write Behind、Read Through
-- **淘汰策略**：LRU（最近最少使用）、LFU（最少頻率使用）、TTL（存活時間）
-- **常見選型**：Redis、Memcached；Redis 功能更豐富，Memcached 更輕量
+- **解決問題**：資料庫查詢太慢或太頻繁，用記憶體快取熱點資料，將回應時間從數十 ms 降到亞毫秒級
+- **策略**：Cache Aside（應用程式自己管讀寫快取，最常見、最靈活）、Write Through（寫入同時更新 Cache 和 DB，一致性好但寫入慢）、Write Behind（先寫 Cache 再非同步寫 DB，寫入快但有資料遺失風險）、Read Through（Cache 層自動從 DB 載入，應用程式只跟 Cache 互動）
+- **淘汰策略**：LRU（最近最少使用，通用首選）、LFU（最少頻率使用，適合有明顯熱點的場景）、TTL（存活時間，必須設定以避免快取永遠不更新）
+- **何時用**：讀寫比超過 10:1 的熱點資料、運算成本高的結果（如複雜 SQL 查詢、API 聚合結果）、變化頻率低的設定資料。不適合：寫入頻繁的資料、每次查詢條件都不同的資料
+- **怎麼選**：需要複雜資料結構（List、Set、Sorted Set）、Pub/Sub、Lua Script → Redis。純 key-value 快取且追求極致效能 → Memcached（多執行緒，單純 GET/SET 場景略快）。90% 的場景選 Redis 就對了
+- **常見陷阱**：Cache Penetration（查詢不存在的 Key，每次都穿透到 DB — 解法：快取空值或用 Bloom Filter）、Cache Stampede（快取同時過期，大量請求湧入 DB — 解法：加隨機 TTL 偏移或用分散式鎖）、忘記在資料更新時清除快取導致資料不一致
 
 ### Message Queue
 
-- **解決問題**：服務之間直接呼叫會造成耦合，且無法應對流量尖峰
-- **核心價值**：解耦、削峰填谷、非同步處理
-- **模式**：Point-to-Point（一對一）、Pub/Sub（一對多）
-- **常見選型**：RabbitMQ（輕量靈活）、Kafka（高吞吐量、日誌型）、AWS SQS（託管服務）
+- **解決問題**：服務之間直接呼叫會造成耦合（A 掛了 B 也跟著掛），且無法應對流量尖峰（瞬間 10 倍流量直接把下游壓垮）
+- **核心價值**：解耦（生產者和消費者互不依賴）、削峰填谷（尖峰時訊息堆在 Queue 裡，消費者按自己的速度處理）、非同步處理（耗時任務不阻塞 API 回應）
+- **模式**：Point-to-Point（一條訊息只被一個消費者處理，如訂單處理）、Pub/Sub（一條訊息被多個訂閱者處理，如用戶註冊後同時通知多個服務）
+- **何時用**：任何不需要同步回應的操作（寄信、產生報表、推送通知）、跨服務通訊、需要重試機制的任務、流量波動大的場景。不適合：需要即時回應的查詢操作、資料量很小且服務間直接呼叫就夠用的場景
+- **怎麼選**：需要高吞吐量（百萬 msg/s）、日誌串流、事件溯源 → Kafka。需要靈活路由（Header/Topic/Fanout）、訊息確認、延遲佇列 → RabbitMQ。想省運維成本、已在 AWS 生態 → SQS + SNS
+- **常見陷阱**：訊息重複消費（消費者必須做冪等處理，如用訊息 ID 去重）、訊息順序錯亂（Kafka 只保證 Partition 內有序，跨 Partition 無序）、Dead Letter Queue 沒設定導致失敗訊息永遠重試
 
 ### CDN
 
-- **解決問題**：用戶離伺服器太遠，靜態資源載入慢
-- **運作方式**：把靜態檔案快取到全球邊緣節點，用戶從最近的節點取資料
-- **Pull vs Push**：Pull CDN 第一次請求時從 Origin 拉取；Push CDN 主動推送到邊緣節點
-- **常見選型**：CloudFront、Cloudflare、Akamai、Fastly
+- **解決問題**：用戶離伺服器太遠，靜態資源載入慢。例如台灣用戶存取放在美國的伺服器，光是網路延遲就要 150ms+。CDN 把資源快取到台灣的邊緣節點，延遲降到 5ms 以內
+- **運作方式**：第一個用戶請求時，CDN 邊緣節點從 Origin Server 拉取資源並快取；後續用戶直接從邊緣節點取得，不再回源
+- **Pull vs Push**：Pull CDN 被動拉取（第一次請求才快取，適合大多數場景）。Push CDN 主動推送（你上傳檔案到 CDN，適合大檔案如影片、且上線前就要全球可用的場景）
+- **何時用**：靜態資源（JS、CSS、圖片、影片）、用戶分布在多個地理區域、需要降低 Origin Server 負載。不適合：動態 API 回應（但 CloudFront 等也開始支援動態內容加速）、資料必須即時更新且不能有任何快取延遲的場景
+- **怎麼選**：已在 AWS 生態 → CloudFront（和 S3/ALB 整合最好）。需要 WAF + DDoS 防護 + CDN 一體化 → Cloudflare（免費方案就很夠用）。需要極致效能和邊緣運算 → Fastly（支援 Wasm）。企業級大流量 → Akamai
+- **常見陷阱**：快取過期策略沒設好，導致用戶看到舊版 JS/CSS（解法：檔名加 content hash 如 `app.a1b2c3.js`）。Origin Server 沒設定正確的 Cache-Control Header。CORS 設定遺漏導致跨域請求失敗
 
 ## 常見誤區
 
@@ -148,6 +156,8 @@ server {
 
 <Diagram data='{"nodes":[{"id":"user","label":"Users","type":"muted"},{"id":"cdn","label":"CDN (CloudFront)","type":"default"},{"id":"lb","label":"Load Balancer (Nginx)","type":"highlight"},{"id":"app1","label":"App Server 1","type":"default"},{"id":"app2","label":"App Server 2","type":"default"},{"id":"cache","label":"Cache (Redis)","type":"highlight"},{"id":"mq","label":"Message Queue (RabbitMQ)","type":"highlight"},{"id":"db","label":"Database","type":"default"},{"id":"worker","label":"Worker Service","type":"default"}],"edges":[{"from":"user","to":"cdn","label":"static assets"},{"from":"user","to":"lb","label":"API requests"},{"from":"lb","to":"app1","label":"distribute"},{"from":"lb","to":"app2","label":"distribute"},{"from":"app1","to":"cache","label":"read/write"},{"from":"app2","to":"cache","label":"read/write"},{"from":"app1","to":"db","label":"query"},{"from":"app2","to":"db","label":"query"},{"from":"app1","to":"mq","label":"publish"},{"from":"mq","to":"worker","label":"consume"}]}' />
 
+**架構圖解讀**：用戶請求分兩條路 — 靜態資源（圖片、JS、CSS）由 CDN 就近回應，API 請求透過 Load Balancer 分配到 App Server。App Server 先查 Redis Cache，Cache Miss 才查 Database。需要非同步處理的任務（如寄信）透過 RabbitMQ 發給 Worker Service，不阻塞 API 回應。
+
 ## 實戰補充
 
 <Callout type="tip" title="選型決策樹">
@@ -168,7 +178,7 @@ server {
 ## 重點整理
 
 <Callout type="tip" title="一句話記住">
-**LB 分流量、Cache 省查詢、MQ 解耦合、CDN 近用戶 — 四大元件各司其職，組合起來撐住百萬級系統。**
+**LB 分流量、Cache 省查詢、MQ 解耦合、CDN 近用戶。** 記憶口訣：「分省解近」— 每個元件解決一種瓶頸，缺哪個就加哪個。
 </Callout>
 
 | 元件 | 解決的問題 | 常見選型 | 使用時機 |

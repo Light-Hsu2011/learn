@@ -38,6 +38,8 @@ Composite 屬於**結構型模式（Structural Pattern）**，重點在於如何
 
 <StepDiagram data='[{"title":"定義 Component 介面","description":"宣告 Leaf 和 Composite 共用的操作方法","icon":"1"},{"title":"實作 Leaf","description":"Leaf 是樹的末端節點，直接實作操作邏輯","icon":"2"},{"title":"實作 Composite","description":"Composite 持有子節點列表，操作時遞迴呼叫子節點","icon":"3"},{"title":"組裝樹狀結構","description":"將 Leaf 和 Composite 組合成樹","icon":"4"},{"title":"統一操作","description":"Client 對根節點呼叫操作，遞迴傳播到所有子節點","icon":"5"}]' />
 
+流程解讀：Composite 的核心是「遞迴組合」。Component 介面定義了 Leaf 和 Composite 都要實作的方法（如 `GetSize()`、`Display()`）。Leaf 直接回傳自身的值，Composite 遍歷 children 並遞迴加總。因為 Composite 的 children 型別是 Component，所以可以放 Leaf 也可以放其他 Composite，形成任意深度的樹。
+
 ## 程式碼範例
 
 ### C# 版本
@@ -279,6 +281,8 @@ System.out.println("Total size: " + root.getSize() + " bytes");
 
 <Diagram data='{"nodes":[{"id":"client","label":"Client","type":"muted"},{"id":"component","label":"Component (FileSystemItem)","type":"highlight"},{"id":"leaf","label":"Leaf (File)","type":"default"},{"id":"composite","label":"Composite (Folder)","type":"default"}],"edges":[{"from":"client","to":"component","label":"uses"},{"from":"leaf","to":"component","label":"implements"},{"from":"composite","to":"component","label":"implements"},{"from":"composite","to":"component","label":"contains children"}]}' />
 
+結構解讀：Client 只認識 Component 介面，不區分 Leaf 和 Composite。Leaf（File）直接實作操作邏輯，Composite（Folder）持有子節點列表並在操作時遞迴委派。關鍵是 Composite 的 children 型別也是 Component，所以子節點可以是 Leaf 也可以是另一個 Composite，形成任意深度的樹狀結構。
+
 ## 實戰補充
 
 <Callout type="tip" title="資深開發者經驗">
@@ -293,10 +297,29 @@ Composite 在前端框架中無處不在 — React 的元件樹就是典型的 C
 
 <Quiz data='{"question":"在 Composite Pattern 中，Composite 節點的 getSize() 是怎麼運作的？","options":["回傳固定值","回傳子節點數量","遞迴加總所有子節點的 getSize() 結果","呼叫父節點的 getSize()"],"answer":2,"explanation":"Composite 的操作是遞迴的：它呼叫每個子節點的 getSize()，子節點如果也是 Composite 就繼續往下遞迴，直到 Leaf 回傳實際值。"}' />
 
+## 面試常見問題
+
+**Q: Composite Pattern 中，`add()`/`remove()` 方法該放在 Component 介面還是只放在 Composite？**
+
+A: 這是經典的「透明性 vs 安全性」取捨。放在 Component（透明方式）：Client 不需要區分 Leaf 和 Composite，但 Leaf 的 `add()` 要拋例外或空操作。只放在 Composite（安全方式）：Leaf 不會有不合理的方法，但 Client 需要型別檢查。實務上多數框架選擇安全方式。
+
+**Q: 如何防止 Composite 的循環引用？**
+
+A: 在 `add()` 方法中檢查：(1) 不能把自己加為子節點；(2) 遞迴檢查子樹中是否已包含要加入的節點。或者在設計時限制樹的深度。
+
+## 相關模式
+
+| 模式 | 關係 |
+|------|------|
+| **Iterator** | 常搭配使用 — Iterator 提供統一的方式走訪 Composite 的樹狀結構（DFS、BFS） |
+| **Visitor** | 常搭配使用 — Visitor 對 Composite 結構中的每種節點型別執行不同的操作 |
+| **Decorator** | 都使用遞迴組合，但 Decorator 是線性鏈，Composite 是樹狀結構 |
+| **Chain of Responsibility** | Composite 的父子關係可以用來建立責任鏈 — 子節點處理不了就往父節點傳 |
+
 ## 重點整理
 
 <Callout type="tip" title="一句話記住">
-**Composite Pattern = 讓「一個」和「一群」擁有相同的操作介面，形成可遞迴的樹狀結構。**
+**Composite Pattern = 樹狀遞迴：一個和一群用同一個介面操作。** 口訣：「葉子和資料夾一視同仁」
 </Callout>
 
 | 概念 | 說明 |

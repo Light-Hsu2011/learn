@@ -26,7 +26,7 @@ description: "用可變大小滑動窗口追蹤翻轉次數來找最長連續 1 
 
 ## 解題思路
 
-<StepDiagram data='[{"title":"初始化","description":"left = 0，zeroCount = 0","icon":"1"},{"title":"擴張右邊","description":"right 往右移，遇到 0 就 zeroCount++","icon":"2"},{"title":"收縮左邊","description":"若 zeroCount > k，left 往右移直到吐出一個 0","icon":"3"},{"title":"更新最大值","description":"maxLen = max(maxLen, right - left + 1)","icon":"4"}]' />
+<StepDiagram data='[{"title":"初始化","description":"left = 0, zeroCount = 0, maxLen = 0。left 是窗口左邊界，zeroCount 追蹤窗口內 0 的個數","icon":"1"},{"title":"擴張右邊","description":"right 用 for 迴圈從 0 到 n-1。若 nums[right] == 0 則 zeroCount++（消耗一次翻轉機會）","icon":"2"},{"title":"收縮左邊","description":"while zeroCount > k：若 nums[left] == 0 則 zeroCount--（歸還翻轉機會），left++。直到窗口內 0 的個數 ≤ k","icon":"3"},{"title":"更新最大值","description":"此時窗口 [left, right] 內最多 k 個 0，長度 = right - left + 1。用 maxLen 記錄歷史最大值","icon":"4"}]' />
 
 ## 程式碼
 
@@ -89,18 +89,32 @@ def longestOnes(nums: list[int], k: int) -> int:
 |--|------|-------|
 | 本解法 | O(n) | O(1) |
 
-left 和 right 各最多走 n 步，總共 O(n)。
+right 從 0 走到 n-1 共 n 步，left 每步最多前進一格且不會後退，總共也最多走 n 步。兩個指針合計 ≤ 2n 步，因此時間 O(n)。只用三個整數變數，空間 O(1)。
+
+## 邊界情況
+
+- **k = 0**：不能翻轉任何 0，退化為找最長連續 1 的子陣列。窗口內不允許有 0
+- **全部都是 1**：例如 `[1,1,1]`，zeroCount 始終為 0，窗口擴到整個陣列，回傳 n
+- **全部都是 0**：例如 `[0,0,0]`，k=2 時最多翻轉 2 個，最長為 min(n, k) = 2
+- **k ≥ 陣列中 0 的個數**：可以翻轉所有 0，答案就是整個陣列長度 n
 
 ## 圖解
 
 <Diagram data='{"nodes":[{"id":"input","label":"[1,1,1,0,0,0,1,1,1,1,0] k=2","type":"default"},{"id":"expand","label":"right 擴張到包含 2 個 0","type":"highlight"},{"id":"shrink","label":"遇到第 3 個 0，left 收縮","type":"highlight"},{"id":"best","label":"最佳窗口 [0,1,1,1,1,0] len=6","type":"muted"}],"edges":[{"from":"input","to":"expand","label":"擴張"},{"from":"expand","to":"shrink","label":"0 超標"},{"from":"shrink","to":"best","label":"找到最佳"}]}' />
 
+圖表展示窗口的擴張與收縮：right 持續擴張直到窗口內包含第 3 個 0（超過 k=2），此時 left 開始收縮直到吐出一個 0 讓 zeroCount 回到 2。最終最佳窗口為索引 5-10 的 `[0,1,1,1,1,0]`，長度 6。
+
 ## 進階觀點
 
 <Callout type="tip" title="面試追問">
-- **while 換成 if 可以嗎？** 可以！因為每次 right 只加 1，zeroCount 最多超標 1。用 if 甚至可以讓窗口只擴不縮（窗口大小單調不減），結果一樣正確。
-- **k = 0 的特殊情況？** 退化為找最長連續 1 的子陣列。
-- **跟下一題（Longest Subarray of 1's After Deleting）的關係？** 幾乎一樣，只是那題是「刪除一個元素」而非「翻轉」。
+- **Q: while 換成 if 可以嗎？**
+  A: 可以！因為每次 right 只加 1，zeroCount 最多超標 1（從 k 變成 k+1）。用 if 只收縮一次就夠了。這種寫法甚至讓窗口大小單調不減（只擴不縮），效果等價但邏輯更巧妙。
+
+- **Q: k = 0 的特殊情況怎麼處理？**
+  A: 不需要特殊處理。k=0 時，窗口內不允許有任何 0，遇到 0 就收縮。自然退化為找最長連續 1 的子陣列。
+
+- **Q: 跟 LeetCode 1493（Longest Subarray of 1's After Deleting One Element）的關係？**
+  A: 幾乎一樣的滑動窗口結構，但 1493 是「刪除一個元素」（必須刪，不能不刪），等價於「最多允許 1 個 0 在窗口中，但最終長度要減 1」。可以用本題的框架，k=1，最後答案減 1。
 </Callout>
 
 ## 理解測驗

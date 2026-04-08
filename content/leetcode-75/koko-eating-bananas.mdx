@@ -26,7 +26,7 @@ Koko 是一隻猴子，面前有好幾堆香蕉，守衛 h 小時後會回來。
 
 ## 解題思路
 
-<StepDiagram data='[{"title":"確定搜尋範圍","description":"最慢 k=1，最快 k=max(piles)","icon":"1"},{"title":"二分搜尋速度","description":"mid = (left + right) / 2","icon":"2"},{"title":"計算所需時間","description":"每堆需要 ceil(pile/mid) 小時，加總","icon":"3"},{"title":"判斷可行性","description":"總時間 <= h 可行，嘗試更慢；否則加快","icon":"4"},{"title":"回傳最小速度","description":"left 就是滿足條件的最小 k","icon":"5"}]' />
+<StepDiagram data='[{"title":"確定搜尋範圍","description":"最慢 k=1（每小時吃 1 根），最快 k=max(piles)（最大堆一小時吃完）。答案一定在 [1, max(piles)] 之間","icon":"1"},{"title":"二分搜尋速度","description":"mid = (left + right) / 2，嘗試以速度 mid 吃香蕉","icon":"2"},{"title":"計算所需時間","description":"每堆需要 ceil(pile/mid) 小時（整數公式：(pile + mid - 1) / mid），將所有堆的時間加總","icon":"3"},{"title":"判斷可行性","description":"總時間 ≤ h → 可行，right = mid 嘗試更慢的速度；總時間 > h → 不可行，left = mid + 1 加快","icon":"4"},{"title":"回傳最小速度","description":"迴圈結束時 left = right，就是滿足「≤ h 小時吃完」的最小速度","icon":"5"}]' />
 
 ## 程式碼
 
@@ -93,18 +93,30 @@ def minEatingSpeed(piles: list[int], h: int) -> int:
 
 其中 n = piles 長度，m = max(piles)。
 
+- **Time**：二分搜尋 O(log m) 輪，每輪遍歷所有堆計算時間 O(n)，合計 O(n log m)
+- **Space**：只用了常數個變數，不需要額外空間
+
 ## 圖解
 
 <Diagram data='{"nodes":[{"id":"range","label":"速度範圍 [1, max(piles)]","type":"default"},{"id":"mid","label":"嘗試速度 mid","type":"highlight"},{"id":"calc","label":"計算所需時間","type":"default"},{"id":"fast","label":"時間 <= h → 嘗試更慢","type":"muted"},{"id":"slow","label":"時間 > h → 加快速度","type":"muted"},{"id":"answer","label":"最小可行速度","type":"highlight"}],"edges":[{"from":"range","to":"mid","label":"二分"},{"from":"mid","to":"calc","label":"模擬"},{"from":"calc","to":"fast","label":"可行"},{"from":"calc","to":"slow","label":"不可行"},{"from":"fast","to":"answer","label":"收斂"},{"from":"slow","to":"answer","label":"收斂"}]}' />
 
+圖表展示了「Binary Search on Answer」的核心邏輯：答案空間 [1, max(piles)] 具有單調性——速度越快所需時間越少。
+每次取 mid 模擬吃完所有堆的總時間，根據是否 ≤ h 來決定搜尋方向。
+
 ## 進階觀點
 
 <Callout type="tip" title="面試追問">
-- 這是「Binary Search on Answer」的經典題型。答案空間有單調性：速度越快，所需時間越少。
-- 類似題型：**1011. Capacity To Ship Packages Within D Days**、**410. Split Array Largest Sum**，都是在答案空間上二分搜尋。
-- `ceil(p / mid)` 可以用 `(p + mid - 1) / mid` 整數運算替代，避免浮點誤差。
-- 注意 `piles.Sum()` 可能溢位，用 `long` 累加更安全。
+- **什麼是 Binary Search on Answer？** 當答案空間有單調性（速度越快 → 時間越少），可以把答案本身當搜尋目標。對每個候選答案驗證可行性，再用二分縮小範圍。類似題：1011（船容量）、410（分割陣列）。
+- **為什麼用整數 ceil 而不是浮點？** `ceil(p / mid)` 用浮點除法可能有精度問題。改用 `(p + mid - 1) / mid` 純整數運算更安全。例如 p=7, mid=3 → (7+2)/3 = 3，正確。
+- **溢位風險在哪？** `piles.Sum()` 每堆最多 10^9，最多 10^4 堆，加總可能到 10^13，超過 int 範圍。C# 中必須用 long 累加。
+- **如果每小時可以吃多堆呢？** 那就變成 1011 題（Capacity To Ship），每「小時」可以連續處理多堆直到超過 k 的容量。
 </Callout>
+
+## 邊界情況
+
+- **h 等於 piles.length**：每堆只有一小時可吃，速度必須是 max(piles) 才能每堆一小時吃完
+- **h 遠大於 piles 總和**：速度 1 就足夠，答案為 1
+- **只有一堆香蕉**：答案就是 ceil(piles[0] / h)，直接計算即可
 
 ## 理解測驗
 

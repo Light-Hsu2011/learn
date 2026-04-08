@@ -323,16 +323,32 @@ def add(numbers: str) -> int:
 ## 實戰補充
 
 <Callout type="info" title="資深開發者心得">
-注意迭代 4 的測試**直接就通過了**。這不是巧合，而是 TDD 的核心價值：好的設計在 Red-Green-Refactor 循環中**自然浮現**。你不需要預先設計完美架構，只要跟著測試走，程式碼會告訴你下一步該怎麼做。
+注意迭代 4 的測試**直接就通過了**。這不是巧合，而是 TDD 的核心價值：好的設計在 Red-Green-Refactor 循環中**自然浮現**。你不需要預先設計完美架構，只要跟著測試走，程式碼會告訴你下一步該怎麼做。這就是 Kent Beck 說的「Emergent Design（湧現式設計）」。
 </Callout>
 
 <Callout type="warning" title="常見錯誤">
-新手最常犯的錯是在 Green 階段「多做」——明明只需要讓當前測試通過，卻忍不住把後面的功能一起寫了。這會破壞 TDD 的回饋循環，讓你失去「每一步都有測試保護」的安全感。
+新手最常犯的錯是在 Green 階段「多做」——明明只需要讓當前測試通過，卻忍不住把後面的功能一起寫了。這會破壞 TDD 的回饋循環，讓你失去「每一步都有測試保護」的安全感。自我檢查方法：Green 階段寫完後問自己「我有沒有寫任何目前測試不需要的程式碼？」如果有，刪掉。
 </Callout>
 
 <Callout type="tip" title="Kata 練習建議">
 同一個 Kata 練 3 次以上，每次用不同語言或不同設計決策。重點不是寫出程式碼，而是讓 Red-Green-Refactor 的節奏變成肌肉記憶。
+
+推薦的 Kata 練習路線：
+1. **String Calculator**（本課）——入門，練習基本節奏
+2. **Bowling Game**——中級，練習狀態管理和規則累積
+3. **Roman Numerals**——中級，練習 Transform Priority Premise
+4. **Gilded Rose**——進階，練習 Legacy Code 的 Characterization Test + 重構
 </Callout>
+
+### 面試常見問題
+
+**Q：TDD 中的 Refactor 階段可以加新功能嗎？**
+
+A：不行。Refactor 階段只改結構不改行為——測試必須保持綠燈。如果需要新功能，回到 Red 階段寫新的失敗測試。判斷標準：Refactor 結束後跑測試，如果有任何測試從綠變紅，代表你不小心改了行為。
+
+**Q：什麼是 Transformation Priority Premise（TPP）？**
+
+A：Robert C. Martin 提出的指導原則，描述 Green 階段應該用什麼「變換」來讓測試通過。優先順序（由簡到繁）：回傳常數 → 回傳變數 → 加條件判斷 → 加迴圈 → 加遞迴。每次只用優先順序最高的（最簡單的）變換，自然就會走出 Baby Steps。
 
 ## 理解測驗
 
@@ -345,7 +361,7 @@ def add(numbers: str) -> int:
 ## 重點整理
 
 <Callout type="tip" title="一句話記住">
-**TDD 不是理論，是肌肉記憶——只有反覆做 Red-Green-Refactor 循環，才能真正學會。**
+**口訣：「TDD 不是讀會的，是練會的——同一個 Kata 練三遍，節奏自然刻進骨子裡」。**
 </Callout>
 
 | 迭代 | 輸入 | 預期輸出 | 學到的事 |

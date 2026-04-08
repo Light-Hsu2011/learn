@@ -24,7 +24,7 @@ description: "雙 Min Heap 從兩端模擬每次取最便宜的工人"
 
 ## 解題思路
 
-<StepDiagram data='[{"title":"初始化雙 Heap","description":"左 Heap 放前 candidates 個，右 Heap 放後 candidates 個","icon":"1"},{"title":"避免重疊","description":"用左右指標確保同一個人不會同時在兩個 Heap 中","icon":"2"},{"title":"每輪取最小","description":"比較兩個 Heap 頂端，取較小的那個","icon":"3"},{"title":"補充候選人","description":"從被取走的那一側補入下一個候選人","icon":"4"},{"title":"重複 K 次","description":"重複 K 輪，累加總成本","icon":"5"}]' />
+<StepDiagram data='[{"title":"初始化雙 Heap","description":"左 Heap 放 costs[0..candidates-1]，右 Heap 放 costs[n-candidates..n-1]，用 left/right 指標追蹤下一個待加入的索引","icon":"1"},{"title":"避免重疊","description":"維護 left 和 right 指標，只在 left ≤ right 時加入新候選人，防止同一人被兩個 Heap 同時包含","icon":"2"},{"title":"每輪取最小","description":"peek 兩個 Heap 頂端，取值較小的那個（相同時取左邊的，因為題目要求取索引較小者）","icon":"3"},{"title":"補充候選人","description":"從被取走的那一側補入下一個候選人。例如取左 Heap → costs[left] 加入左 Heap，left++","icon":"4"},{"title":"重複 K 次","description":"重複 K 輪，每輪取一個最便宜的工人，累加成本到 totalCost","icon":"5"}]' />
 
 ## 程式碼
 
@@ -160,17 +160,29 @@ def totalCost(costs: list[int], k: int, candidates: int) -> int:
 |--|------|-------|
 | 本解法 | O((k + candidates) log candidates) | O(candidates) |
 
+- **Time**：初始化放入 2 × candidates 個元素各一次 heap push O(log candidates)，之後 K 輪每輪做一次 pop + 一次 push，合計 O((k + candidates) log candidates)
+- **Space**：兩個 Heap 各最多 candidates 個元素，合計 O(candidates)
+
 ## 圖解
 
 <Diagram data='{"nodes":[{"id":"left","label":"Left Heap (前 candidates 個)","type":"highlight"},{"id":"right","label":"Right Heap (後 candidates 個)","type":"highlight"},{"id":"compare","label":"比較兩 Heap 最小值","type":"default"},{"id":"pick","label":"取較小者，累加成本","type":"default"},{"id":"refill","label":"從對應方向補充候選人","type":"muted"}],"edges":[{"from":"left","to":"compare","label":"peek"},{"from":"right","to":"compare","label":"peek"},{"from":"compare","to":"pick","label":"取 min"},{"from":"pick","to":"refill","label":"補充"},{"from":"refill","to":"left","label":"左側補"},{"from":"refill","to":"right","label":"右側補"}]}' />
 
+圖表展示了雙 Heap 的核心運作：左右各維護一個 Min Heap，每輪 peek 兩端取最小值。
+取走後從對應方向補入新候選人，left/right 指標向中間靠攏直到交會後停止補充。
+
 ## 進階觀點
 
 <Callout type="tip" title="面試追問">
-- 為什麼要用兩個 Heap 而不是一個？因為左右兩側候選人的「補充來源」不同，合成一個 Heap 無法正確追蹤補充方向。
-- 左右指標重疊時怎麼辦？停止補充即可，兩個 Heap 的剩餘元素繼續比較。
-- 如果 `2 * candidates >= n`，所有人都在初始候選中，等價於直接選最小的 K 個。
+- **為什麼要用兩個 Heap 而不是一個？** 左右兩側的「補充來源」不同——左 Heap 取走後從 left 指標向右補，右 Heap 從 right 指標向左補。合成一個 Heap 無法區分該從哪一側補充新候選人。
+- **左右指標重疊時怎麼辦？** 當 left > right 時，中間已無剩餘工人，停止補充即可。兩個 Heap 消耗已有的元素繼續比較，直到選滿 K 人。
+- **如果 `2 × candidates` ≥ n 會怎樣？** 所有工人都在初始候選中，問題退化為「從 n 個人中選最便宜的 K 個」，直接排序取前 K 小即可。
 </Callout>
+
+## 邊界情況
+
+- **k 等於 n**：必須雇用所有人，答案就是 costs 的總和
+- **candidates 等於 1**：每輪只能看到最左邊和最右邊各一個人，模擬兩端逐步向中間的選擇過程
+- **所有 costs 相同**：每輪取哪一邊都一樣，答案固定為 k × cost 值
 
 ## 理解測驗
 

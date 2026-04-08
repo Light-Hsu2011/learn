@@ -24,11 +24,11 @@ Repository 介面定義在 Domain 層，實作放在 Infrastructure 層。這是
 
 ## 核心觀念
 
-- **只為 Aggregate Root 建 Repository**：內部 Entity 和 Value Object 透過 Root 存取，不需要獨立的 Repository
-- **介面在 Domain 層**：`IOrderRepository` 定義在 Domain，`OrderRepository` 實作在 Infrastructure
-- **Collection 語意**：Repository 的方法像操作集合 — `Add`、`GetById`、`Remove`，不暴露 SQL 或 ORM 細節
-- **Unit of Work 搭配**：Repository 通常搭配 Unit of Work 模式，確保一個交易內的所有變更一次提交
-- **不要在 Repository 放業務邏輯**：Repository 只負責存取，業務規則放在 Entity 和 Domain Service
+- **只為 Aggregate Root 建 Repository**：內部 Entity 和 Value Object 透過 Root 存取，不需要獨立的 Repository。例如：有 `IOrderRepository` 但不需要 `IOrderLineItemRepository`，因為 OrderLineItem 是 Order Aggregate 的一部分
+- **介面在 Domain 層**：`IOrderRepository` 定義在 Domain 專案，`OrderRepository` 實作在 Infrastructure 專案。這實現了依賴反轉原則（DIP）——Domain 定義「我需要什麼」，Infrastructure 負責「怎麼做到」
+- **Collection 語意**：Repository 的方法像操作集合 — `Add`、`GetById`、`Remove`，不暴露 SQL 或 ORM 細節。常見方法簽名：`Task<Order?> GetById(Guid id)` / `Task Add(Order order)` / `Task Remove(Order order)`
+- **Unit of Work 搭配**：Repository 通常搭配 Unit of Work（UoW）模式，確保一個交易內的所有變更一次提交。在 EF Core 中，`DbContext` 本身就是 UoW——呼叫 `SaveChangesAsync()` 時所有變更一次寫入
+- **不要在 Repository 放業務邏輯**：Repository 只負責存取，業務規則放在 Entity 和 Domain Service。如果你在 Repository 裡看到 `if (order.Status == "VIP")` 這種判斷，它應該搬到 Domain Model
 
 ## 常見誤區
 
@@ -252,6 +252,17 @@ class PlaceOrderHandler:
 
 <Diagram data='{"nodes":[{"id":"app","label":"Application Service","type":"muted"},{"id":"interface","label":"IOrderRepository (Domain)","type":"highlight"},{"id":"impl","label":"OrderRepository (Infrastructure)","type":"default"},{"id":"db","label":"Database","type":"muted"},{"id":"domain","label":"Order (Aggregate Root)","type":"default"},{"id":"uow","label":"Unit of Work","type":"default"}],"edges":[{"from":"app","to":"interface","label":"依賴介面"},{"from":"impl","to":"interface","label":"實作"},{"from":"impl","to":"db","label":"存取"},{"from":"interface","to":"domain","label":"回傳"},{"from":"app","to":"uow","label":"提交交易"}]}' />
 
+此圖展示 Repository 的依賴方向：Application Service 依賴 Domain 層定義的介面（`IOrderRepository`），Infrastructure 層的實作也指向 Domain 介面。這就是依賴反轉——所有箭頭指向 Domain，Domain 不依賴任何外層。
+
+## 何時需要包一層 Repository，何時直接用 DbContext
+
+| 情境 | 建議 | 理由 |
+|------|------|------|
+| Domain 層不想依賴 EF Core | 包 Repository | 保持 Domain 的純淨性，方便換 ORM |
+| 小型 CRUD 專案、不會換 ORM | 直接用 DbContext | 減少不必要的抽象層 |
+| 需要在測試中替換資料存取 | 包 Repository | 方便注入 InMemoryRepository 做測試 |
+| 讀取端需要複雜查詢 | 讀取用 Dapper 直接查詢，寫入用 Repository | CQRS 分離：寫入走 Domain Model，讀取走扁平 DTO |
+
 ## 實戰補充
 
 <Callout type="tip" title="資深開發者筆記">
@@ -273,7 +284,7 @@ Specification Pattern 可以和 Repository 結合：把查詢條件封裝成 Spe
 ## 重點整理
 
 <Callout type="tip" title="一句話記住">
-**Repository = 領域物件的圖書館櫃檯，你只管借還，不管書放哪裡。**
+**口訣：「介面在 Domain、實作在 Infrastructure、只服務 Aggregate Root」—— Repository 三定律。**
 </Callout>
 
 | 概念 | 說明 |

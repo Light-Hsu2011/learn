@@ -43,6 +43,8 @@ Mediator 很容易變成「上帝物件（God Object）」，把所有邏輯都�
 
 <StepDiagram data='[{"title":"定義 Mediator 介面","description":"宣告通知方法供 Colleague 呼叫","icon":"1"},{"title":"定義 Colleague 基類","description":"持有 Mediator 參考，事件發生時通知 Mediator","icon":"2"},{"title":"實作具體 Mediator","description":"接收通知後，協調相關 Colleague 的反應","icon":"3"},{"title":"實作具體 Colleague","description":"只跟 Mediator 溝通，不直接引用其他 Colleague","icon":"4"},{"title":"Client 組裝","description":"建立 Mediator 和 Colleague，註冊關係","icon":"5"}]' />
 
+流程解讀：Mediator 把「多對多通訊」改造成「多對一加一對多」。每個 Colleague 只持有 Mediator 的參考，有事件時通知 Mediator。Mediator 知道所有 Colleague，收到通知後根據業務邏輯決定通知哪些 Colleague、以什麼順序通知。這樣 Colleague 之間完全解耦，互動邏輯集中在 Mediator 中管理。
+
 ## 程式碼範例
 
 ### C# 版本
@@ -286,6 +288,8 @@ bob.send("嗨 Alice！");
 
 <Diagram data='{"nodes":[{"id":"client","label":"Client","type":"muted"},{"id":"mediator","label":"Mediator (ChatRoom)","type":"highlight"},{"id":"colleague_a","label":"Colleague A (Alice)","type":"default"},{"id":"colleague_b","label":"Colleague B (Bob)","type":"default"},{"id":"colleague_c","label":"Colleague C (Charlie)","type":"default"}],"edges":[{"from":"client","to":"mediator","label":"creates"},{"from":"colleague_a","to":"mediator","label":"communicates via"},{"from":"colleague_b","to":"mediator","label":"communicates via"},{"from":"colleague_c","to":"mediator","label":"communicates via"}]}' />
 
+結構解讀：三個 Colleague 互相不認識，全部只跟 Mediator 溝通。如果沒有 Mediator，3 個物件之間有 3 條直接連線（N 個物件有 N*(N-1)/2 條）。有了 Mediator，每個物件只有 1 條連線到 Mediator，從網狀依賴變成星狀依賴。Mediator 知道所有 Colleague，收到訊息後根據邏輯決定轉發給誰。
+
 ## 實戰補充
 
 <Callout type="tip" title="資深開發者經驗">
@@ -306,10 +310,29 @@ bob.send("嗨 Alice！");
 
 <Quiz data='{"question":"以下哪個場景最適合用 Mediator Pattern？","options":["簡單的 A 呼叫 B","10 個 UI 元件之間有複雜的聯動關係","讀取一個檔案","計算兩個數字的加法"],"answer":1,"explanation":"多個元件之間有複雜的交互關係時，Mediator 可以把散亂的互動邏輯集中管理，避免各元件直接互相引用。"}' />
 
+## 面試常見問題
+
+**Q: Mediator 和 Observer 都涉及物件之間的溝通，怎麼區分？**
+
+A: Observer 是「廣播」— Subject 通知所有 Observer，Subject 不關心 Observer 怎麼反應。Mediator 是「協調」— Mediator 收到事件後，根據業務邏輯決定通知誰、怎麼反應。Observer 的 Subject 和 Observer 是一對多的單向關係，Mediator 的 Colleague 之間是多對多的雙向關係（透過 Mediator 中轉）。
+
+**Q: MediatR 在 .NET 中的典型使用方式是什麼？**
+
+A: MediatR 把 Controller 和 Handler 解耦。Controller 只做一件事：`await _mediator.Send(new CreateOrderCommand(...))` 。MediatR 自動找到對應的 `IRequestHandler` 來處理。搭配 Pipeline Behavior 可以在 Handler 前後加入日誌、驗證、交易管理等橫切關注點（Cross-Cutting Concerns，指跨越多個模組的共通功能如日誌、授權）。
+
+## 相關模式
+
+| 模式 | 關係 |
+|------|------|
+| **Observer** | Observer 是單向廣播，Mediator 是雙向協調。當 Observer 的通知鏈變得太複雜時，考慮改用 Mediator |
+| **Facade** | 都是中心化的協調者，但 Facade 是單向的（簡化子系統存取），Mediator 是雙向的（管理同事間互動） |
+| **Command** | MediatR 就是 Mediator + Command 的結合 — Command 封裝請求，Mediator 負責分發 |
+| **Chain of Responsibility** | 都能處理請求分發，但 Mediator 是集中式（一個中心），CoR 是分散式（一條鏈） |
+
 ## 重點整理
 
 <Callout type="tip" title="一句話記住">
-**Mediator Pattern = 中央調度：所有人只跟塔台溝通，塔台負責協調。**
+**Mediator Pattern = 機場塔台：所有人只跟塔台說話，塔台決定誰該動。** 口訣：「網狀變星狀，塔台管全場」
 </Callout>
 
 | 概念 | 說明 |

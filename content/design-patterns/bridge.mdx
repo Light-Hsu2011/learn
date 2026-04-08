@@ -24,9 +24,11 @@ Bridge 屬於**結構型模式（Structural Pattern）**，重點在於如何組
 
 ## 什麼時候用？
 
-- 你的類別同時有**兩個以上的變化維度**（例如形狀 x 顏色、平台 x 功能）
-- 你想避免繼承層次爆炸（例如 RedCircle、BlueCircle、RedSquare、BlueSquare...）
-- 你想在執行時切換實作（例如從 MySQL 切到 PostgreSQL）
+用以下 if/then 條件判斷：
+
+- **如果**你的類別有 2 個以上獨立變化的維度，且用繼承會導致類別數量 = 維度 A 的數量 x 維度 B 的數量 → 用 Bridge
+- **如果**你想在執行時切換實作（例如從 MySQL 切到 PostgreSQL）同時保留抽象層不變 → 用 Bridge
+- **如果**類別只有單一維度的變化 → Strategy 或簡單的介面抽換就夠了
 
 ## 什麼時候不該用？
 
@@ -37,6 +39,8 @@ Bridge 屬於**結構型模式（Structural Pattern）**，重點在於如何組
 ## 執行流程
 
 <StepDiagram data='[{"title":"辨識多維度變化","description":"發現類別有兩個以上獨立變化的維度","icon":"1"},{"title":"分離抽象與實作","description":"將一個維度定義為抽象層，另一個定義為實作層","icon":"2"},{"title":"定義實作介面","description":"宣告實作層的方法簽名（Implementor）","icon":"3"},{"title":"建立橋接","description":"抽象層持有實作層的參考，透過組合連接","icon":"4"},{"title":"獨立擴充","description":"兩邊各自新增子類別，互不影響","icon":"5"}]' />
+
+流程解讀：Bridge 的核心是「把一個類別的兩個變化維度拆開」。先辨識哪些是抽象層的變化（如形狀：圓形、方形）、哪些是實作層的變化（如渲染方式：HTML、SVG）。然後用組合而非繼承連接兩者 — 抽象層持有 Implementor 的參考。這讓類別總數從「乘法」（M x N）降為「加法」（M + N），每個維度都能獨立擴充。
 
 ## 程式碼範例
 
@@ -283,6 +287,8 @@ System.out.println(svgSquare.draw());
 
 <Diagram data='{"nodes":[{"id":"client","label":"Client","type":"muted"},{"id":"abstraction","label":"Abstraction (Shape)","type":"highlight"},{"id":"refined","label":"RefinedAbstraction (Circle/Square)","type":"default"},{"id":"implementor","label":"Implementor (Renderer)","type":"highlight"},{"id":"concrete","label":"ConcreteImplementor (Html/Svg)","type":"default"}],"edges":[{"from":"client","to":"abstraction","label":"uses"},{"from":"refined","to":"abstraction","label":"extends"},{"from":"abstraction","to":"implementor","label":"delegates to (bridge)"},{"from":"concrete","to":"implementor","label":"implements"}]}' />
 
+結構解讀：圖中有兩條獨立的繼承鏈：左邊是抽象層（Shape → Circle/Square），右邊是實作層（Renderer → Html/Svg）。中間的「bridge」就是 Abstraction 持有 Implementor 的參考（組合關係）。新增 Triangle 只需在左邊加一個類別，新增 CanvasRenderer 只需在右邊加一個類別，兩邊互不干擾。
+
 ## 實戰補充
 
 <Callout type="tip" title="資深開發者經驗">
@@ -297,10 +303,29 @@ Bridge 最常見的實戰場景是**跨平台渲染**。例如一個繪圖框架
 
 <Quiz data='{"question":"如果有 3 種形狀和 4 種渲染方式，用繼承需要幾個類別？用 Bridge 呢？","options":["繼承：7 個，Bridge：7 個","繼承：12 個，Bridge：7 個","繼承：12 個，Bridge：12 個","繼承：7 個，Bridge：12 個"],"answer":1,"explanation":"用繼承需要 3×4=12 個子類別。用 Bridge 只需要 3 + 4 = 7 個類別（3 個形狀 + 4 個渲染器），大幅減少類別數量。"}' />
 
+## 面試常見問題
+
+**Q: Bridge 和 Strategy 看起來很像（都是持有介面參考），怎麼區分？**
+
+A: 關鍵差異在於「維度數量」和「意圖」。Strategy 處理單一維度的變化（一個 Context 替換一種演算法）。Bridge 處理兩個維度的交叉變化（抽象層和實作層各自獨立擴充）。判斷方式：如果你只需要替換一種行為 → Strategy；如果你面對兩個獨立的變化軸 → Bridge。
+
+**Q: Bridge 和 Adapter 都是「把兩個東西連起來」，差在哪？**
+
+A: 時機和意圖不同。Bridge 在設計階段就預先分離兩個維度，是主動的架構設計。Adapter 是事後補救，連接兩個已經存在但介面不合的東西。口訣：「Bridge 是預防，Adapter 是治療」。
+
+## 相關模式
+
+| 模式 | 關係 |
+|------|------|
+| **Strategy** | 結構相似但維度不同 — Strategy 處理單一維度行為替換，Bridge 處理雙維度交叉變化 |
+| **Adapter** | Bridge 是設計階段的預先分離，Adapter 是事後的介面補救 |
+| **Abstract Factory** | 可搭配使用 — Abstract Factory 負責建立 Bridge 中正確的 Implementor 實例 |
+| **Decorator** | 都用組合擴充功能，但 Bridge 分離兩個維度，Decorator 在單一維度疊加功能 |
+
 ## 重點整理
 
 <Callout type="tip" title="一句話記住">
-**Bridge Pattern = 把「做什麼」和「怎麼做」分成兩個獨立的層次，用組合而非繼承連接。**
+**Bridge Pattern = 雙維度分離：抽象和實作各走各的路，用橋連接。** 口訣：「乘法變加法，組合勝繼承」
 </Callout>
 
 | 概念 | 說明 |

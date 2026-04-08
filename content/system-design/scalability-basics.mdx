@@ -26,23 +26,32 @@ Scalability（可擴展性）是系統在負載增加時，透過增加資源來
 
 ## 核心觀念
 
-- **Stateless Design**：伺服器不保存用戶狀態，任何請求可以被任何伺服器處理，這是水平擴展的前提
-- **CAP 定理**：分散式系統只能同時滿足 Consistency、Availability、Partition Tolerance 中的兩個
-- **Throughput vs Latency**：擴展目標是提高 throughput（吞吐量）同時維持 latency（延遲）
-- **Elasticity**：系統根據負載自動增減資源的能力（Auto Scaling）
-- **Single Point of Failure（SPOF）**：任何只有一個的元件都是風險，水平擴展天然避免 SPOF
+- **Stateless Design**：伺服器不保存用戶狀態（例如 Session、購物車），任何請求可以被任何伺服器處理。這是水平擴展的前提 — 如果 Server A 掛了，用戶的下一個請求被導到 Server B 也不會遺失任何資料，因為狀態全部存在外部儲存（如 Redis）
+- **CAP 定理**：分散式系統只能同時滿足 Consistency（一致性，所有節點看到相同資料）、Availability（可用性，每個請求都能得到回應）、Partition Tolerance（分區容錯，網路斷裂時系統仍運作）中的兩個。實務上網路分區一定會發生，所以真正的選擇是 CP（犧牲可用性）或 AP（犧牲一致性）
+- **Throughput vs Latency**：Throughput 是單位時間處理的請求數（如 10,000 req/s），Latency 是單一請求的回應時間（如 50ms）。擴展目標是提高 throughput 同時維持 latency 不惡化。例如加了 3 台伺服器讓 throughput 從 3,000 升到 9,000 req/s，但每個請求的 latency 仍維持在 50ms
+- **Elasticity**：系統根據負載自動增減資源的能力。例如 AWS Auto Scaling Group 設定「CPU 使用率超過 70% 時自動加一台 EC2，低於 30% 時移除一台」，在流量尖峰時自動擴展、離峰時自動縮減以節省成本
+- **Single Point of Failure（SPOF）**：系統中只有一個實例的元件，一旦它掛掉整個系統就癱瘓。例如：只有一台資料庫伺服器、只有一個 Load Balancer、只有一台 API Server。解法是冗餘（Redundancy）— 每個關鍵元件至少有 2 個實例。水平擴展天然避免 SPOF，因為同時有多台伺服器在運作
 
 ## 常見誤區
 
 <Callout type="warning" title="不要一開始就過度設計">
 Premature optimization is the root of all evil。先確認瓶頸在哪，再決定擴展策略。很多系統在 Scale Up 就能解決問題的階段，不需要急著做 Scale Out 帶來的複雜度。
+
+判斷標準：如果單機 Scale Up（換更強的 CPU、加 RAM 到 256GB、換 NVMe SSD）就能解決問題，且月租成本不超過團隊一天的開發成本，就先 Scale Up。當你需要的 CPU 超過 128 核、RAM 超過 512GB、或單機最高規格仍撐不住流量時，才考慮 Scale Out。
 </Callout>
 
 ## 設計流程
 
-<StepDiagram data='[{"title":"識別瓶頸","description":"用 Profiling 和 Monitoring 找出系統瓶頸在 CPU、Memory、IO 還是 Network","icon":"1"},{"title":"選擇擴展方向","description":"瓶頸在單機極限內用 Scale Up，超出則用 Scale Out","icon":"2"},{"title":"Stateless 改造","description":"把 Session 移到外部儲存（Redis），讓伺服器無狀態","icon":"3"},{"title":"加入 Load Balancer","description":"在多台伺服器前面放 LB，分散請求流量","icon":"4"},{"title":"監控與自動擴展","description":"設定 Auto Scaling 規則，根據 CPU/Memory 指標自動增減機器","icon":"5"}]' />
+<StepDiagram data='[{"title":"識別瓶頸","description":"用 Monitoring（Grafana/Datadog 看 CPU、Memory、Disk IO、Network 儀表板）和 Profiling（dotnet-trace / pprof 找程式碼熱點）定位瓶頸","icon":"1"},{"title":"選擇擴展方向","description":"CPU < 80%、RAM < 70%、單機最高規格仍有升級空間 → Scale Up。否則 → Scale Out","icon":"2"},{"title":"Stateless 改造","description":"把 Session、購物車等狀態移到 Redis；把檔案上傳移到 S3。確保任何一台伺服器掛掉不影響用戶","icon":"3"},{"title":"加入 Load Balancer","description":"在多台伺服器前面放 LB（Nginx/ALB），用 Round Robin 或 Least Connections 分散請求","icon":"4"},{"title":"架構補強","description":"資料庫讀寫分離、加 Cache 層、非同步任務放 Message Queue — 每一層都要考慮冗餘避免 SPOF","icon":"5"},{"title":"監控與自動擴展","description":"設定 Auto Scaling 規則（如 CPU > 70% 加機器、< 30% 縮機器），搭配告警通知","icon":"6"}]' />
 
 ## 架構設計
+
+除了 Stateless 改造之外，水平擴展還需要考慮以下架構面向：
+
+- **資料庫層**：單一資料庫也是 SPOF，需要做 Master-Slave 讀寫分離（詳見資料庫擴展篇）
+- **Cache 層**：熱點資料放 Redis，減少資料庫壓力。Redis 本身也要做 Cluster 或 Sentinel 避免 SPOF
+- **非同步處理**：耗時任務（寄信、報表產生）放 Message Queue 非同步執行，避免阻塞 API 回應
+- **檔案儲存**：上傳的檔案不能存在本機磁碟（Scale Out 時其他機器讀不到），改用 S3 / Azure Blob Storage
 
 ### Stateless 改造範例（C#）
 
@@ -97,14 +106,23 @@ public class CartController : Controller
 
 <Diagram data='{"nodes":[{"id":"client","label":"Client","type":"muted"},{"id":"lb","label":"Load Balancer","type":"highlight"},{"id":"s1","label":"Server 1 (Stateless)","type":"default"},{"id":"s2","label":"Server 2 (Stateless)","type":"default"},{"id":"s3","label":"Server 3 (Stateless)","type":"default"},{"id":"cache","label":"Redis (Session/Cache)","type":"highlight"},{"id":"db","label":"Database","type":"default"}],"edges":[{"from":"client","to":"lb","label":"requests"},{"from":"lb","to":"s1","label":"round robin"},{"from":"lb","to":"s2","label":"round robin"},{"from":"lb","to":"s3","label":"round robin"},{"from":"s1","to":"cache","label":"read/write state"},{"from":"s2","to":"cache","label":"read/write state"},{"from":"s3","to":"cache","label":"read/write state"},{"from":"s1","to":"db","label":"persistent data"},{"from":"s2","to":"db","label":"persistent data"},{"from":"s3","to":"db","label":"persistent data"}]}' />
 
+**架構圖解讀**：Client 的所有請求先到 Load Balancer，LB 用 Round Robin 演算法將請求均勻分配到 Server 1/2/3（三台是示意，實際數量由 Auto Scaling 動態調整）。三台 Server 完全等價且無狀態 — 任何一台掛掉，LB 自動將流量導向剩餘兩台，用戶無感。所有用戶狀態（Session、購物車）存在共享的 Redis 中，持久化資料存在 Database 中。
+
 ## 實戰補充
 
-<Callout type="tip" title="面試技巧">
-System Design 面試中，面試官問「這系統怎麼擴展？」時，先回答三件事：
-1. **哪裡是瓶頸**（讀多還是寫多？CPU bound 還是 IO bound？）
-2. **Stateless 嗎**（如果不是，怎麼改造？）
-3. **CAP 取捨**（你的場景更在意一致性還是可用性？）
-這三個問題回答完，後續的具體技術方案自然就出來了。
+<Callout type="tip" title="面試技巧與參考答案">
+System Design 面試中，面試官問「這系統怎麼擴展？」時，用這個框架回答：
+
+**Q1：瓶頸在哪？**
+參考答案：「這個系統是讀多寫少（如電商商品頁，讀寫比 100:1），瓶頸在資料庫讀取。」或「這是 CPU bound 的服務（如影像處理），瓶頸在運算能力。」先定位瓶頸類型，再對症下藥。
+
+**Q2：目前是 Stateless 嗎？**
+參考答案：「目前 Session 存在伺服器記憶體，需要改造。具體做法是將 Session 移到 Redis，檔案上傳改用 S3，確保每台伺服器完全等價。」
+
+**Q3：CAP 怎麼取捨？**
+參考答案：「金融場景選 CP — 寧可暫時不可用也不能回傳錯誤餘額。社群場景選 AP — 寧可看到稍舊的貼文也不要整個服務掛掉。」
+
+這三個問題回答完，後續的具體技術方案（加 Cache、讀寫分離、Sharding）自然就出來了。
 </Callout>
 
 ## 理解測驗
@@ -118,7 +136,7 @@ System Design 面試中，面試官問「這系統怎麼擴展？」時，先回
 ## 重點整理
 
 <Callout type="tip" title="一句話記住">
-**Scalability = Stateless + Load Balancer + CAP 取捨，先找瓶頸再決定 Scale Up 還是 Scale Out。**
+**先找瓶頸、再去狀態、最後加機器。** 記憶口訣：「瓶（瓶頸）無（無狀態）分（分流）」— 找到瓶頸 → Stateless 改造 → Load Balancer 分流。
 </Callout>
 
 | 概念 | 說明 |

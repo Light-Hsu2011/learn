@@ -24,9 +24,12 @@ Adapter 屬於**結構型模式（Structural Pattern）**，重點在於如何�
 
 ## 什麼時候用？
 
-- 你想使用一個既有的類別，但它的介面跟你需要的不一樣
-- 你正在整合第三方 API 或 Legacy 系統，無法修改對方的程式碼
-- 你想建立一個可重用的類別，需要跟多個不相關的類別協作
+用以下 if/then 條件判斷：
+
+- **如果**你需要使用一個既有類別，但它的介面（方法名稱、參數、回傳值）跟你系統定義的不同，且你無法修改該類別 → 用 Adapter
+- **如果**你正在整合第三方 SDK 或 Legacy 系統，且未來可能切換供應商 → 用 Adapter 包一層，切換時只改 Adapter
+- **如果**兩邊的介面只差一個方法名稱 → 直接重構比加 Adapter 更乾淨
+- **如果**你可以修改來源類別 → 直接修改而非加 Adapter
 
 ## 什麼時候不該用？
 
@@ -37,6 +40,8 @@ Adapter 屬於**結構型模式（Structural Pattern）**，重點在於如何�
 ## 執行流程
 
 <StepDiagram data='[{"title":"辨識不相容介面","description":"Client 期望介面 A，但既有類別提供介面 B","icon":"1"},{"title":"定義目標介面","description":"定義 Client 真正需要的方法簽名","icon":"2"},{"title":"建立 Adapter","description":"Adapter 實作目標介面，內部持有 Adaptee 的實例","icon":"3"},{"title":"轉換呼叫","description":"Adapter 的方法內部將呼叫轉譯為 Adaptee 的方法","icon":"4"},{"title":"Client 使用","description":"Client 透過目標介面使用 Adapter，完全不知道背後是 Adaptee","icon":"5"}]' />
+
+流程解讀：Adapter 的核心工作是「翻譯」。它實作 Client 期望的目標介面（Target），內部持有 Adaptee 的實例。當 Client 呼叫目標介面的方法時，Adapter 將呼叫轉譯為 Adaptee 能理解的方法。這種方式稱為 Object Adapter（透過組合實現），另一種是 Class Adapter（透過多重繼承，較少使用）。
 
 ## 程式碼範例
 
@@ -170,6 +175,8 @@ System.out.println(parser.parse("<root><item>Hello</item></root>"));
 
 <Diagram data='{"nodes":[{"id":"client","label":"Client","type":"muted"},{"id":"target","label":"Target Interface (IDataParser)","type":"highlight"},{"id":"adapter","label":"Adapter (XmlParserAdapter)","type":"default"},{"id":"adaptee","label":"Adaptee (LegacyXmlParser)","type":"default"}],"edges":[{"from":"client","to":"target","label":"uses"},{"from":"adapter","to":"target","label":"implements"},{"from":"adapter","to":"adaptee","label":"wraps & delegates"}]}' />
 
+結構解讀：Client 只依賴 Target Interface（IDataParser），完全不知道 Adaptee 的存在。Adapter 實作 Target Interface，同時內部持有 Adaptee 的參考。當 Client 呼叫 `Parse()` 時，Adapter 將呼叫轉譯為 Adaptee 的 `ParseXmlToString()`。如果未來要換一個新的 XML 解析器，只需建立新的 Adapter，Client 程式碼零修改。
+
 ## 實戰補充
 
 <Callout type="tip" title="資深開發者經驗">
@@ -184,10 +191,33 @@ System.out.println(parser.parse("<root><item>Hello</item></root>"));
 
 <Quiz data='{"question":"Adapter 和被適配物件（Adaptee）之間的關係是什麼？","options":["Adapter 繼承 Adaptee","Adapter 持有 Adaptee 的實例並委派呼叫","Adaptee 持有 Adapter 的實例","兩者互相引用"],"answer":1,"explanation":"Object Adapter（最常見的形式）透過組合而非繼承，持有 Adaptee 的實例，在自己的方法中將呼叫轉譯給 Adaptee。"}' />
 
+## 面試常見問題
+
+**Q: Object Adapter 和 Class Adapter 有什麼差別？實務上用哪個？**
+
+A: Object Adapter 透過組合（持有 Adaptee 的參考），Class Adapter 透過多重繼承（同時繼承 Target 和 Adaptee）。實務上幾乎都用 Object Adapter，因為：(1) 大部分語言不支援多重繼承（C#、Java）；(2) 組合比繼承更靈活，可以在執行時切換 Adaptee。
+
+**Q: Adapter 和 Facade 都是「包一層」，差在哪裡？**
+
+A: Adapter 的目的是「介面轉換」— 讓不相容的介面能合作，通常是一對一的轉換。Facade 的目的是「簡化使用」— 把多個子系統的複雜操作封裝成簡單的高層介面，通常是一對多的封裝。
+
+**Q: 什麼時候 Adapter 會退化成不必要的間接層？**
+
+A: 當 Adapter 的方法只是直接呼叫 Adaptee 的方法而沒有任何轉換邏輯時，它就是不必要的。判斷標準：如果 Adapter 每個方法都只有一行 `return adaptee.xxx()`、且參數和回傳值完全相同，那就直接讓 Adaptee 實作目標介面即可。
+
+## 相關模式
+
+| 模式 | 關係 |
+|------|------|
+| **Facade** | 都是包裝層，但 Adapter 做介面轉換（一對一），Facade 做簡化封裝（一對多） |
+| **Decorator** | 結構相似（都包裝另一個物件），但 Adapter 改變介面、Decorator 保持介面不變並增加功能 |
+| **Proxy** | 結構也相似，但 Proxy 提供相同介面並控制存取，Adapter 提供不同介面 |
+| **Bridge** | Bridge 在設計階段就分離抽象與實作，Adapter 是事後補救不相容的介面 |
+
 ## 重點整理
 
 <Callout type="tip" title="一句話記住">
-**Adapter Pattern = 在不相容的介面之間加一個轉接頭，讓它們能合作。**
+**Adapter Pattern = 介面轉接頭：你改不了插座也改不了插頭，就加個轉接器。** 口訣：「改不動別人的碼，就包一層自己的」
 </Callout>
 
 | 概念 | 說明 |

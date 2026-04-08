@@ -29,7 +29,7 @@ description: "分割字串去除多餘空格後反轉單字順序"
 
 ## 解題思路
 
-<StepDiagram data='[{"title":"去除前後空格","description":"trim 掉首尾空白","icon":"1"},{"title":"分割單字","description":"用正則或 split 按空格分割，過濾空字串","icon":"2"},{"title":"反轉陣列","description":"將單字陣列反轉","icon":"3"},{"title":"重新拼接","description":"用單一空格 join 回字串","icon":"4"}]' />
+<StepDiagram data='[{"title":"去除前後空格","description":"呼叫 trim/strip 移除首尾空白字元","icon":"1"},{"title":"分割單字","description":"用正則 /\\s+/ 或語言內建 split 按連續空格分割，自動過濾空字串","icon":"2"},{"title":"反轉陣列","description":"對單字陣列呼叫 reverse() 或用 [::-1] 翻轉順序","icon":"3"},{"title":"重新拼接","description":"用 \" \".join() 或 string.Join(\" \") 以單一空格連接所有單字","icon":"4"}]' />
 
 ## 程式碼
 
@@ -72,18 +72,31 @@ def reverseWords(s: str) -> str:
 |--|------|-------|
 | 本解法 | O(n) | O(n) |
 
-分割和拼接都是 O(n)。
+分割需要掃描整個字串 O(n)，反轉單字陣列 O(單字數) ≤ O(n)，拼接 O(n)，合計 O(n)。空間上，存儲所有單字需要 O(n)。
+
+## 邊界情況
+
+- **字串前後有大量空格**：例如 `"   hello   "`，trim 後只剩一個單字，回傳 `"hello"`
+- **只有一個單字**：反轉後不變，直接回傳原單字
+- **字間有多個空格**：例如 `"a   b"`，split 需要正確處理連續空格，避免產生空字串
 
 ## 圖解
 
 <Diagram data='{"nodes":[{"id":"input","label":"\"  hello world  \"","type":"default"},{"id":"split","label":"[\"hello\", \"world\"]","type":"highlight"},{"id":"reverse","label":"[\"world\", \"hello\"]","type":"highlight"},{"id":"join","label":"\"world hello\"","type":"muted"}],"edges":[{"from":"input","to":"split","label":"split + trim"},{"from":"split","to":"reverse","label":"反轉"},{"from":"reverse","to":"join","label":"join"}]}' />
 
+圖表展示三步流程：原始字串有前後空格和兩個單字，split 後得到乾淨的單字陣列，反轉順序後用單一空格 join，多餘空格全部消除。
+
 ## 進階觀點
 
 <Callout type="tip" title="面試追問">
-- **O(1) 額外空間怎麼做？** 先反轉整個字串，再反轉每個單字。這是經典的「兩次反轉」技巧，但在字串 immutable 的語言中無法實現。
-- **如果要保留原始空格數量？** 那就不能用 split，需要手動解析。
-- **跟 stack 的關係？** 可以用 stack 先推入所有單字再彈出，效果等同反轉。
+- **Q: O(1) 額外空間怎麼做？**
+  A: 先反轉整個字串（`"eulb si yks eht"`），再逐一反轉每個單字（`"blue is sky the"`）。這是經典的「兩次反轉」技巧，但只在 C/C++ 等支援 mutable 字串的語言中才能真正做到 O(1) 空間。Java/Python/C# 的字串不可變，底層一定會配置新空間。
+
+- **Q: 如果要保留原始空格數量？**
+  A: 不能用 split，需要手動用雙指針從兩端往中間掃描單字，逐一交換。額外用一個陣列或指針記錄每段空格的長度，交換單字後按原始空格數量插入。
+
+- **Q: 跟 Stack 的關係？**
+  A: 把每個單字依序 push 進 Stack，再全部 pop 出來，自然得到反轉順序。Stack 的 LIFO 特性本質上就是反轉操作，時空複雜度與 split + reverse 相同。
 </Callout>
 
 ## 理解測驗

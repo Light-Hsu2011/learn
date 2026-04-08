@@ -24,11 +24,11 @@ description: "測試元件之間的互動，資料庫與 API 整合測試實戰"
 
 ## 核心觀念
 
-- **測試真實互動**：讓元件使用真實（或接近真實）的依賴，而不是全部 Mock
-- **邊界測試**：專注於元件之間的接口——API 契約、資料庫查詢、訊息格式
-- **Testcontainers**：用 Docker 容器啟動真實的資料庫、Redis、Kafka 來跑測試
-- **In-Memory DB**：用 SQLite In-Memory 替代真實資料庫，速度快但行為接近
-- **WebApplicationFactory**：ASP.NET Core 內建的整合測試工具，啟動真實的 HTTP pipeline
+- **測試真實互動**：讓元件使用真實（或接近真實）的依賴，而不是全部 Mock。判斷標準：如果 Mock 掉某個依賴會讓測試失去意義（例如 Mock 掉 SQL 查詢就無法驗證查詢邏輯），就用真實依賴
+- **邊界測試**：專注於元件之間的接口——API 契約（HTTP 狀態碼、回應格式）、資料庫查詢（SQL 語法、JOIN 邏輯）、訊息格式（JSON 序列化/反序列化）
+- **Testcontainers**：用 Docker 容器啟動真實的資料庫、Redis、Kafka 來跑測試。安裝步驟：C# 裝 `Testcontainers.MsSql` NuGet 套件；JS 裝 `testcontainers` npm 套件；Python 裝 `testcontainers` pip 套件。前提：本機必須有 Docker Desktop 或 Docker Engine 在執行
+- **In-Memory DB**：用 SQLite In-Memory 替代真實資料庫，速度快但行為接近。注意陷阱：EF Core 的 InMemory Provider 不支援 Foreign Key 約束、Transaction、Raw SQL，用 SQLite 的 `DataSource=:memory:` 會更可靠
+- **WebApplicationFactory**：ASP.NET Core 內建的整合測試工具，在測試進程內啟動完整的 HTTP pipeline（包含 Middleware、Routing、DI）。用法：讓測試類別實作 `IClassFixture<WebApplicationFactory<Program>>`，透過 `factory.CreateClient()` 取得 HttpClient
 
 ## 常見誤區
 
@@ -184,6 +184,17 @@ def test_create_order_valid_product(client, db_session):
 
 <Diagram data='{"nodes":[{"id":"integration","label":"整合測試","type":"highlight"},{"id":"api","label":"API 層","type":"default"},{"id":"service","label":"Service 層","type":"default"},{"id":"db","label":"資料庫","type":"default"},{"id":"testcontainers","label":"Testcontainers","type":"muted"},{"id":"inmemory","label":"In-Memory DB","type":"muted"},{"id":"waf","label":"WebApplicationFactory","type":"muted"}],"edges":[{"from":"integration","to":"api","label":"測試 HTTP 端點"},{"from":"api","to":"service","label":"呼叫商業邏輯"},{"from":"service","to":"db","label":"讀寫資料"},{"from":"testcontainers","to":"db","label":"提供真實容器"},{"from":"inmemory","to":"db","label":"快速替代方案"},{"from":"waf","to":"api","label":"啟動完整 pipeline"}]}' />
 
+此圖展示整合測試的典型架構：從 API 層到 Service 層到資料庫，形成一條完整的呼叫鏈。三種環境準備工具（Testcontainers、In-Memory DB、WebApplicationFactory）負責提供可控的依賴環境。選擇依據：追求行為精確用 Testcontainers，追求速度用 In-Memory DB。
+
+## 測試資料隔離策略
+
+| 策略 | 做法 | 速度 | 適用場景 |
+|------|------|------|----------|
+| **Transaction Rollback** | 每個測試包在 Transaction 中，結束時 Rollback | 最快 | 單一資料庫、不測 Transaction 行為 |
+| **每次重建 DB** | 每個測試前 Drop + Create Schema | 慢 | 測試少、Schema 簡單 |
+| **Snapshot Restore** | 建好初始資料後拍快照，每次還原 | 中等 | 需要複雜的 Seed Data |
+| **Random Data + Cleanup** | 每個測試用唯一 ID，測試後刪除 | 中等 | 共享資料庫、平行執行 |
+
 ## 實戰補充
 
 <Callout type="tip" title="資深開發者的經驗">
@@ -204,7 +215,7 @@ def test_create_order_valid_product(client, db_session):
 ## 重點整理
 
 <Callout type="tip" title="一句話記住">
-**整合測試 = 測試元件之間的「接縫」，用真實（或接近真實）的依賴驗證互動是否正確。**
+**口訣：「單元測零件、整合測接縫」—— 零件沒問題不代表裝起來沒問題，接縫才是 Bug 的藏身處。**
 </Callout>
 
 | 概念 | 說明 |

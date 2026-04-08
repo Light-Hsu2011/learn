@@ -28,10 +28,12 @@ Observer 屬於**行為型模式（Behavioral Pattern）**，重點在於物件�
 
 ## 什麼時候用？
 
-- 一個物件的狀態改變需要通知其他物件，但你不想讓它們緊密耦合
-- 訂閱者的數量和種類在執行時會動態變化
-- 你需要建立事件驅動架構（Event-Driven Architecture）
-- UI 元件需要在資料變化時自動更新顯示
+用以下 if/then 條件判斷：
+
+- **如果**一個物件狀態改變時，需要通知的對象數量不固定（執行時動態增減）→ 用 Observer
+- **如果**通知對象的種類多樣（Email、Log、UI 更新），且未來會新增 → 用 Observer
+- **如果**你正在建立事件驅動架構（Event-Driven Architecture，指系統元件透過事件而非直接呼叫來溝通的架構）→ 用 Observer
+- **如果**通知對象固定只有 1-2 個且不會變 → 直接呼叫方法更簡單，不需要 Observer
 
 ## 什麼時候不該用？
 
@@ -42,6 +44,8 @@ Observer 屬於**行為型模式（Behavioral Pattern）**，重點在於物件�
 ## 執行流程
 
 <StepDiagram data='[{"title":"定義 Subject 介面","description":"提供 Subscribe、Unsubscribe、Notify 方法","icon":"1"},{"title":"定義 Observer 介面","description":"宣告 Update 方法供 Subject 呼叫","icon":"2"},{"title":"實作具體 Subject","description":"維護觀察者清單，狀態變化時呼叫 Notify","icon":"3"},{"title":"實作具體 Observer","description":"在 Update 中定義收到通知後的反應","icon":"4"},{"title":"註冊與通知","description":"Observer 訂閱 Subject，Subject 狀態改變時通知所有 Observer","icon":"5"}]' />
+
+流程解讀：Observer 的核心是「訂閱制」。Subject 維護一份 Observer 清單，狀態改變時遍歷清單逐一呼叫 `Update()`。Observer 透過 Subscribe 加入清單、Unsubscribe 離開清單，全程動態管理。這種 Push Model（Subject 主動推送）是最常見的實作方式；另一種是 Pull Model（Subject 只通知「有變化」，Observer 自己來拉資料），適合 Observer 只需要部分資料的場景。
 
 ## 程式碼範例
 
@@ -304,6 +308,8 @@ channel.publishVideo("Strategy Pattern 快速入門");
 
 <Diagram data='{"nodes":[{"id":"client","label":"Client","type":"muted"},{"id":"subject","label":"Subject (IChannel)","type":"highlight"},{"id":"concrete_subject","label":"ConcreteSubject (YouTubeChannel)","type":"default"},{"id":"observer","label":"Observer Interface","type":"default"},{"id":"concrete_observer","label":"ConcreteObserver (Subscriber)","type":"default"}],"edges":[{"from":"client","to":"subject","label":"uses"},{"from":"subject","to":"observer","label":"notifies"},{"from":"concrete_subject","to":"subject","label":"implements"},{"from":"concrete_observer","to":"observer","label":"implements"}]}' />
 
+結構解讀：Subject 和 Observer 之間透過介面解耦。Subject 只知道 Observer Interface（不知道具體是誰），Observer 只知道 Subject Interface（不知道具體是哪個頻道）。這種鬆耦合讓兩邊可以獨立擴充 — 新增 Observer 類型或新增 Subject 類型都不影響對方。
+
 ## 實戰補充
 
 <Callout type="tip" title="資深開發者經驗">
@@ -324,10 +330,33 @@ channel.publishVideo("Strategy Pattern 快速入門");
 
 <Quiz data='{"question":"以下哪個不是 Observer Pattern 的實際應用？","options":["C# 的 event/delegate 機制","React 的 useState + useEffect","DOM 的 addEventListener","for 迴圈遍歷陣列"],"answer":3,"explanation":"for 迴圈是單純的迭代操作，不涉及狀態改變的通知機制。其他三個都是 Observer Pattern 的實際應用。"}' />
 
+## 面試常見問題
+
+**Q: Observer Pattern 的 Push Model 和 Pull Model 有什麼差別？**
+
+A: Push Model — Subject 在 Notify 時把完整資料推送給所有 Observer（如範例的 `Update(videoTitle)`）。Pull Model — Subject 只通知「狀態變了」，Observer 再自己呼叫 Subject 的 getter 取需要的資料。Push 簡單但 Observer 可能收到不需要的資料；Pull 靈活但 Observer 需要知道 Subject 的介面。
+
+**Q: 如何避免 Observer 的記憶體洩漏問題？**
+
+A: 三個策略：(1) 生命週期管理 — 物件銷毀時務必 Unsubscribe（C# 的 `IDisposable`、React 的 `useEffect` cleanup）；(2) 弱參考 — 用 `WeakReference` 讓 GC 能回收已不需要的 Observer；(3) 自動清理 — Subject 在 Notify 時偵測已失效的 Observer 並移除。
+
+**Q: C# 的 `event` 和手寫 Observer 有什麼差異？**
+
+A: C# 的 `event` 是語言層級的 Observer 實作。`event` 限制只有宣告者能 Invoke，外部只能 Subscribe/Unsubscribe，比手寫更安全。手寫 Observer 的優勢是可以自定義更複雜的邏輯（如篩選通知、非同步通知、優先順序）。
+
+## 相關模式
+
+| 模式 | 關係 |
+|------|------|
+| **Mediator** | Observer 是廣播（一對多），Mediator 是協調（多對多）。Observer 的 Subject 不管 Observer 怎麼反應，Mediator 會根據事件協調各方 |
+| **Command** | 可搭配使用 — Observer 收到通知後建立 Command 放入佇列，實現非同步處理 |
+| **Strategy** | Observer 的 Update 方法可以用 Strategy 來決定「收到通知後要做什麼」 |
+| **Singleton** | Event Bus（全域事件匯流排）常設計為 Singleton，但要小心變成隱形的全域狀態 |
+
 ## 重點整理
 
 <Callout type="tip" title="一句話記住">
-**Observer Pattern = 訂閱制通知：Subject 狀態一變，所有訂閱者自動收到消息。**
+**Observer Pattern = 報紙訂閱制：有新消息就自動派送，取消訂閱就不再收到。** 口訣：「訂閱收通知，退訂斷連結」
 </Callout>
 
 | 概念 | 說明 |

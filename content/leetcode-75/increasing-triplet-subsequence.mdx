@@ -29,7 +29,7 @@ description: "維護兩個最小值 first 和 second 來判斷是否存在遞增
 
 ## 解題思路
 
-<StepDiagram data='[{"title":"初始化","description":"first = ∞, second = ∞","icon":"1"},{"title":"遍歷陣列","description":"對每個數字 num 依序判斷","icon":"2"},{"title":"更新 first","description":"若 num <= first，更新 first = num","icon":"3"},{"title":"更新 second","description":"若 num <= second，更新 second = num","icon":"4"},{"title":"找到答案","description":"若 num > second，代表存在遞增三元組","icon":"5"}]' />
+<StepDiagram data='[{"title":"初始化","description":"first = ∞, second = ∞，分別追蹤目前看到的最小值和第二小值","icon":"1"},{"title":"遍歷陣列","description":"用 for-each 逐一處理每個數字 num","icon":"2"},{"title":"更新 first","description":"若 num ≤ first，把 first 更新為 num（找到更小的起點）","icon":"3"},{"title":"更新 second","description":"若 first < num ≤ second，把 second 更新為 num（找到更好的第二個數）","icon":"4"},{"title":"找到答案","description":"若 num > second，代表 first < second < num 三元組存在，回傳 true","icon":"5"}]' />
 
 ## 程式碼
 
@@ -87,18 +87,26 @@ def increasingTriplet(nums: list[int]) -> bool:
 |--|------|-------|
 | 本解法 | O(n) | O(1) |
 
-一次遍歷，只用兩個變數。
+只需一次遍歷 O(n)，每步做常數次比較。只用 first 和 second 兩個變數，空間 O(1)。
+
+## 邊界情況
+
+- **陣列長度小於 3**：不可能存在三元組，直接回傳 false
+- **嚴格遞減陣列**：例如 `[5,4,3,2,1]`，first 不斷更新但 second 永遠不會被設值，回傳 false
+- **含有重複元素**：例如 `[1,1,1,1]`，需要嚴格遞增，等於的情況不算，回傳 false
 
 ## 圖解
 
 <Diagram data='{"nodes":[{"id":"input","label":"nums: [2,1,5,0,4,6]","type":"default"},{"id":"step1","label":"first=2, second=∞","type":"default"},{"id":"step2","label":"first=1, second=∞","type":"default"},{"id":"step3","label":"first=1, second=5","type":"highlight"},{"id":"step4","label":"first=0, second=5","type":"default"},{"id":"step5","label":"first=0, second=4","type":"highlight"},{"id":"step6","label":"6 > 4 → true!","type":"muted"}],"edges":[{"from":"input","to":"step1","label":"num=2"},{"from":"step1","to":"step2","label":"num=1"},{"from":"step2","to":"step3","label":"num=5"},{"from":"step3","to":"step4","label":"num=0"},{"from":"step4","to":"step5","label":"num=4"},{"from":"step5","to":"step6","label":"num=6"}]}' />
 
+圖表逐步追蹤 first 和 second 的變化。關鍵轉折在 num=0 時：first 更新為 0 但 second 仍為 5（代表曾經存在比 5 小的數在前面）。num=4 時 second 更新為 4。最後 num=6 大於 second=4，找到三元組。
+
 ## 進階觀點
 
 <Callout type="tip" title="面試追問">
-- **first 更新後 second 還有效嗎？** 有效！second 的存在代表「曾經有一個比 second 小的數出現在它前面」，即使 first 已經更新到更小的值。
-- **如果要找長度 k 的遞增子序列？** 維護 k-1 個變數，或用 LIS（Longest Increasing Subsequence）的 O(n log n) 方法。
-- **跟 LIS 的關係？** 這題是 LIS 長度是否 ≥ 3 的特例。
+- **first 更新後 second 還有效嗎？** 有效。second 被設值時，代表在它之前曾經存在一個比它小的數（當時的 first）。即使 first 後來被更新為更小的值，那個「historical first < second」的事實不會改變。所以 num > second 時，三元組依然成立。
+- **如果要找長度 k 的遞增子序列？** 維護一個長度 k-1 的陣列，用類似邏輯逐一更新。更通用的做法是 LIS（Longest Increasing Subsequence）的 patience sorting 方法，時間 O(n log n)。
+- **跟 LIS 的關係？** 本題等同於判斷 LIS 長度是否 ≥ 3。本題的 first/second 就是 patience sorting 中 tails 陣列的前兩個元素。
 </Callout>
 
 ## 理解測驗

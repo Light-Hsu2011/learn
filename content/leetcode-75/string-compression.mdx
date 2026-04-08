@@ -29,7 +29,7 @@ description: "用雙指針原地壓縮字元陣列記錄字元和出現次數"
 
 ## 解題思路
 
-<StepDiagram data='[{"title":"初始化","description":"write = 0（寫入位置），read = 0（讀取位置）","icon":"1"},{"title":"計算連續字元","description":"從 read 開始數相同字元的數量 count","icon":"2"},{"title":"寫入字元","description":"chars[write++] = 當前字元","icon":"3"},{"title":"寫入計數","description":"若 count > 1，將數字逐位寫入","icon":"4"},{"title":"繼續","description":"read 移到下一組不同字元，重複直到結束","icon":"5"}]' />
+<StepDiagram data='[{"title":"初始化","description":"write = 0（下一個寫入位置），read = 0（當前讀取位置）","icon":"1"},{"title":"計算連續字元","description":"內層 while 迴圈：從 read 開始，當 chars[read] 等於當前字元時 read++ 和 count++","icon":"2"},{"title":"寫入字元","description":"把當前字元寫入 chars[write]，write 前進一格","icon":"3"},{"title":"寫入計數","description":"若 count > 1，把 count 轉為字串（如 12 → \"1\",\"2\"），逐字元寫入 chars[write++]","icon":"4"},{"title":"繼續","description":"read 已指向下一組不同字元的起點，回到步驟 2 重複直到 read 到底","icon":"5"}]' />
 
 ## 程式碼
 
@@ -109,18 +109,26 @@ def compress(chars: list[str]) -> int:
 |--|------|-------|
 | 本解法 | O(n) | O(1) |
 
-原地修改，只用常數額外空間。
+read 指針從頭到尾掃描一遍 O(n)，write 指針最多寫 n 個字元。原地修改不需額外陣列，只用 write、read、count 等常數變數，空間 O(1)。
+
+## 邊界情況
+
+- **每個字元都不重複**：例如 `["a","b","c"]`，每組 count=1 不寫數字，壓縮後長度不變
+- **只有一個字元**：例如 `["a"]`，回傳長度 1
+- **連續超過 9 個**：例如 12 個 b，需要寫入 `"b","1","2"` 三個字元，count.toString() 產生多位數字
 
 ## 圖解
 
 <Diagram data='{"nodes":[{"id":"input","label":"[a,a,b,b,c,c,c]","type":"default"},{"id":"step1","label":"寫入 a,2","type":"highlight"},{"id":"step2","label":"寫入 b,2","type":"highlight"},{"id":"step3","label":"寫入 c,3","type":"highlight"},{"id":"result","label":"[a,2,b,2,c,3] len=6","type":"muted"}],"edges":[{"from":"input","to":"step1","label":"read 掃描 aa"},{"from":"step1","to":"step2","label":"read 掃描 bb"},{"from":"step2","to":"step3","label":"read 掃描 ccc"},{"from":"step3","to":"result","label":"完成"}]}' />
 
+圖表展示三組壓縮：read 先掃描兩個 a（count=2），write 寫入 `a,2`；接著掃描兩個 b，寫入 `b,2`；最後三個 c，寫入 `c,3`。原陣列長度 7 壓縮為 6。
+
 ## 進階觀點
 
 <Callout type="tip" title="面試追問">
-- **計數超過 9 怎麼處理？** 如 12 要寫成 '1','2' 兩個字元，所以要把數字轉字串再逐字元寫入。
-- **為什麼寫入指針不會超過讀取指針？** 因為壓縮後的長度永遠 ≤ 原始長度（最差情況相等）。
-- **Run-Length Encoding 的應用？** 影像壓縮、簡單文字壓縮、面試高頻考點。
+- **計數超過 9 怎麼處理？** 把 count 轉為字串後逐字元寫入。例如 count=12 轉為 `"12"`，寫入 `'1'` 和 `'2'` 兩個字元。C# 用 `count.ToString()`，Python 用 `str(count)`。
+- **為什麼寫入指針不會超過讀取指針？** 一個字元出現 n 次，壓縮後佔 1+len(str(n)) 格。當 n=1 時佔 1 格（省略計數），n ≥ 2 時 1+digits(n) ≤ n（例如 n=2 佔 2 格，n=10 佔 3 格）。所以壓縮後長度永遠 ≤ 原始長度。
+- **Run-Length Encoding 的應用？** BMP 影像格式、傳真機資料傳輸、遊戲地圖壓縮都用 RLE。它對連續重複資料效果極佳，但對隨機資料可能反而膨脹。
 </Callout>
 
 ## 理解測驗

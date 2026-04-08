@@ -24,7 +24,7 @@ description: "排序藥水陣列後用二分搜尋找出每個法術的成功配
 
 ## 解題思路
 
-<StepDiagram data='[{"title":"排序藥水","description":"將 potions 升序排列","icon":"1"},{"title":"計算門檻","description":"對每個 spell，最低需要的藥水強度 = ceil(success / spell)","icon":"2"},{"title":"二分搜尋","description":"在排序後的 potions 中找第一個 >= 門檻的位置","icon":"3"},{"title":"計算配對數","description":"成功配對數 = potions.length - 找到的位置","icon":"4"}]' />
+<StepDiagram data='[{"title":"排序藥水","description":"將 potions 升序排列，排序後相同強度的藥水聚在一起，便於二分搜尋","icon":"1"},{"title":"計算門檻","description":"對每個 spell，最低需要的藥水強度 = ceil(success / spell)。例如 success=7, spell=3 → 門檻 = ceil(7/3) = 3","icon":"2"},{"title":"二分搜尋","description":"在排序後的 potions 中用 bisect_left 找第一個 ≥ 門檻的位置 pos","icon":"3"},{"title":"計算配對數","description":"pos 及其右邊的藥水都能成功配對，數量 = potions.length - pos","icon":"4"}]' />
 
 ## 程式碼
 
@@ -100,17 +100,29 @@ def successfulPairs(spells: list[int], potions: list[int], success: int) -> list
 
 其中 m = spells 長度，n = potions 長度。
 
+- **Time**：排序 potions O(n log n) + 對每個 spell 做一次二分搜尋 O(log n)，共 m 個 spell，合計 O((m + n) log n)
+- **Space**：排序為 in-place，不計輸出的話是 O(1)（Python 的 sort 內部用 O(n)）
+
 ## 圖解
 
 <Diagram data='{"nodes":[{"id":"sort","label":"排序 potions","type":"highlight"},{"id":"spell","label":"遍歷每個 spell","type":"default"},{"id":"threshold","label":"計算門檻值","type":"default"},{"id":"bsearch","label":"Binary Search 找位置","type":"highlight"},{"id":"count","label":"n - pos = 成功配對數","type":"muted"}],"edges":[{"from":"sort","to":"spell","label":"排序後"},{"from":"spell","to":"threshold","label":"ceil(success/spell)"},{"from":"threshold","to":"bsearch","label":"在 potions 中找"},{"from":"bsearch","to":"count","label":"計算數量"}]}' />
 
+流程展示「排序 + 二分搜尋」的經典模式：一次排序 O(n log n)，然後對每個 spell 用 O(log n) 找到分界點。
+分界點右邊的所有藥水乘以 spell 都 ≥ success，直接用 n - pos 算出配對數。
+
 ## 進階觀點
 
 <Callout type="tip" title="面試追問">
-- 為什麼要用 `ceil(success / spell)` 而不是 `success / spell`？因為需要乘積 ≥ success，所以門檻要向上取整。
-- 如果 spells 也排序，可以用雙指標進一步優化嗎？可以，但需要額外處理原始順序的對應關係。
-- 這題的核心模式是「排序 + 二分搜尋」，類似的題目包括：計算比某值大的元素數量、區間查詢等。
+- **為什麼要用 ceil(success / spell) 而不是直接除？** 因為需要 spell × potion ≥ success，換算成 potion ≥ success / spell。整數除法會截斷小數（如 7/3=2），但 potion=2 時 3×2=6 不夠 7，所以必須向上取整到 3。整數 ceil 公式：`(success + spell - 1) / spell`。
+- **如果 spells 也排序，能用雙指標優化嗎？** 可以。將 spells 降序排序後，spell 越小門檻越高，二分搜尋的起始位置只會右移。但需要額外的索引映射來還原原始順序，增加實作複雜度。
+- **這題的核心模式是什麼？** 「排序 + 二分搜尋」——當需要對每個查詢計算「滿足條件的元素數量」時，先排序再二分是最典型的做法。
 </Callout>
+
+## 邊界情況
+
+- **spell 極大導致門檻為 0 或 1**：所有 potions 都能配對，二分搜尋返回位置 0，配對數 = n
+- **spell 極小導致門檻超過 max(potions)**：沒有任何 potion 能配對，二分搜尋返回 n，配對數 = 0
+- **success 等於 1**：只要 spell × potion ≥ 1，因為 spell 和 potion 都是正整數，所以所有配對都成功
 
 ## 理解測驗
 

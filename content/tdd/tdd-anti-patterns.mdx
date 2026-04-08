@@ -27,19 +27,34 @@ TDD Anti-Pattern 是那些表面上遵循 TDD 流程，但實際上違反 TDD �
 ## 常見反模式
 
 ### The Liar（說謊者）
-測試永遠通過，但實際上沒有驗證任何有意義的東西。Assert 太寬鬆或根本沒有 Assert。
+
+- **症狀**：測試覆蓋率很高，但線上還是經常出 Bug；測試從來不會失敗，即使你故意改壞產品程式碼
+- **原因**：Assert 太寬鬆（如只檢查 `not null`）或根本沒有 Assert，測試永遠綠燈但什麼都沒驗證
+- **修正**：檢查每個測試的 Assert 是否驗證了具體的業務結果。把 `Assert.NotNull(result)` 改成 `Assert.Equal(expectedValue, result.Property)`
 
 ### The Giant（巨人）
-一個測試方法驗證太多東西，失敗時根本不知道哪裡壞了。違反「一個測試一個概念」原則。
+
+- **症狀**：一個測試方法超過 50 行，失敗時完全不知道哪個斷言出問題
+- **原因**：違反「一個測試一個概念」原則，把多個場景塞進同一個測試
+- **修正**：拆成多個小測試，每個只驗證一個行為。命名用 `Method_Scenario_Expected` 格式讓每個測試的目的一目瞭然
 
 ### The Mockery（Mock 狂魔）
-Mock 了所有東西，測試只驗證 Mock 的行為，完全沒碰到真正的業務邏輯。
+
+- **症狀**：每個測試有 10+ 行 Mock Setup，重構時 Setup 全部要改；測試只驗證 `Verify` 而不檢查業務結果
+- **原因**：Mock 了所有依賴包括不需要 Mock 的領域物件，測試只驗證 Mock 框架能正確運作
+- **修正**：只 Mock 外部邊界（HTTP、DB、第三方 API），領域物件和 Value Object 用真實實例。用 Fake（如 InMemoryRepository）取代過度的 Mock
 
 ### Ice Cream Cone（冰淇淋甜筒）
-Test Pyramid 倒過來——大量的 E2E 測試、少量的 Unit Test。執行慢、維護貴、回饋慢。
+
+- **症狀**：CI 跑一次要 30+ 分鐘，測試經常隨機失敗（Flaky Test），開發者開始忽略測試結果
+- **原因**：Test Pyramid 倒過來——大量的 E2E 測試、很少 Unit Test。E2E 天生慢且不穩定
+- **修正**：不要一次全改。策略：新功能強制從 Unit Test 開始寫，舊功能在修 Bug 時補 Unit Test，讓金字塔慢慢長出來
 
 ### The Inspector（窺探者）
-測試直接檢查私有方法或內部實作細節，重構時測試全部壞掉。
+
+- **症狀**：重構內部結構（例如改變私有方法名稱或拆分方法）後，大量測試壞掉，即使外部行為完全沒變
+- **原因**：測試直接存取私有欄位（如 `cart._items`）或呼叫私有方法（如 `cart._calculateSubtotal()`）
+- **修正**：只透過公開介面驗證行為。如果你覺得「不測私有方法就沒辦法覆蓋到」，代表該方法應該被 Extract 成一個獨立的、可測試的類別
 
 ## 辨識與修正流程
 
@@ -131,6 +146,18 @@ def test_good_verify_public_behavior():
 
 <Diagram data='{"nodes":[{"id":"anti","label":"TDD Anti-Patterns","type":"highlight"},{"id":"liar","label":"The Liar\n(空洞斷言)","type":"default"},{"id":"giant","label":"The Giant\n(測試太大)","type":"default"},{"id":"mockery","label":"The Mockery\n(過度 Mock)","type":"default"},{"id":"cone","label":"Ice Cream Cone\n(倒金字塔)","type":"default"},{"id":"inspector","label":"The Inspector\n(測試實作)","type":"default"},{"id":"fragile","label":"脆弱測試","type":"muted"},{"id":"slow","label":"執行緩慢","type":"muted"},{"id":"false","label":"虛假安全感","type":"muted"}],"edges":[{"from":"anti","to":"liar","label":"類型"},{"from":"anti","to":"giant","label":"類型"},{"from":"anti","to":"mockery","label":"類型"},{"from":"anti","to":"cone","label":"類型"},{"from":"anti","to":"inspector","label":"類型"},{"from":"liar","to":"false","label":"導致"},{"from":"giant","to":"fragile","label":"導致"},{"from":"mockery","to":"false","label":"導致"},{"from":"cone","to":"slow","label":"導致"},{"from":"inspector","to":"fragile","label":"導致"}]}' />
 
+此圖展示五種反模式分別導致的後果：The Liar 和 The Mockery 給你虛假安全感（以為有測試保護但其實沒有）；The Giant 和 The Inspector 產生脆弱測試（稍微重構就全部壞掉）；Ice Cream Cone 讓測試執行緩慢（CI 變成團隊的瓶頸）。
+
+## 快速自我檢查清單
+
+用以下問題檢查你的測試是否有反模式：
+
+1. **故意改壞一行產品程式碼，有測試會失敗嗎？** 如果沒有 → 可能是 The Liar
+2. **一個測試失敗時，你能在 10 秒內知道原因嗎？** 如果不能 → 可能是 The Giant
+3. **重構不改行為，測試會壞嗎？** 如果會 → 可能是 The Inspector 或 The Mockery
+4. **CI 跑完測試要多久？** 如果超過 10 分鐘 → 可能是 Ice Cream Cone
+5. **每個測試的 Mock Setup 超過 5 行嗎？** 如果是 → 可能是 The Mockery
+
 ## 實戰補充
 
 <Callout type="info" title="資深開發者心得">
@@ -152,7 +179,7 @@ def test_good_verify_public_behavior():
 ## 重點整理
 
 <Callout type="tip" title="一句話記住">
-**壞測試比沒測試更危險——它們給你虛假的安全感，同時消耗你的維護精力。**
+**口訣：「壞測試比沒測試更毒——虛假安全感 + 維護地獄，雙重打擊」。**
 </Callout>
 
 | 反模式 | 症狀 | 修正方向 |

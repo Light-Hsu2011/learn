@@ -34,7 +34,7 @@ description: "BFS 逐層遍歷，收集每層最後一個節點"
 
 ## 解題思路
 
-<StepDiagram data='[{"title":"初始化 Queue","description":"把 root 放入 Queue","icon":"1"},{"title":"逐層遍歷","description":"每次處理 Queue 中當前層的所有節點","icon":"2"},{"title":"記錄每層最後一個","description":"每層的最後一個節點就是右側可見的","icon":"3"},{"title":"加入子節點","description":"將下一層的子節點加入 Queue","icon":"4"}]' />
+<StepDiagram data='[{"title":"初始化 Queue","description":"將 root 放入 Queue，準備開始逐層遍歷","icon":"1"},{"title":"逐層遍歷","description":"用 levelSize = queue.Count 記錄當前層節點數，內層迴圈只處理這麼多個","icon":"2"},{"title":"記錄每層最後一個","description":"當 i == levelSize - 1 時，該節點是這一層最右邊的，加入結果列表","icon":"3"},{"title":"加入子節點","description":"對每個出隊節點，先加左子再加右子到 Queue，作為下一層的來源","icon":"4"}]' />
 
 ## 程式碼
 
@@ -117,18 +117,28 @@ def rightSideView(root: Optional[TreeNode]) -> list[int]:
 |--|------|-------|
 | 本解法 | O(n) | O(w) |
 
-w 是樹的最大寬度，最壞 O(n)。
+w 是樹的最大寬度，最壞 O(n)。Time O(n) 是因為每個節點恰好入隊出隊一次。Space O(w) 是因為 Queue 同時最多存放一層的所有節點，完全二元樹最底層有 n/2 個節點。
+
+## 邊界情況
+
+- **空樹**：root 為 null，直接回傳空列表
+- **只有左子樹的鏈**：如 `1→2→3` 全往左，每層只有一個節點，右側看到的就是每層唯一的節點
+- **完全二元樹**：每層最右邊的節點就是從右邊看到的，結果列表長度等於樹高
 
 ## 圖解
 
 <Diagram data='{"nodes":[{"id":"n1","label":"1 ← 第 0 層可見","type":"highlight"},{"id":"n2","label":"2","type":"muted"},{"id":"n3","label":"3 ← 第 1 層可見","type":"highlight"},{"id":"n5","label":"5","type":"muted"},{"id":"n4","label":"4 ← 第 2 層可見","type":"highlight"}],"edges":[{"from":"n1","to":"n2","label":"左"},{"from":"n1","to":"n3","label":"右"},{"from":"n2","to":"n5","label":"右"},{"from":"n3","to":"n4","label":"右"}]}' />
 
+圖表展示了三層 BFS 的過程：第 0 層只有 1（可見）、第 1 層有 2 和 3 取最後一個 3（可見）、第 2 層有 5 和 4 取最後一個 4（可見），結果 `[1, 3, 4]`。
+
 ## 進階觀點
 
 <Callout type="tip" title="面試追問">
-**DFS 解法**：也可以用 DFS，維護 depth 變數，當 depth == result.length 時代表這是該層第一次被訪問的最右節點（先走右再走左）。
+**Q: 如何用 DFS 解？**
+A: 用 DFS 先走右子樹再走左子樹，維護 depth 變數。當 `depth == result.length` 代表這是該層第一次被訪問的節點（因為先走右，所以是最右邊的）。Space 為 O(h) 優於 BFS 的 O(w)。
 
-**Left Side View**：改成每層第一個元素就是左側視圖。BFS 中改 `i == 0` 即可。
+**Q: 如何改成 Left Side View？**
+A: BFS 方案中把條件改為 `i == 0`（每層第一個元素）。DFS 方案中改為先走左子樹再走右子樹。
 
 **變體題**：LC 116 Populating Next Right Pointers、LC 102 Binary Tree Level Order Traversal。
 </Callout>

@@ -43,6 +43,8 @@ Chain of Responsibility 屬於**行為型模式（Behavioral Pattern）**，重�
 
 <StepDiagram data='[{"title":"定義 Handler 介面","description":"宣告 Handle 方法和設定下一個 Handler 的方法","icon":"1"},{"title":"實作具體 Handler","description":"每個 Handler 判斷自己能否處理請求","icon":"2"},{"title":"串連 Handler 鏈","description":"把各 Handler 依序連接起來","icon":"3"},{"title":"Client 發送請求","description":"把請求交給鏈的第一個 Handler","icon":"4"},{"title":"逐級傳遞","description":"能處理就處理，不能處理就傳給下一個","icon":"5"}]' />
 
+流程解讀：CoR 的精髓是「解耦發送者和處理者」。Client 不需要知道哪個 Handler 會處理請求，只要把請求丟給鏈頭就好。每個 Handler 有自主權決定「我能不能處理」— 能處理就處理並回傳結果，不能處理就呼叫 `base.Handle()` 把請求傳給下一個。鏈的順序和組合可以在執行時動態調整。
+
 ## 程式碼範例
 
 ### C# 版本
@@ -284,6 +286,8 @@ System.out.println(teamLead.handle(10)); // 沒有人有權限批准
 
 <Diagram data='{"nodes":[{"id":"client","label":"Client","type":"muted"},{"id":"handler","label":"Handler (ApprovalHandler)","type":"highlight"},{"id":"handler_a","label":"Handler A (TeamLead)","type":"default"},{"id":"handler_b","label":"Handler B (Manager)","type":"default"},{"id":"handler_c","label":"Handler C (Director)","type":"default"}],"edges":[{"from":"client","to":"handler","label":"sends request"},{"from":"handler_a","to":"handler","label":"extends"},{"from":"handler_b","to":"handler","label":"extends"},{"from":"handler_c","to":"handler","label":"extends"},{"from":"handler_a","to":"handler_b","label":"next"},{"from":"handler_b","to":"handler_c","label":"next"}]}' />
 
+結構解讀：Client 只跟鏈的第一個 Handler（TeamLead）互動，不知道後面還有誰。每個 Handler 透過 `next` 指標連接到下一個，形成單向鏈。請求沿著 A → B → C 傳遞，直到某個 Handler 處理或鏈尾返回預設結果。Handler 的順序和組合可以在執行時動態調整，這是比 if-else 更靈活的地方。
+
 ## 實戰補充
 
 <Callout type="tip" title="資深開發者經驗">
@@ -304,10 +308,29 @@ System.out.println(teamLead.handle(10)); // 沒有人有權限批准
 
 <Quiz data='{"question":"以下哪個是 Chain of Responsibility 在現代框架中的實際應用？","options":["資料庫的 JOIN 查詢","ASP.NET Core 的 Middleware Pipeline","CSS 的選擇器","HTML 的標籤巢套"],"answer":1,"explanation":"ASP.NET Core 的 Middleware 就是責任鏈。每個 Middleware 可以處理請求、修改請求，或呼叫 next() 把請求傳給下一個 Middleware。"}' />
 
+## 面試常見問題
+
+**Q: GoF 原版的 CoR 和 Middleware Pipeline 有什麼差別？**
+
+A: GoF 原版是「只有一個 Handler 處理」— 請求找到處理者就停下。Middleware Pipeline 是「每個 Handler 都處理一部分然後往下傳」— 每一層可以在 `next()` 前後各做一些事（如 ASP.NET Core Middleware 的 Request/Response 管道）。Pipeline 風格更像 Decorator Chain，但語意上歸類為 CoR 的變體。
+
+**Q: 如果請求走到鏈尾都沒人處理，該怎麼設計？**
+
+A: 三種常見策略：(1) Default Handler — 鏈尾放一個兜底處理者。(2) 拋出例外 — base class 的 `Handle()` 在 next 為 null 時拋出 `UnhandledRequestException`。(3) 靜默忽略 — 返回預設值（如範例的「沒有人有權限批准」）。選擇取決於業務需求：關鍵操作用例外，非關鍵操作用預設值。
+
+## 相關模式
+
+| 模式 | 關係 |
+|------|------|
+| **Decorator** | 結構相似（都是鏈式結構），但 Decorator 每層都執行，CoR 只有一個處理 |
+| **Composite** | CoR 的 Handler 可以是 Composite 結構的一部分 — 子節點處理不了就往父節點傳 |
+| **Command** | Command 封裝請求，CoR 決定誰來處理這個請求。兩者常搭配使用 |
+| **Mediator** | 都能處理請求分發，但 CoR 是分散式（一條鏈），Mediator 是集中式（一個中心） |
+
 ## 重點整理
 
 <Callout type="tip" title="一句話記住">
-**Chain of Responsibility = 逐級審批：能處理就處理，不能處理就往下傳。**
+**Chain of Responsibility = 審批鏈：逐級往上送，能批就批。** 口訣：「鏈式傳遞找處理者，動態增減不改碼」
 </Callout>
 
 | 概念 | 說明 |

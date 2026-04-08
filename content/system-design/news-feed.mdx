@@ -31,10 +31,31 @@ Facebook 和 Twitter 的動態牆就是這樣運作的 — 在「推」和「拉
 - **規模估算**：3 億 MAU、每人平均追蹤 200 人、每人每天看 10 次動態牆
 - **關鍵挑戰**：名人帳號（百萬追蹤者）的 Fan-out 爆炸問題
 
+## Fan-out on Write vs Fan-out on Read 對比
+
+| 比較維度 | Fan-out on Write（推模式） | Fan-out on Read（拉模式） |
+|----------|--------------------------|--------------------------|
+| **動作時機** | 發布貼文時立即執行 | 用戶打開動態牆時才執行 |
+| **讀取延遲** | 極低（直接讀 Cache） | 較高（需即時聚合多個來源） |
+| **寫入成本** | 高（每個粉絲都寫一份） | 低（只寫入作者自己的 Post 列表） |
+| **適合對象** | 粉絲數 ≤ 10 萬的普通帳號 | 粉絲數 > 10 萬的名人帳號 |
+| **資料新鮮度** | 發布後秒級可見 | 取決於查詢時的聚合速度 |
+| **儲存成本** | 高（每個粉絲一份 Feed Cache） | 低（只存作者的 Post 列表） |
+| **實務代表** | 早期 Twitter（全推模式） | Instagram 對名人帳號的處理 |
+
+### 選擇標準（Decision Matrix）
+
+- **粉絲數 ≤ 1,000**：100% 推模式，寫入量小，讀取體驗最好
+- **粉絲數 1,000 - 100,000**：推模式，搭配 Message Queue 非同步 Fan-out 即可處理
+- **粉絲數 > 100,000**：切換為拉模式。原因：假設名人每天發 5 篇貼文，100 萬粉絲意味著每天 500 萬次快取寫入，推模式的寫入延遲和成本不可接受
+- **混合策略（業界主流）**：普通帳號用推模式寫入粉絲的 Feed Cache，名人帳號只寫入自己的 Post 列表；用戶查看動態牆時，先讀 Feed Cache（推模式的結果），再即時拉取所追蹤名人的最新貼文，合併排序後回傳
+
 ## 注意事項
 
 <Callout type="warning" title="名人問題（Celebrity Problem）">
 一個有 1,000 萬粉絲的名人發一篇貼文，Fan-out on Write 需要寫入 1,000 萬份快取。這會造成巨大的寫入延遲和資源消耗。實務上對名人帳號使用 Fan-out on Read，普通帳號使用 Fan-out on Write — 混合策略。
+
+**數字感受**：假設 Redis 單次寫入延遲 0.5ms，寫入 1,000 萬份快取需要約 5,000 秒（即使 100 個 Worker 平行處理也要 50 秒）。這 50 秒的延遲意味著名人發文後近一分鐘粉絲才看到，完全不可接受。改用拉模式後，名人發文只需 1 次寫入，粉絲查詢時才拉取，延遲問題消失。
 </Callout>
 
 ## 設計流程
@@ -133,16 +154,35 @@ async function getFeed(userId: string, page: number): Promise<FeedItem[]> {
 
 <Diagram data='{"nodes":[{"id":"user","label":"User (Publisher)","type":"muted"},{"id":"postdb","label":"Post Database","type":"default"},{"id":"fanout","label":"Fan-out Service","type":"highlight"},{"id":"mq","label":"Message Queue","type":"default"},{"id":"worker","label":"Fan-out Workers","type":"default"},{"id":"feedcache","label":"Feed Cache (Redis)","type":"highlight"},{"id":"reader","label":"User (Reader)","type":"muted"},{"id":"feedsvc","label":"Feed Service","type":"highlight"},{"id":"ranking","label":"Ranking Service","type":"default"}],"edges":[{"from":"user","to":"postdb","label":"publish post"},{"from":"postdb","to":"fanout","label":"trigger"},{"from":"fanout","to":"mq","label":"fan-out tasks"},{"from":"mq","to":"worker","label":"consume"},{"from":"worker","to":"feedcache","label":"write to each follower"},{"from":"reader","to":"feedsvc","label":"get feed"},{"from":"feedsvc","to":"feedcache","label":"read cached feed"},{"from":"feedsvc","to":"ranking","label":"rank & merge"}]}' />
 
+上圖展示了推拉混合架構的資料流。左半部是「寫入路徑」：用戶發布貼文後，Fan-out Service 判斷是否需要推送，透過 Message Queue 將任務分配給多個 Worker 平行寫入粉絲的 Feed Cache。右半部是「讀取路徑」：用戶查看動態牆時，Feed Service 同時從 Feed Cache 讀取推模式的貼文，並即時拉取名人帳號的最新貼文，最後交給 Ranking Service 合併排序。
+
 ## 實戰補充
 
 <Callout type="tip" title="Ranking 排序演算法">
 現代社群平台不再只用時間排序，而是綜合多個訊號：
-1. **時間衰減**：越新的貼文分數越高
-2. **互動分數**：讚數、留言數、分享數的加權
-3. **用戶偏好**：你常互動的朋友的貼文權重更高
-4. **內容類型**：影片 vs 圖片 vs 純文字的權重不同
-5. **負面訊號**：被隱藏或檢舉的貼文降權
+1. **時間衰減（Time Decay）**：越新的貼文分數越高。常見公式：`score = baseScore * e^(-lambda * hoursOld)`，其中 lambda 控制衰減速度，通常 0.1-0.3 表示 3-10 小時後分數降到一半
+2. **互動分數（Engagement Score）**：讚數、留言數、分享數的加權。例如 Facebook 曾用 `like*1 + comment*6 + share*12` 的加權，分享權重最高因為代表最強的認同
+3. **用戶偏好（Affinity Score）**：你常互動的朋友的貼文權重更高。根據過去 30 天內你對該作者的點擊、留言、按讚次數計算親密度
+4. **內容類型（Content Type Boost）**：影片通常比純文字權重高 1.5-2 倍，因為平台希望提升影片觀看時間
+5. **負面訊號（Negative Signal）**：被隱藏或檢舉的貼文降權。用戶點擊「不想看到」會同時降低該作者未來貼文的權重
 </Callout>
+
+### 面試常見問題與參考答案
+
+**Q1：如果一個用戶追蹤了 5,000 人，拉模式的延遲會不會太高？**
+
+**A1**：會。拉模式需要查詢 5,000 個作者的最新貼文並合併排序，即使用 Redis 批次查詢，延遲也可能超過 500ms。解決方案有三：
+1. 對「活躍作者」（過去 7 天有發文的）做預計算，減少即時查詢量
+2. 分頁載入（只取 Top 20），避免一次查全部
+3. 背景預熱：用戶上線時非同步預拉取名人貼文到暫存 Cache，打開動態牆時直接讀取
+
+**Q2：Feed Cache 的 TTL 設多久比較合理？**
+
+**A2**：依用戶活躍度分層設定。每日活躍用戶（DAU）的 Feed Cache TTL 設 7 天，每週活躍用戶設 3 天，超過 30 天沒登入的用戶直接清除 Cache（下次登入時即時重建）。這樣可以在儲存成本和讀取速度之間取得平衡。以 3 億 MAU 計算，約 1 億 DAU 各存 500 篇貼文 ID（每篇 8 bytes），Feed Cache 約需 400 GB Redis 記憶體。
+
+**Q3：如何處理「刪除貼文」在所有粉絲 Feed 中的同步？**
+
+**A3**：不需要主動從每個粉絲的 Feed Cache 中移除。採用「惰性刪除」：在 Post DB 標記貼文為已刪除，Feed Service 在查詢時過濾掉已刪除的貼文。這比遍歷所有粉絲的 Cache 逐一刪除高效得多，代價是 Cache 中會有少量已刪除的貼文 ID 佔用空間，但會被 Trim 機制自然淘汰。
 
 ## 理解測驗
 
@@ -156,12 +196,15 @@ async function getFeed(userId: string, page: number): Promise<FeedItem[]> {
 
 <Callout type="tip" title="一句話記住">
 **動態消息 = 普通用戶推模式 + 名人拉模式 + Ranking 排序，Fan-out 用 Message Queue 非同步處理。**
+
+記憶口訣：**「推普拉名，排序合併」**（推送普通帳號、拉取名人帳號、排序後合併回傳）。
 </Callout>
 
 | 概念 | 說明 |
 |------|------|
-| **Fan-out on Write** | 發布時推送，讀取快但寫入量大 |
-| **Fan-out on Read** | 查看時拉取，寫入快但讀取慢 |
-| **混合策略** | 普通帳號推、名人帳號拉，兼顧效能 |
-| **Feed Cache** | Redis Sorted Set，按時間戳排序的貼文 ID 列表 |
-| **Ranking** | 時間衰減 + 互動分數 + 用戶偏好的綜合排名 |
+| **Fan-out on Write** | 發布時推送到每個粉絲的 Cache，讀取 O(1) 但寫入量與粉絲數成正比 |
+| **Fan-out on Read** | 用戶查看時才即時聚合，寫入 O(1) 但讀取需查詢所有追蹤者的貼文列表 |
+| **混合策略** | 粉絲 ≤ 10 萬用推模式，> 10 萬用拉模式。業界標準做法（Facebook、Twitter） |
+| **Feed Cache** | Redis Sorted Set，以時間戳為 score 儲存貼文 ID，`ZREVRANGE` 取最新 N 篇 |
+| **Ranking** | `score = timeDecay * engagement * affinity`，綜合時間衰減、互動數、用戶親密度 |
+| **惰性刪除** | 刪除貼文不主動清理 Cache，查詢時過濾已刪除的貼文 ID，避免大量寫入 |

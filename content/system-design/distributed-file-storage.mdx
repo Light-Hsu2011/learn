@@ -56,15 +56,21 @@ description: "雲端儲存的核心：同步、衝突解決、元資料管理"
 
 將檔案切成 4MB 的 Block，每個 Block 以其內容的 SHA-256 Hash 作為 ID。這帶來兩個好處：
 
-- **去重（Deduplication）**：相同內容的 Block 只存一份
-- **差異同步**：修改檔案後只上傳變更的 Block，節省頻寬
+- **去重（Deduplication）**：相同內容的 Block 只存一份。例如 100 個用戶各上傳一份相同的 PDF，Block Storage 中只會存一份 Block 資料，Metadata 指向同一組 Block Hash。實測中 Dropbox 報告去重率約 20-30%，能顯著節省儲存成本
+- **差異同步（Delta Sync）**：修改檔案後只上傳變更的 Block，節省頻寬。例如一個 100MB 的檔案修改了中間一段，只需上傳被修改的那 1-2 個 Block（4-8MB），而非重傳整個 100MB
+
+**Block 大小的選擇標準**：
+- **太小（如 1MB）**：Block 數量太多，Metadata 膨脹，Hash 計算和網路請求次數增加
+- **太大（如 16MB）**：小幅修改也要重傳整個 Block，Delta Sync 效率降低
+- **業界標準**：Dropbox 用 4MB，Google Drive 用 8MB。一般而言 4MB 是好的起點，可根據平均檔案大小調整
 
 ### Delta Sync 流程
 
-1. Client 計算本地檔案所有 Block 的 Hash
-2. 與 Metadata DB 中的版本比對
-3. 只上傳 Hash 不同的 Block
-4. 更新 Metadata，建立新版本記錄
+1. Client 計算本地檔案所有 Block 的 SHA-256 Hash（4MB 的 SHA-256 計算約 10-20ms，100MB 檔案的 25 個 Block 約需 0.5 秒）
+2. 將本地 Hash 列表發送到 Server，與 Metadata DB 中最新版本的 Hash 列表比對
+3. Server 回傳「缺少的 Block Hash 列表」，Client 只上傳這些 Block
+4. 上傳完成後，Server 在 Metadata DB 建立新版本記錄（`file_id` + `version_number` + `block_hash_list`）
+5. 舊版本的 Block 不會立即刪除（用於版本回溯），透過 Garbage Collection 定期清理無任何版本引用的孤立 Block
 
 ### 程式碼範例：Block Splitting
 
@@ -169,17 +175,96 @@ def get_changed_blocks(
 
 <Diagram data='{"nodes":[{"id":"client","label":"Client (Desktop/Mobile)","type":"muted"},{"id":"api","label":"API Server","type":"default"},{"id":"metadata","label":"Metadata DB","type":"highlight"},{"id":"block-storage","label":"Block Storage","type":"highlight"},{"id":"notify","label":"Notification Service","type":"default"},{"id":"queue","label":"Sync Queue","type":"default"},{"id":"client2","label":"Other Devices","type":"muted"}],"edges":[{"from":"client","to":"api","label":"upload changed blocks"},{"from":"api","to":"block-storage","label":"store blocks"},{"from":"api","to":"metadata","label":"update file version"},{"from":"api","to":"queue","label":"enqueue sync event"},{"from":"queue","to":"notify","label":"dispatch"},{"from":"notify","to":"client2","label":"push notification"},{"from":"client2","to":"api","label":"pull changed blocks"},{"from":"api","to":"block-storage","label":"read blocks"}]}' />
 
+上圖展示了檔案同步的完整流程。Client 上傳變更的 Block 到 API Server，API Server 同時做兩件事：將 Block 存入 Block Storage（S3），並在 Metadata DB 更新檔案版本資訊。接著將同步事件推入 Queue，由 Notification Service 推送通知到其他裝置。其他裝置收到通知後，向 API Server 拉取變更的 Block 列表，再從 Block Storage 下載對應的 Block。
+
+## Block Storage 的具體機制
+
+Block Storage 是分散式檔案儲存的核心元件，負責實際儲存 Block 資料。有兩種實作方式：
+
+### 方案一：使用雲端 Object Storage（如 S3）
+
+- **儲存方式**：每個 Block 以其 SHA-256 Hash 作為 Key 存入 S3。例如 `s3://my-bucket/blocks/a1b2c3d4...`
+- **優點**：99.999999999% 持久性、自動跨區域複製、無限容量
+- **缺點**：延遲較高（S3 讀取 P50 約 20-50ms）、API 呼叫有成本（每千次 GET $0.0004）
+- **適合場景**：大部分雲端儲存服務（Dropbox、Google Drive 早期架構）
+
+### 方案二：自建分散式儲存（如 HDFS / GlusterFS）
+
+- **儲存方式**：Block 分散存放在多台機器的本地磁碟上，搭配 3 副本策略（每個 Block 存 3 份在不同機器）
+- **優點**：讀取延遲低（本地磁碟 P50 約 1-5ms）、無 API 呼叫成本
+- **缺點**：需要自行管理硬體、處理節點故障恢復、容量擴展
+- **適合場景**：超大規模服務（Dropbox 2016 年從 S3 遷移到自建的 Magic Pocket，每年節省數千萬美元）
+
+**選擇標準**：月儲存量低於 100TB 用 S3（省維運成本），超過 100TB 且團隊有基礎設施能力則考慮自建。
+
+## 衝突解決的具體機制
+
+衝突發生在兩個裝置同時修改同一個檔案且無法自動合併時。以下是完整的衝突偵測與解決流程：
+
+### Version Vector（版本向量）
+
+Version Vector 是偵測衝突的核心資料結構。每個檔案維護一個向量，記錄各裝置的修改版本號：
+
+```
+檔案 report.docx 的 Version Vector:
+  DeviceA: 3   （DeviceA 修改了 3 次）
+  DeviceB: 2   （DeviceB 修改了 2 次）
+```
+
+**衝突偵測規則**：
+- 如果 Vector X 的每個分量都 ≥ Vector Y 的對應分量 → X 是 Y 的後繼版本，無衝突，直接採用 X
+- 如果 Vector X 和 Y 互相不可比（X 有某些分量大於 Y，Y 也有某些分量大於 X）→ 衝突
+
+**範例**：
+1. 初始狀態：`report.docx = {A:1, B:1}`（兩台裝置都同步到版本 1）
+2. DeviceA 離線修改 → `{A:2, B:1}`
+3. DeviceB 離線修改 → `{A:1, B:2}`
+4. 兩者上線同步時，Server 比對 `{A:2, B:1}` 和 `{A:1, B:2}`：A 的 A 分量大但 B 分量小，B 的 B 分量大但 A 分量小 → 互相不可比 → **衝突！**
+
+### 衝突解決策略（按檔案類型選擇）
+
+| 檔案類型 | 解決策略 | 原因 |
+|----------|---------|------|
+| **純文字 / 程式碼** | 嘗試三方合併（3-way merge）：以共同祖先版本為基準，合併兩邊的差異 | 文字檔可以逐行 Diff，合併成功率高 |
+| **Google Docs 類** | Operational Transformation（OT）或 CRDT 即時合併 | 每個操作（插入字元、刪除字元）有明確的語意，可以即時合併 |
+| **二進位檔案（.pptx、.xlsx、.psd）** | 保留兩個版本為「衝突副本」，讓用戶手動選擇 | 二進位檔案無法逐行 Diff，自動合併不可行 |
+| **設定檔（.json、.yaml）** | Last Writer Wins（最後寫入者勝出），以時間戳較新的為準 | 設定檔通常不會有多人同時修改的場景 |
+
+**衝突副本的用戶體驗**（以 Dropbox 為例）：
+1. Server 偵測到衝突後，保留兩個版本
+2. 較晚上傳的版本自動重命名為 `report (light_hsu's conflicted copy 2026-04-07).docx`
+3. 用戶在檔案管理器中看到兩個檔案，自行比對後決定保留哪個
+4. Dropbox 的統計顯示，約 90% 的衝突是用戶自己在兩台裝置上修改同一檔案造成的，真正的多人衝突只佔 10%
+
 ## 延伸討論
 
 <Callout type="tip" title="資深開發者筆記">
-**一致性模型**：Dropbox 採用「最後寫入者勝出」（Last Writer Wins）搭配衝突副本。Google Drive 對 Google Docs 使用 Operational Transformation（OT）實現即時協作。選擇哪種策略取決於檔案類型和協作模式。
+**離線支援的實作細節**：Client 端維護本地資料庫（如 SQLite），記錄所有離線操作的變更日誌（Change Log）。每條記錄包含：操作類型（create / modify / delete）、檔案路徑、Block Hash 列表、本地時間戳、Version Vector。重新連線後，Client 將 Change Log 逐條發送給 Server，Server 依序套用並偵測衝突。Dropbox 的 Client 有超過 50% 的程式碼在處理離線場景和邊緣情況（如離線重命名後又離線修改同一檔案）。
 
-**離線支援**：Client 端維護本地資料庫（如 SQLite），記錄所有離線操作。重新連線後，用版本向量（Version Vector）偵測衝突，依序同步變更。Dropbox 的 Client 有超過 50% 的程式碼在處理離線場景。
+**Content-Defined Chunking（CDC）**：固定大小切塊有個問題——在檔案開頭插入一段內容，後面所有 Block 的邊界都會移位，導致大量不必要的重傳。CDC 用 Rabin fingerprint 根據內容特徵決定切割點：滑動窗口掃描檔案，當窗口內容的 Hash 值符合特定模式（如最後 13 位為 0）時切割。這樣插入/刪除只影響切割點附近的 1-2 個 Block。CDC 的平均 Block 大小由模式的嚴格程度控制（13 位為 0 → 平均 8KB，20 位為 0 → 平均 1MB）。
 
-**Content-Defined Chunking（CDC）**：固定大小切塊有個問題——在檔案開頭插入一段內容，後面所有 Block 的邊界都會移位，導致大量不必要的重傳。CDC（如 Rabin fingerprint）根據內容特徵決定切割點，插入/刪除只影響局部 Block。
-
-**元資料 vs 檔案分離**：Metadata DB 用關聯式資料庫（PostgreSQL）儲存目錄結構、權限、版本歷史；Block Storage 用物件儲存（S3）儲存實際資料。兩者獨立擴展，元資料讀取頻繁可加 Redis 快取。
+**元資料 vs 檔案分離**：Metadata DB 用關聯式資料庫（PostgreSQL）儲存目錄結構、權限、版本歷史（讀寫比約 10:1，加 Redis 快取目錄結構）；Block Storage 用物件儲存（S3）或自建系統儲存實際資料。兩者獨立擴展——Metadata DB 的讀取 QPS 可能很高（用戶頻繁列出目錄），Block Storage 的頻寬需求很高（大檔案上傳下載），分離後各自用最合適的技術棧。
 </Callout>
+
+### 面試常見問題與參考答案
+
+**Q1：如何實現「檔案分享」功能？**
+
+**A1**：分享本質上是權限管理。在 Metadata DB 中增加 `sharing` 表：`file_id` + `shared_with_user_id` + `permission`（view / edit）+ `expiry_time`。產生分享連結時，建立一個 `share_token`（UUID），任何持有此 Token 的人可以根據權限存取檔案。支援兩種分享模式：
+- **指定用戶分享**：需要登入才能存取，權限綁定到特定 user_id
+- **公開連結分享**：任何持有連結的人都能存取，可設定密碼保護和過期時間
+
+**Q2：版本控制的儲存空間會不會爆炸？**
+
+**A2**：不會，因為 Block 級別的去重。假設一個 100MB 的檔案修改了 25 次，每次只改動 1-2 個 Block（4-8MB），25 個版本共享大部分 Block，實際儲存量約 100MB + 25 * 8MB = 300MB，而非 25 * 100MB = 2.5GB。加上保留策略（如只保留最近 30 天或最近 100 個版本），儲存成本可控。
+
+**Q3：如何處理超大檔案（如 50GB 的影片）？**
+
+**A3**：超大檔案的挑戰在於 Hash 計算時間和上傳穩定性。解決方案：
+1. **平行計算 Hash**：將檔案分成多個區段，用多執行緒平行計算各區段的 Block Hash
+2. **分塊上傳 + 斷點續傳**：與影音串流的 Chunked Upload 相同，每個 Block 獨立上傳，失敗只重傳該 Block
+3. **上傳進度持久化**：Client 在本地 SQLite 記錄每個 Block 的上傳狀態，即使關閉應用重新開啟也能續傳
+4. **Server 端組裝**：所有 Block 上傳完成後，Server 在 Metadata DB 記錄 Block Hash 列表作為檔案的最新版本
 
 ## 理解測驗
 
@@ -193,13 +278,17 @@ def get_changed_blocks(
 
 <Callout type="tip" title="一句話記住">
 **分散式檔案儲存 = Block 切塊去重 + Delta Sync 省頻寬 + 版本向量解衝突 + 離線優先設計。**
+
+記憶口訣：**「切塊存 Hash，差異只傳變，向量抓衝突，離線也能編」**。
 </Callout>
 
 | 概念 | 說明 |
 |------|------|
-| **Block Splitting** | 檔案切成固定大小的 Block，以 Hash 識別 |
-| **Delta Sync** | 只同步有變更的 Block，節省頻寬 |
-| **Deduplication** | 相同內容的 Block 只儲存一份 |
-| **Version Vector** | 追蹤各裝置的修改版本，偵測衝突 |
-| **Conflict Resolution** | 文字檔可嘗試 merge，二進位檔保留衝突副本 |
-| **核心挑戰** | 衝突解決、離線支援、大檔案頻寬效率 |
+| **Block Splitting** | 檔案切成 4MB Block，SHA-256 Hash 作為 ID。太小則 Metadata 膨脹，太大則 Delta Sync 效率降低 |
+| **Delta Sync** | 比對本地與雲端的 Block Hash 列表，只上傳差異 Block。100MB 檔改一段只傳 4-8MB |
+| **Deduplication** | 相同 Hash 的 Block 只存一份，Dropbox 實測去重率約 20-30% |
+| **Version Vector** | 每個檔案維護各裝置的版本號向量，向量互不可比時代表衝突 |
+| **Conflict Resolution** | 純文字用 3-way merge、Google Docs 用 OT/CRDT、二進位檔保留衝突副本讓用戶選 |
+| **Block Storage** | 月儲存量低於 100TB 用 S3，超過 100TB 考慮自建（如 Dropbox 的 Magic Pocket） |
+| **CDC** | Content-Defined Chunking，用 Rabin fingerprint 按內容特徵切割，插入不影響後續 Block |
+| **離線支援** | Client 維護 SQLite 變更日誌，上線後逐條同步並偵測衝突 |

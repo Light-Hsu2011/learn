@@ -59,12 +59,23 @@ Client 將大檔案切成固定大小的 chunk，透過 **Presigned URL** 直接
 
 ### 轉碼流水線（DAG Pipeline）
 
-轉碼不是單一步驟，而是一個有向無環圖（DAG）：
+轉碼不是單一步驟，而是一個有向無環圖（DAG，Directed Acyclic Graph），即一組有依賴關係但無循環的任務。各步驟的依賴關係如下：
 
-1. **提取音訊** → 獨立處理音訊編碼
-2. **產生縮圖** → 從關鍵幀擷取預覽圖
-3. **多解析度轉碼** → 1080p / 720p / 480p / 360p 平行處理
-4. **產生 Manifest** → 組合所有分段檔案的 HLS .m3u8 或 DASH .mpd
+1. **提取音訊** → 獨立處理音訊編碼（AAC 格式，128kbps-320kbps）。與視訊轉碼平行執行，互不依賴
+2. **產生縮圖** → 從關鍵幀（I-Frame）每隔 10 秒擷取一張預覽圖，用於播放器的進度條預覽。與視訊轉碼平行執行
+3. **多解析度轉碼** → 1080p / 720p / 480p / 360p 四個任務平行處理。每個解析度獨立轉碼，使用 H.264（相容性最好）或 H.265/HEVC（壓縮率高 40% 但編碼慢 2-3 倍）
+4. **產生 Manifest** → 等所有解析度轉碼完成後才執行。組合所有分段檔案的 HLS `.m3u8` 或 DASH `.mpd` 播放清單
+
+**轉碼的具體技術細節**：
+- **Codec（編解碼器）選擇**：H.264 是目前最通用的選擇，覆蓋 99% 的裝置。H.265 壓縮率高 40%（同畫質下檔案更小），但編碼時間是 H.264 的 2-3 倍且需要授權費。AV1（Google 開源）壓縮率比 H.265 更高且免費，但編碼速度慢 5-10 倍，目前只適合熱門影片的離線轉碼
+- **Container 格式**：MP4（儲存用）、TS（HLS 分段用）、WebM（DASH 分段用）。Container 是「容器」，負責包裝已編碼的影音串流
+- **分段長度**：HLS 和 DASH 將影片切成 2-10 秒的小分段。段長越短，切換解析度越即時，但檔案數量越多（增加 CDN 請求量）。業界標準是 6 秒
+- **轉碼工具**：FFmpeg 是業界標準的開源工具。雲端服務有 AWS Elastic Transcoder、AWS MediaConvert、GCP Transcoder API
+
+**轉碼成本與優化策略**：
+- 一支 1 小時 1080p 影片的轉碼，使用 AWS c5.2xlarge（8 vCPU）約需 15-30 分鐘，成本約 $0.50-1.00
+- **Spot Instance 降本**：轉碼是可中斷的批次任務，使用 AWS Spot Instance 可節省 60-90% 費用。中斷時只需重新排隊該解析度的轉碼任務
+- **按需轉碼（Just-in-Time）**：冷門影片只保留原始檔和最常用的 720p。當用戶首次請求 480p 時才觸發轉碼，轉碼完成後快取。這可減少 50% 以上的轉碼成本
 
 ### 程式碼範例：轉碼任務排程
 
@@ -153,21 +164,78 @@ class TranscodeOrchestrator:
             await self._queue.enqueue("transcode", job)
 ```
 
+### Adaptive Bitrate Streaming（ABR）詳解
+
+ABR 是讓影片在各種網路環境下都能流暢播放的核心技術。它的完整運作流程：
+
+1. **初始化**：播放器下載 Manifest 檔（HLS 的 `.m3u8` 或 DASH 的 `.mpd`），取得所有可用解析度和對應的分段 URL 列表
+2. **首段選擇**：播放器從最低解析度（如 360p）開始播放，確保最快啟動。或者根據用戶的歷史網速記錄選擇合適的初始解析度
+3. **頻寬估測**：每下載完一個分段，播放器計算實際下載速率（分段大小 / 下載時間）
+4. **解析度切換決策**：如果連續 3 個分段的下載速率都高於目標解析度的 Bitrate，則升檔（如 480p → 720p）。如果緩衝區剩餘時間低於 5 秒，則降檔。這個演算法稱為 ABR Algorithm，常見的有 Buffer-Based（BBA）和 Throughput-Based 兩類
+5. **無縫切換**：因為每個分段都是獨立的，播放器可以在任意分段邊界切換解析度，用戶感知上是流暢的
+
+**各解析度的 Bitrate 參考值**：
+
+| 解析度 | 影片 Bitrate | 音訊 Bitrate | 每小時檔案大小 |
+|--------|-------------|-------------|--------------|
+| **360p** | 0.5-1 Mbps | 64 kbps | 約 250 MB |
+| **480p** | 1-2 Mbps | 128 kbps | 約 500 MB |
+| **720p** | 2-4 Mbps | 128 kbps | 約 1 GB |
+| **1080p** | 4-8 Mbps | 256 kbps | 約 2 GB |
+| **4K** | 15-25 Mbps | 320 kbps | 約 7 GB |
+
+**HLS vs DASH 對比**：
+- **HLS（HTTP Live Streaming）**：Apple 主導，使用 `.m3u8` 播放清單和 `.ts` 分段檔案。iOS/macOS 原生支援，Android 和瀏覽器透過 hls.js 支援。市場佔有率最高
+- **DASH（Dynamic Adaptive Streaming over HTTP）**：MPEG 開放標準，使用 `.mpd` 播放清單和 `.m4s` 分段檔案。Android 原生支援，iOS 不支援。技術上更靈活（支援更多 Codec）
+- **實務做法**：大多數平台同時產出 HLS 和 DASH 兩種格式，用 Shaka Packager 或 FFmpeg 一次轉出。播放器端根據裝置類型選擇格式
+
 ## 架構圖
 
 <Diagram data='{"nodes":[{"id":"client","label":"Client (Upload)","type":"muted"},{"id":"api","label":"API Server","type":"default"},{"id":"storage","label":"Object Storage (S3)","type":"default"},{"id":"queue","label":"Message Queue","type":"default"},{"id":"transcode","label":"Transcode Workers","type":"highlight"},{"id":"metadata","label":"Metadata DB","type":"default"},{"id":"cdn","label":"CDN","type":"highlight"},{"id":"player","label":"ABR Player","type":"muted"}],"edges":[{"from":"client","to":"storage","label":"chunked upload"},{"from":"client","to":"api","label":"upload metadata"},{"from":"api","to":"metadata","label":"save info"},{"from":"api","to":"queue","label":"enqueue job"},{"from":"queue","to":"transcode","label":"dispatch"},{"from":"transcode","to":"storage","label":"save segments"},{"from":"storage","to":"cdn","label":"distribute"},{"from":"player","to":"cdn","label":"stream segments"},{"from":"player","to":"api","label":"fetch manifest"}]}' />
 
+上圖展示了影音串流的兩條路徑。上傳路徑（左→右）：Client 將影片分塊上傳到 S3，API Server 記錄 Metadata 並將轉碼任務推入 Queue，Worker 轉碼完成後將分段檔案存回 S3 並分發到 CDN。播放路徑（右→左）：ABR Player 從 API Server 取得 Manifest，再從最近的 CDN 節點逐段下載影片分段，根據網速動態切換解析度。
+
 ## 延伸討論
 
 <Callout type="tip" title="資深開發者筆記">
-**HLS vs DASH**：HLS（Apple 主導）相容性最好，DASH（開放標準）更靈活。實務上多數平台兩者都支援，用 packager（如 Shaka Packager）同時產出兩種格式。
+**DRM（數位版權管理）**：付費內容必須加密。三大 DRM 系統：
+- **Widevine**（Google）：覆蓋 Android、Chrome、大部分智慧電視
+- **FairPlay**（Apple）：覆蓋 iOS、macOS、Safari
+- **PlayReady**（Microsoft）：覆蓋 Windows、Edge、Xbox
+加密在轉碼後、分發前進行。每個分段檔案用 AES-128 加密，播放器需要先向 License Server 取得解密金鑰才能播放。
 
-**DRM（數位版權管理）**：付費內容必須加密。Widevine（Google）、FairPlay（Apple）、PlayReady（Microsoft）三大 DRM 系統覆蓋所有主流裝置。加密在轉碼後、分發前進行。
+**推薦系統**：影片的觀看完成率、點擊率是核心特徵。協同過濾（Collaborative Filtering，「看過 A 的人也看了 B」）結合內容特徵（標籤、分類）是業界常見做法。推薦系統通常獨立為一個微服務，與串流服務解耦。
 
-**推薦系統**：影片的觀看完成率、點擊率是核心特徵。協同過濾（Collaborative Filtering）結合內容特徵（標籤、分類）是業界常見做法。推薦系統通常獨立為一個微服務。
-
-**成本控制**：轉碼是最大的運算成本。可以用 Spot Instance 降低費用，冷門影片只保留低解析度版本，熱門影片才做全解析度轉碼。
+**CDN 成本控制**：CDN 流量是影音平台最大的營運成本（Netflix 每月 CDN 費用估計數千萬美元）。優化策略包括：
+- **自建 CDN 節點**：Netflix 的 Open Connect 在全球 ISP 機房部署自有伺服器，減少對第三方 CDN 的依賴
+- **冷熱分層**：熱門影片（前 20%）推送到所有 CDN 節點，冷門影片只保留在 Origin Storage，首次請求時才拉取到邊緣節點
+- **預載策略**：根據用戶的觀看歷史和推薦結果，在用戶可能觀看前就將影片預載到最近的 CDN 節點
 </Callout>
+
+### 面試常見問題與參考答案
+
+**Q1：如何支援直播串流（Live Streaming）？與點播（VOD）有何不同？**
+
+**A1**：直播與點播的核心差異在於「內容是否已經存在」：
+- **點播（VOD）**：影片已經轉碼完成並存在 CDN 上，播放器按需下載。延遲不敏感（幾秒都可以）
+- **直播（Live）**：影片邊拍邊播，需要即時轉碼並分發。端到端延遲目標 2-5 秒（普通直播）或 ≤ 1 秒（互動直播）
+- **直播架構**：Streamer 用 RTMP 協議推流到 Ingest Server → 即時轉碼為 HLS/DASH 的低延遲模式（LL-HLS 分段 2 秒，普通 HLS 分段 6 秒）→ CDN 分發 → 播放器用 HLS 拉流
+- **直播特有挑戰**：突發流量（百萬人同時觀看）、即時互動（彈幕、打賞）、內容審核（需要在轉碼前加入 AI 審核步驟）
+
+**Q2：如何確保上傳的大檔案不遺失？**
+
+**A2**：三道防線確保持久性：
+1. **分塊上傳 + 校驗**：每個 Chunk 上傳後，Server 回傳該 Chunk 的 MD5/SHA-256，Client 比對確認無損
+2. **S3 持久性**：AWS S3 Standard 的持久性為 99.999999999%（11 個 9），自動在 3 個以上的 Availability Zone 儲存副本
+3. **上傳狀態追蹤**：Metadata DB 記錄每個 Chunk 的上傳狀態。如果上傳中斷，Client 重新連線後查詢已完成的 Chunk，只續傳缺少的部分
+
+**Q3：Presigned URL 是什麼？為什麼上傳不經過 API Server？**
+
+**A3**：Presigned URL 是一個帶有簽名的臨時 URL，允許 Client 直接對 S3 進行上傳/下載，無需經過 API Server。流程：
+1. Client 向 API Server 請求上傳權限
+2. API Server 驗證身份後，用 AWS SDK 產生 Presigned URL（包含操作類型、過期時間、簽名）
+3. Client 直接用這個 URL 上傳到 S3，不經過 API Server
+好處是避免 API Server 成為頻寬瓶頸——一支 5 GB 的影片如果經過 API Server 中轉，會佔用大量網路頻寬和連線數。Presigned URL 讓上傳流量直接走 S3，API Server 只處理輕量的 Metadata 請求。
 
 ## 理解測驗
 
@@ -181,13 +249,17 @@ class TranscodeOrchestrator:
 
 <Callout type="tip" title="一句話記住">
 **影音串流 = 大檔案分塊上傳 + 非同步 DAG 轉碼 + CDN 就近分發 + ABR 自適應播放。**
+
+記憶口訣：**「分塊傳，平行碼，CDN 散，ABR 換」**（分塊上傳、平行轉碼、CDN 分散、ABR 切換畫質）。
 </Callout>
 
 | 概念 | 說明 |
 |------|------|
-| **Chunked Upload** | 大檔案切塊上傳，支援斷點續傳 |
-| **Transcode Pipeline** | DAG 排程，平行產出多種解析度 |
-| **HLS / DASH** | 串流協議，將影片切成小分段逐段傳輸 |
-| **CDN** | 全球邊緣節點快取，降低延遲 |
-| **Adaptive Bitrate** | 播放器根據網速動態切換畫質 |
-| **核心挑戰** | 轉碼成本控制、全球低延遲分發、高可用 |
+| **Chunked Upload** | 大檔案切成 5MB 區塊，透過 Presigned URL 直接傳到 S3，支援斷點續傳 |
+| **Transcode Pipeline** | DAG 排程：音訊提取、縮圖產生、多解析度轉碼平行執行，最後產生 Manifest |
+| **Codec** | H.264（最通用）、H.265（壓縮率高 40% 但慢 2-3 倍）、AV1（免費但慢 5-10 倍） |
+| **HLS / DASH** | HLS 用 `.m3u8` + `.ts`（Apple 生態），DASH 用 `.mpd` + `.m4s`（開放標準），分段 6 秒 |
+| **CDN** | 熱門影片推送全球節點，冷門影片首次請求才拉取。自建 CDN（如 Netflix Open Connect）降本 |
+| **Adaptive Bitrate** | 播放器監測下載速率，連續 3 段高於目標 Bitrate 則升檔，緩衝區低於 5 秒則降檔 |
+| **DRM** | Widevine（Google）+ FairPlay（Apple）+ PlayReady（Microsoft）覆蓋所有裝置 |
+| **成本優化** | Spot Instance 省 60-90% 轉碼費、冷門影片按需轉碼、CDN 冷熱分層 |

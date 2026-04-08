@@ -38,6 +38,8 @@ Prototype 屬於**建立型模式（Creational Pattern）**，重點在於透過
 
 <StepDiagram data='[{"title":"定義 Prototype 介面","description":"宣告 Clone() 方法，回傳自身型別的副本","icon":"1"},{"title":"實作 Clone","description":"在具體類別中實作深複製或淺複製邏輯","icon":"2"},{"title":"建立原型物件","description":"建立一個完整配置好的物件作為原型","icon":"3"},{"title":"複製原型","description":"呼叫 Clone() 取得副本","icon":"4"},{"title":"修改副本","description":"在副本上調整需要變更的部分","icon":"5"}]' />
 
+流程解讀：Prototype 的核心概念是「基於既有物件建立新物件」。先建立一個完整配置好的原型物件，需要新物件時呼叫 `Clone()` 複製一份，再在副本上做微調。Deep Clone（深複製，遞迴複製所有巢狀物件，副本與原型完全獨立）比 Shallow Clone（淺複製，只複製第一層，巢狀物件仍共用參考）安全但成本更高。選擇取決於物件結構的複雜度。
+
 ## 程式碼範例
 
 ### C# 版本
@@ -260,6 +262,8 @@ System.out.println(februaryReport);  // Report: 2024 年 2 月報 | Sections: 3
 
 <Diagram data='{"nodes":[{"id":"client","label":"Client","type":"muted"},{"id":"prototype","label":"Prototype (interface)","type":"highlight"},{"id":"concrete","label":"ReportTemplate (ConcretePrototype)","type":"default"},{"id":"cloned","label":"Cloned Object","type":"default"}],"edges":[{"from":"client","to":"prototype","label":"clone()"},{"from":"prototype","to":"concrete","label":"implements"},{"from":"concrete","to":"cloned","label":"creates copy"}]}' />
 
+結構解讀：Client 透過 Prototype 介面的 `Clone()` 方法建立新物件，不需要知道具體類別的建構子。ConcretePrototype 實作 `Clone()` 來複製自身的所有狀態。複製出的 Cloned Object 是獨立的副本，修改副本不影響原型。這種方式讓 Client 完全解耦於具體類別的建構細節。
+
 ## 實戰補充
 
 <Callout type="tip" title="資深開發者經驗">
@@ -280,10 +284,29 @@ System.out.println(februaryReport);  // Report: 2024 年 2 月報 | Sections: 3
 
 <Quiz data='{"question":"以下哪個場景最適合用 Prototype Pattern？","options":["建立一個空的字串","遊戲中需要大量生成配置相似的怪物，每隻只有少許屬性差異","執行一個簡單的數學運算","讀取環境變數"],"answer":1,"explanation":"大量生成相似物件時，從原型 Clone 再微調比每次從頭建構更有效率，這是 Prototype 的經典場景。"}' />
 
+## 面試常見問題
+
+**Q: 實作 Deep Clone 有哪些方式？各有什麼優缺點？**
+
+A: (1) 手動逐層複製 — 最精確但最繁瑣，每新增欄位都要記得更新 Clone 方法。(2) 序列化/反序列化 — `JsonSerializer.Deserialize(JsonSerializer.Serialize(obj))` 簡單但效能差。(3) 反射（Reflection）— 通用但效能差且遇到特殊型別可能出錯。(4) Source Generator — .NET 可用 Source Generator 自動產生 Clone 方法，兼顧效能和維護性。
+
+**Q: Prototype 和 Factory Method 都是建立型模式，怎麼選？**
+
+A: Factory Method 透過子類別覆寫來決定建立什麼，適合「根據條件選擇不同類別」。Prototype 透過複製來建立，適合「新物件和現有物件只有少許差異」。選擇標準：如果新物件需要和某個既有物件幾乎一樣 → Prototype；如果需要根據條件建立完全不同的物件 → Factory Method。
+
+## 相關模式
+
+| 模式 | 關係 |
+|------|------|
+| **Factory Method / Abstract Factory** | 都是建立型模式。Factory 透過繼承決定「建什麼」，Prototype 透過複製建立「跟誰像」 |
+| **Memento** | 都涉及物件狀態的拍照，但 Prototype Clone 的目的是建立新物件，Memento 的目的是回復舊狀態 |
+| **Composite** | Composite 結構中的節點可以用 Prototype Clone 整棵子樹 |
+| **Decorator** | 需要 Clone 帶有 Decorator 的物件時，必須確保整條裝飾鏈都被正確複製 |
+
 ## 重點整理
 
 <Callout type="tip" title="一句話記住">
-**Prototype Pattern = 複製一個現成的物件，在副本上修改，比從頭建立更快。**
+**Prototype Pattern = 影印機：複製一份改個名字，比從白紙重畫快。** 口訣：「複製比建立快，記得用 Deep Clone」
 </Callout>
 
 | 概念 | 說明 |

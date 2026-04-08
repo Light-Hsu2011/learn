@@ -43,6 +43,8 @@ Visitor 屬於**行為型模式（Behavioral Pattern）**，重點在於將演�
 
 <StepDiagram data='[{"title":"定義 Visitor 介面","description":"為每種元素型別宣告一個 Visit 方法","icon":"1"},{"title":"定義 Element 介面","description":"宣告 Accept(visitor) 方法","icon":"2"},{"title":"實作具體 Element","description":"Accept 方法中呼叫 visitor.Visit(this)","icon":"3"},{"title":"實作具體 Visitor","description":"在每個 Visit 方法中定義對該型別的操作","icon":"4"},{"title":"Client 走訪結構","description":"遍歷所有元素，對每個呼叫 Accept(visitor)","icon":"5"}]' />
 
+流程解讀：Visitor 的核心技巧是 Double Dispatch。第一次分派：Client 呼叫 `element.Accept(visitor)`，根據 element 的具體型別分派到正確的 Accept 實作。第二次分派：Accept 內部呼叫 `visitor.VisitCircle(this)` 或 `visitor.VisitRectangle(this)`，根據 visitor 的具體型別分派到正確的 Visit 方法。兩次分派確保了「正確的 Visitor 方法」作用在「正確的 Element 型別」上。
+
 ## 程式碼範例
 
 ### C# 版本
@@ -336,6 +338,8 @@ System.out.printf("總面積：%.2f%n", calc.getTotalArea());
 
 <Diagram data='{"nodes":[{"id":"client","label":"Client","type":"muted"},{"id":"element","label":"Element (Shape)","type":"default"},{"id":"concrete_a","label":"ConcreteElement A (Circle)","type":"default"},{"id":"concrete_b","label":"ConcreteElement B (Rectangle)","type":"default"},{"id":"visitor","label":"Visitor Interface","type":"highlight"},{"id":"concrete_v","label":"ConcreteVisitor (AreaCalculator)","type":"default"}],"edges":[{"from":"client","to":"element","label":"iterates"},{"from":"concrete_a","to":"element","label":"implements"},{"from":"concrete_b","to":"element","label":"implements"},{"from":"element","to":"visitor","label":"accept(visitor)"},{"from":"concrete_v","to":"visitor","label":"implements"}]}' />
 
+結構解讀：Client 遍歷 Element 集合，對每個 Element 呼叫 `accept(visitor)`。Element 的 `accept` 方法內部呼叫 `visitor.visitXxx(this)`，這就是 Double Dispatch（雙重分派，指方法的最終執行取決於兩個物件的型別而非一個）。新增操作只需新增 Visitor（如 ShapeDescriber），Element 類別完全不用改。但新增 Element 型別需要修改所有 Visitor。
+
 ## 實戰補充
 
 <Callout type="tip" title="資深開發者經驗">
@@ -356,10 +360,29 @@ System.out.printf("總面積：%.2f%n", calc.getTotalArea());
 
 <Quiz data='{"question":"以下哪個是 Visitor Pattern 的缺點？","options":["無法處理多種型別","新增元素型別時需要修改所有 Visitor","執行速度太慢","無法累積狀態"],"answer":1,"explanation":"每新增一種 Element 型別，所有 Visitor 都要新增對應的 Visit 方法。這是 Visitor Pattern 最大的缺點。"}' />
 
+## 面試常見問題
+
+**Q: Visitor Pattern 什麼時候不該用？**
+
+A: 當 Element 型別經常新增時不該用。因為每新增一種 Element，所有 Visitor 都要新增對應的 `Visit` 方法，違反開放封閉原則。判斷標準：如果型別穩定（如 AST 節點型別、幾何圖形種類）且操作經常新增 → 適合 Visitor。如果型別經常變（如電商的商品種類）→ 用普通的多型更適合。
+
+**Q: C# 的 Pattern Matching 能取代 Visitor 嗎？**
+
+A: 部分場景可以。C# 8+ 的 `switch expression` + `is` 模式在簡單場景下比 Visitor 更簡潔：`shape switch { Circle c => ..., Rectangle r => ... }`。但 Visitor 在以下場景仍有優勢：(1) 操作需要跨元素累積狀態（如 AreaCalculator 的 totalArea）；(2) 需要編譯時型別安全（新增 Element 時 Visitor 介面會強制你處理）；(3) 需要對整個結構做遞迴走訪。
+
+## 相關模式
+
+| 模式 | 關係 |
+|------|------|
+| **Iterator** | Iterator 控制走訪順序，Visitor 控制對每個元素做什麼操作。常搭配使用 |
+| **Composite** | Visitor 常用來走訪 Composite 結構，對 Leaf 和 Composite 節點做不同操作 |
+| **Strategy** | 如果只需要替換單一操作 → Strategy。如果需要對多種型別的元素各自定義操作 → Visitor |
+| **Interpreter** | Interpreter 的語法樹常用 Visitor 來走訪和求值 |
+
 ## 重點整理
 
 <Callout type="tip" title="一句話記住">
-**Visitor Pattern = 外掛操作：物件結構不動，新操作用 Visitor 外掛上去。**
+**Visitor Pattern = 外掛操作：結構不動，操作外掛。** 口訣：「型別穩定加操作，雙重分派是核心」
 </Callout>
 
 | 概念 | 說明 |

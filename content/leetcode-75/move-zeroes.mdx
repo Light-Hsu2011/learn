@@ -26,7 +26,7 @@ description: "用快慢指針將非零元素往前搬並保持相對順序"
 
 ## 解題思路
 
-<StepDiagram data='[{"title":"初始化","description":"slow = 0（下一個非零元素應放的位置）","icon":"1"},{"title":"遍歷","description":"fast 從 0 到 n-1 掃描","icon":"2"},{"title":"搬移","description":"若 nums[fast] != 0，交換 nums[slow] 和 nums[fast]，slow++","icon":"3"},{"title":"結束","description":"所有非零元素已前移，零自然在後面","icon":"4"}]' />
+<StepDiagram data='[{"title":"初始化","description":"slow = 0，指向下一個非零元素應該放置的位置","icon":"1"},{"title":"遍歷","description":"fast 用 for 迴圈從 0 到 n-1 逐一掃描每個元素","icon":"2"},{"title":"搬移","description":"若 nums[fast] != 0，執行 swap(nums[slow], nums[fast])，然後 slow++。交換把非零值搬到前面，零被推到後面","icon":"3"},{"title":"結束","description":"遍歷完成後，nums[0..slow-1] 全是非零且保持原順序，nums[slow..n-1] 全是零","icon":"4"}]' />
 
 ## 程式碼
 
@@ -78,18 +78,31 @@ def moveZeroes(nums: list[int]) -> None:
 |--|------|-------|
 | 本解法 | O(n) | O(1) |
 
-一次遍歷，原地交換。
+fast 從 0 到 n-1 只走一遍 O(n)，每步做常數次操作。原地交換不需額外陣列，空間 O(1)。
+
+## 邊界情況
+
+- **沒有零**：例如 `[1,2,3]`，slow 和 fast 同步前進，每次交換等於自己跟自己交換，陣列不變
+- **全是零**：例如 `[0,0,0]`，fast 掃完都不觸發交換，slow 停在 0，陣列不變
+- **只有一個元素**：`[0]` 或 `[1]`，迴圈只跑一次，結果不變
 
 ## 圖解
 
 <Diagram data='{"nodes":[{"id":"input","label":"[0,1,0,3,12]","type":"default"},{"id":"s1","label":"fast=1: swap → [1,0,0,3,12]","type":"highlight"},{"id":"s2","label":"fast=3: swap → [1,3,0,0,12]","type":"highlight"},{"id":"s3","label":"fast=4: swap → [1,3,12,0,0]","type":"highlight"},{"id":"result","label":"[1,3,12,0,0]","type":"muted"}],"edges":[{"from":"input","to":"s1","label":"slow=0"},{"from":"s1","to":"s2","label":"slow=1"},{"from":"s2","to":"s3","label":"slow=2"},{"from":"s3","to":"result","label":"完成"}]}' />
 
+圖表展示交換過程：fast=0 時值為 0 跳過，fast=1 時值為 1 與 slow=0 交換。fast=2 時值為 0 跳過，fast=3 時值為 3 與 slow=1 交換。每次交換後 slow 前進一格，零被自然推到後方。
+
 ## 進階觀點
 
 <Callout type="tip" title="面試追問">
-- **為什麼用交換而不是直接覆蓋再補零？** 兩種都可以。交換的好處是一次遍歷搞定，不需要第二次遍歷補零。
-- **如果要保持零的位置不變，移動非零元素？** 題意不同，需要不同策略。
-- **快慢指針模式還能用在哪？** 移除特定元素、去除重複元素、鏈表找環等。
+- **Q: 為什麼用交換而不是直接覆蓋再補零？**
+  A: 兩種都可以，都是 O(n)。覆蓋法需要兩次遍歷：第一次把非零值依序寫入 `nums[0..slow-1]`，第二次把 `nums[slow..n-1]` 全部填 0。交換法只需一次遍歷，因為 swap 同時完成「搬前」和「補零」兩個動作，操作次數更少。
+
+- **Q: 如果要保持零的位置不變，移動非零元素？**
+  A: 題意完全不同。需要找出零的位置形成「空隙」，然後把非零值重新排列填入非空隙位置。本質上變成 partition 問題，需要額外記錄零的位置。
+
+- **Q: 快慢指針模式還能用在哪？**
+  A: LeetCode 27（Remove Element）用相同框架移除指定值。LeetCode 26（Remove Duplicates from Sorted Array）用 slow 追蹤不重複的寫入位置。鏈表中快慢指針用於找中點（slow 走一步、fast 走兩步）和 Floyd 環檢測。
 </Callout>
 
 ## 理解測驗

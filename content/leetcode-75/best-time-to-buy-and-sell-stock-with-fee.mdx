@@ -29,7 +29,7 @@ description: "狀態機 DP 追蹤持有和未持有股票兩種狀態的最大�
 
 ## 解題思路
 
-<StepDiagram data='[{"title":"定義兩個狀態","description":"hold = 持有股票的最大利潤，cash = 不持有的最大利潤","icon":"1"},{"title":"初始化","description":"hold = -prices[0]（第一天買入），cash = 0","icon":"2"},{"title":"每天轉移","description":"cash = max(cash, hold + price - fee)，hold = max(hold, cash - price)","icon":"3"},{"title":"最終答案","description":"最後一天的 cash（賣完一定比持有好）","icon":"4"}]' />
+<StepDiagram data='[{"title":"定義兩個狀態","description":"hold = 持有股票時的最大利潤，cash = 不持有股票時的最大利潤。每天在這兩個狀態間轉移","icon":"1"},{"title":"初始化","description":"cash = 0（第一天不操作），hold = -prices[0]（第一天買入，花了 prices[0] 元，利潤為負）","icon":"2"},{"title":"每天轉移","description":"newCash = max(cash, hold + price - fee)（觀望 vs 賣出扣手續費），newHold = max(hold, cash - price)（持有 vs 買入）","icon":"3"},{"title":"最終答案","description":"回傳最後一天的 cash。最後手上不持有股票一定比持有更好（持有代表還沒賣）","icon":"4"}]' />
 
 ## 程式碼
 
@@ -87,16 +87,31 @@ def maxProfit(prices: list[int], fee: int) -> int:
 |--|------|-------|
 | 本解法 | O(n) | O(1) |
 
+遍歷價格陣列一次，每天做兩次 max 比較（常數操作），因此時間 O(n)。只用 cash 和 hold 兩個變數追蹤狀態，空間 O(1)。
+
+## 邊界情況
+
+- **只有一天**：無法完成買賣，cash = 0，回傳 0
+- **價格一路上漲**：例如 `[1,2,3,4,5]`, fee=1，最佳策略是第 0 天買、最後一天賣，利潤 = 5-1-1 = 3（一次交易比多次交易省手續費）
+- **手續費很高**：如果 fee 大於任意兩天的價差，不做任何交易，回傳 0
+
 ## 圖解
 
 <Diagram data='{"nodes":[{"id":"cash","label":"Cash（空手）","type":"highlight"},{"id":"hold","label":"Hold（持有）","type":"highlight"}],"edges":[{"from":"cash","to":"hold","label":"買入: cash - price"},{"from":"hold","to":"cash","label":"賣出: hold + price - fee"},{"from":"cash","to":"cash","label":"觀望"},{"from":"hold","to":"hold","label":"繼續持有"}]}' />
 
+圖表展示狀態機的兩個狀態和四種轉移：Cash 狀態可以買入（轉到 Hold）或觀望（留在 Cash），Hold 狀態可以賣出扣手續費（轉到 Cash）或繼續持有（留在 Hold）。每天在兩個狀態上各取最優選擇。
+
 ## 進階觀點
 
 <Callout type="tip" title="面試追問">
-- 股票系列題的統一框架：狀態機 DP，用 (天數, 交易次數, 持有狀態) 三個維度定義狀態。
-- **121. Best Time to Buy and Sell Stock**（只能交易一次）、**122** (無限次無手續費)、**123** (最多兩次)、**188** (最多 K 次)、**309** (有冷凍期) 都用同樣的框架。
-- 為什麼不需要 newCash / newHold？因為 cash 和 hold 的更新公式中，一個用的是舊 hold，一個用的是舊 cash，所以需要暫存避免覆蓋。部分語言可以用解構賦值一行完成。
+- **Q: 股票系列題有統一框架嗎？**
+  A: 有，用狀態機 DP，以 (天數, 交易次數, 持有狀態) 三個維度定義狀態。121（一次交易）、122（無限次無手續費）、123（最多兩次）、188（最多 K 次）、309（有冷凍期）、714（有手續費）都用同樣的框架，只是轉移方程的約束不同。
+
+- **Q: 為什麼需要 newCash / newHold 暫存？**
+  A: 因為 cash 和 hold 的更新公式互相依賴：`newCash` 用舊的 hold，`newHold` 用舊的 cash。如果先更新 cash 再用它算 hold，hold 用到的就是新值而非舊值，結果會錯。Python 可以用 `cash, hold = max(...), max(...)` 一行完成，因為右邊全部先求值。
+
+- **Q: 手續費在買入時扣和賣出時扣有差嗎？**
+  A: 結果一樣。在買入時扣：`hold = cash - price - fee`，賣出時：`cash = hold + price`。無論放在哪一側，每次完整交易（買+賣）都恰好扣一次 fee。選賣出時扣比較直觀。
 </Callout>
 
 ## 理解測驗

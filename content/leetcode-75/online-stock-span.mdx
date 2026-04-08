@@ -31,7 +31,7 @@ sp.next(85);  // 6
 
 ## 解題思路
 
-<StepDiagram data='[{"title":"Stack 存配對","description":"Stack 中每個元素是 (price, span) 配對","icon":"1"},{"title":"新價格進來","description":"初始 span = 1（至少包含今天自己）","icon":"2"},{"title":"合併較小的","description":"Stack 頂端的 price <= 當前 price → 彈出，累加 span","icon":"3"},{"title":"壓入 Stack","description":"將 (price, 累積的 span) 壓入 Stack","icon":"4"},{"title":"回傳 span","description":"回傳當前的 span 值","icon":"5"}]' />
+<StepDiagram data='[{"title":"Stack 存配對","description":"Stack 中每個元素是 (price, span) 配對，維護從底到頂嚴格遞減的價格序列","icon":"1"},{"title":"新價格進來","description":"初始 span = 1（至少包含今天自己），例如價格 75 進來，span 從 1 開始","icon":"2"},{"title":"合併較小的","description":"Stack 頂端的 price ≤ 當前 price → 彈出並累加其 span。例如彈出 (60,1) 後 span 變成 2，再彈出 (70,2) 後 span 變成 4","icon":"3"},{"title":"壓入 Stack","description":"將 (price, 累積的 span) 壓入 Stack，例如壓入 (75, 4)","icon":"4"},{"title":"回傳 span","description":"回傳當前的 span 值作為答案","icon":"5"}]' />
 
 ## 程式碼
 
@@ -97,17 +97,37 @@ class StockSpanner:
 |--|------|-------|
 | 每次 next() | 均攤 O(1) | O(n) |
 
+- **Time**：每個元素最多被 push 一次和 pop 一次，n 次 `next()` 呼叫的總操作數 ≤ 2n，平均每次 O(1)
+- **Space**：最壞情況下（嚴格遞減序列）Stack 保存所有 n 個元素，所以是 O(n)
+
+## 邊界情況
+
+- **第一次呼叫**：Stack 為空，不進入 while 迴圈，span = 1 直接回傳
+- **嚴格遞減序列（如 100, 90, 80, 70）**：每次都不觸發合併，Stack 持續增長，每次 span = 1
+- **嚴格遞增序列（如 10, 20, 30, 40）**：每次都把 Stack 清空合併，span 依序為 1, 2, 3, 4
+- **所有價格相同（如 50, 50, 50）**：每次合併前一個，span 依序為 1, 2, 3（因為 `<=` 包含等於）
+
 ## 圖解
 
 <Diagram data='{"nodes":[{"id":"new","label":"新價格 75 進來","type":"highlight"},{"id":"stack","label":"Stack: [(100,1),(80,1),(60,1),(70,2),(60,1)]","type":"default"},{"id":"pop1","label":"彈出 (60,1) → span=2","type":"muted"},{"id":"pop2","label":"彈出 (70,2) → span=4","type":"muted"},{"id":"pop3","label":"彈出 (60,1)... 不對 70>75? 不是","type":"muted"},{"id":"push","label":"壓入 (75, 4)","type":"highlight"}],"edges":[{"from":"new","to":"stack","label":"比較頂端"},{"from":"stack","to":"pop1","label":"60<=75"},{"from":"pop1","to":"pop2","label":"70<=75"},{"from":"pop2","to":"push","label":"80>75 停止"}]}' />
 
+圖表展示了價格 75 進來時的合併過程：先彈出 (60,1) 再彈出 (70,2)，累計 span=1+1+2=4。
+遇到 (80,1) 時 80 > 75 停止合併，最終壓入 (75,4)。被彈出的記錄已被 75 的 span 吸收。
+
 ## 進階觀點
 
 <Callout type="tip" title="面試追問">
-- 為什麼是均攤 O(1)？每個元素最多被 push 一次和 pop 一次。n 次 next() 呼叫的總操作數是 O(2n)，平均每次 O(1)。
-- Stack 中存 span 而不是逐一記錄每天的好處：合併後的 span 保留了「被吞掉的天數」資訊，不需要回溯。
-- 和 **739. Daily Temperatures** 的對比：Daily Temperatures 找「下一個更大的」（Next Greater），本題找「前面連續不大於的跨度」（Previous Greater），兩者是單調 Stack 的一體兩面。
-- 如果要支援「撤銷上一次操作」，需要額外的資料結構記錄歷史狀態。
+**Q: 為什麼是均攤 O(1)？**
+A: 每個元素最多被 push 一次和 pop 一次。n 次 `next()` 的總操作數 ≤ 2n（n 次 push + 最多 n 次 pop），均攤每次操作 O(2n/n) = O(1)。雖然單次 `next()` 最壞可能 pop 掉所有元素（O(n)），但那些元素之後不會再被 pop，總量固定。
+
+**Q: Stack 中存 span 而不是逐一記錄每天的好處？**
+A: 合併後的 span 保留了「被吞掉的天數」資訊。如果只存 price，被彈出後就無法知道它代表了幾天，必須逐天回溯，單次操作就不是 O(1) 了。
+
+**Q: 和 739. Daily Temperatures 的對比？**
+A: Daily Temperatures 找「下一個更大的」（Next Greater Element），本題找「前面連續不大於的跨度」（Previous Greater Element）。兩者都用單調遞減 Stack，是同一概念的正反方向應用。
+
+**Q: 如果要支援「撤銷上一次操作」怎麼做？**
+A: 需要額外記錄每次 `next()` 被彈出的元素列表。撤銷時把它們重新 push 回 Stack，並移除最後壓入的元素。相當於一個 undo stack 疊加在原有結構上。
 </Callout>
 
 ## 理解測驗

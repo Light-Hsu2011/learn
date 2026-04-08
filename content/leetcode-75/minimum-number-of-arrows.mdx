@@ -29,7 +29,7 @@ description: "區間貪心，找最少的箭能射穿所有氣球的重疊區域
 
 ## 解題思路
 
-<StepDiagram data='[{"title":"按右邊界排序","description":"氣球按 end 值升序排列","icon":"1"},{"title":"射第一箭","description":"在第一個氣球的右邊界射箭","icon":"2"},{"title":"檢查下一個氣球","description":"如果氣球的 start <= 當前箭的位置，就被射穿了","icon":"3"},{"title":"需要新箭","description":"如果 start > 當前箭位置，射新箭在這個氣球的右邊界","icon":"4"},{"title":"計數箭數","description":"統計射了幾支箭","icon":"5"}]' />
+<StepDiagram data='[{"title":"按右邊界排序","description":"氣球按 end 值升序排列，例如 [[1,6],[2,8],[7,12],[10,16]] 排完後 end 依序為 6,8,12,16","icon":"1"},{"title":"射第一箭","description":"在第一個氣球的右邊界射箭，arrowPos = 6。所有 start ≤ 6 的氣球都被射穿","icon":"2"},{"title":"檢查下一個氣球","description":"如果氣球的 start ≤ arrowPos，代表這支箭能射穿它，直接跳過不需要新箭","icon":"3"},{"title":"需要新箭","description":"如果 start > arrowPos，這個氣球超出當前箭的範圍，射新箭在它的右邊界，更新 arrowPos","icon":"4"},{"title":"計數箭數","description":"每射一支新箭 arrows++，最終 arrows 就是最少箭數","icon":"5"}]' />
 
 ## 程式碼
 
@@ -96,16 +96,37 @@ def findMinArrowShots(points: list[list[int]]) -> int:
 |--|------|-------|
 | 本解法 | O(n log n) | O(1) |
 
+- **Time**：排序需要 O(n log n)，之後一次線性遍歷 O(n)，排序主導所以整體 O(n log n)
+- **Space**：排序可原地完成（in-place），只用了 arrows 和 arrowPos 兩個變數
+
+## 邊界情況
+
+- **只有一個氣球**：不需要判斷，一支箭就夠，arrows 初始值 1 直接回傳
+- **所有氣球完全重疊（如 `[[1,5],[1,5],[1,5]]`）**：一支箭射穿全部，因為每個氣球的 start 都 ≤ arrowPos
+- **氣球只有邊界相觸（如 `[[1,2],[2,3],[3,4]]`）**：每支箭都能順便射穿下一個（`start == arrowPos` 算射穿），只需 1 支箭
+- **大量氣球完全不重疊**：每個氣球都需要單獨一支箭，arrows = n
+
 ## 圖解
 
 <Diagram data='{"nodes":[{"id":"sort","label":"按右邊界排序","type":"highlight"},{"id":"arrow1","label":"箭1 在第一個氣球右邊界","type":"default"},{"id":"check","label":"下一個氣球 start > 箭位？","type":"default"},{"id":"burst","label":"已被射穿，跳過","type":"muted"},{"id":"new","label":"需要新箭，射在右邊界","type":"highlight"}],"edges":[{"from":"sort","to":"arrow1","label":"第一箭"},{"from":"arrow1","to":"check","label":"遍歷"},{"from":"check","to":"burst","label":"否"},{"from":"check","to":"new","label":"是"},{"from":"new","to":"check","label":"繼續"}]}' />
 
+圖表展示了貪心流程：先排序，然後射第一箭在最早結束的氣球右邊界。
+每遇到一個氣球，檢查它的 start 是否在當前箭的範圍內。如果超出範圍就射新箭，否則已被射穿。
+
 ## 進階觀點
 
 <Callout type="tip" title="面試追問">
-- 和 **435. Non-overlapping Intervals** 的關係：本題的箭數 = 不重疊區間的最大組數，而 435 問的是要移除幾個才能不重疊。本質相同，只是問法不同。
-- 為什麼用 `>` 而不是 `>=`？因為題目說 `start <= x <= end` 都算射穿，所以邊界相觸（start == arrowPos）也能被射穿。
-- 注意排序時用 `a[1].CompareTo(b[1])` 而不是 `a[1] - b[1]`，後者在大數字時可能溢位。
+**Q: 和 435. Non-overlapping Intervals 的關係？**
+A: 本題的箭數 = 不重疊區間的最大組數。435 問「移除幾個才能不重疊」，答案 = n - 不重疊組數 = n - 箭數。兩題本質是同一個問題的正反面。
+
+**Q: 為什麼判斷用 `>` 而不是 `>=`？**
+A: 因為題目定義 `start ≤ x ≤ end` 都算射穿，所以邊界相觸（`start == arrowPos`）也能被射穿。如果用 `>=` 會把邊界相觸的情況誤判為需要新箭。
+
+**Q: 為什麼排序時用 `a[1].CompareTo(b[1])` 而不是 `a[1] - b[1]`？**
+A: `a[1] - b[1]` 在大數字時可能整數溢位（例如 `a[1] = 2^31 - 1, b[1] = -2^31`），`CompareTo` 內部用比較而非相減，不會溢位。
+
+**Q: 可以按左邊界排序嗎？**
+A: 可以，但遇到重疊時需要更新 arrowPos 為 `min(arrowPos, end)`（保留較小的右邊界），邏輯稍微複雜。按右邊界排序更直覺，因為箭的位置天然就在右邊界。
 </Callout>
 
 ## 理解測驗
