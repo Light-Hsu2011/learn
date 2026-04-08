@@ -1,0 +1,247 @@
+---
+title: "Service Communication"
+order: 2
+description: "微服務間通訊：REST、gRPC、Message Queue 的選擇與取捨"
+difficulty: "medium"
+interviewImportance: 5
+related:
+  - "api-design/rest-fundamentals"
+  - "system-design/chat-system"
+---
+
+# Service Communication（微服務通訊）
+
+<ELI5>
+三個朋友要合作完成一個專案：
+
+- **打電話（REST/gRPC）**：你打給小明說「幫我查一下庫存」，然後等他回答。直接、即時，但如果小明不在，你就卡住了。
+- **寄信（Message Queue）**：你寫一封信「請幫我查庫存」放進信箱，然後去做別的事。小明有空時會去收信處理。即使小明出差了，信還在信箱裡，等他回來再處理。
+
+同步通訊像打電話 — 快但有風險；非同步通訊像寄信 — 慢但可靠。
+</ELI5>
+
+## 是什麼？
+
+微服務之間的通訊方式分為兩大類：
+
+- **同步通訊（Synchronous）**：呼叫方等待回應。REST、gRPC
+- **非同步通訊（Asynchronous）**：呼叫方發送訊息後不等待。Message Queue、Event Bus
+
+<Callout type="info" title="選擇原則">
+需要立即得到結果 → 同步（REST/gRPC）。可以稍後處理、需要解耦 → 非同步（Message Queue）。大多數成熟系統會**混合使用**兩種方式。
+</Callout>
+
+## 核心觀念
+
+### 三種通訊方式比較
+
+| 面向 | REST | gRPC | Message Queue |
+|------|------|------|---------------|
+| 協定 | HTTP/1.1 + JSON | HTTP/2 + Protobuf | AMQP / Kafka Protocol |
+| 模式 | 同步 Request-Response | 同步 + Streaming | 非同步 Pub/Sub |
+| 效能 | 中 | 高（binary + 壓縮） | 取決於 broker |
+| 瀏覽器支援 | 原生支援 | 需要 gRPC-Web | 不直接支援 |
+| 適用場景 | 對外 API、CRUD | 內部服務間高效能通訊 | 解耦、削峰、事件通知 |
+| 型別安全 | 弱（靠文件） | 強（.proto 定義） | 取決於 schema registry |
+
+### Message Queue 的核心模式
+
+| 模式 | 說明 | 工具 |
+|------|------|------|
+| Point-to-Point | 一個訊息只被一個消費者處理 | RabbitMQ Queue |
+| Pub/Sub | 一個訊息被所有訂閱者處理 | Kafka Topic、RabbitMQ Exchange |
+| Competing Consumers | 多個消費者競爭處理同一個 Queue | RabbitMQ + 多 Consumer |
+
+### Idempotency（冪等性）
+
+在分散式通訊中，訊息可能因為重試而被處理多次。冪等性確保「處理一次和處理多次的結果相同」。實作方式：在每個訊息中加入唯一的 `messageId`，消費者用它做去重。
+
+## 常見誤區
+
+<Callout type="warning" title="常犯錯誤">
+- 所有通訊都用 REST（內部高頻呼叫應考慮 gRPC）
+- 所有通訊都用 Message Queue（簡單的查詢不需要非同步）
+- 忽略 Message Queue 的訊息丟失和重複問題
+- gRPC 直接暴露給瀏覽器（需要 gRPC-Web 或 API Gateway 轉換）
+</Callout>
+
+## 執行流程
+
+<StepDiagram data='[{"title":"識別通訊需求","description":"區分哪些呼叫需要同步回應，哪些可以非同步","icon":"1"},{"title":"選擇協定","description":"對外用 REST，內部高效能用 gRPC，解耦用 MQ","icon":"2"},{"title":"定義契約","description":"REST 用 OpenAPI，gRPC 用 .proto，MQ 用 Schema Registry","icon":"3"},{"title":"實作重試與冪等","description":"加入 retry、circuit breaker、idempotency key","icon":"4"},{"title":"監控與追蹤","description":"Distributed Tracing 追蹤跨服務的請求鏈","icon":"5"}]' />
+
+流程解讀：選擇通訊方式的第一步是理解業務需求。使用者下單需要即時回應用同步，發送通知可以稍後處理用非同步。契約定義是服務間合作的基礎，確保雙方對資料格式有共識。在分散式環境中，網路不可靠是常態，重試機制和冪等性設計是必備的。最後透過 Distributed Tracing 確保跨服務的請求可以被追蹤和除錯。
+
+## 程式碼範例
+
+### C# 版本
+
+```csharp
+// REST Client（使用 HttpClientFactory）
+public class InventoryClient
+{
+    private readonly HttpClient _client;
+
+    public InventoryClient(HttpClient client)
+    {
+        _client = client;
+        _client.BaseAddress = new Uri("http://inventory-service");
+    }
+
+    public async Task<int> GetStock(string productId)
+    {
+        var response = await _client.GetAsync($"/api/stock/{productId}");
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<int>();
+    }
+}
+
+// gRPC Client
+var channel = GrpcChannel.ForAddress("http://inventory-service:5001");
+var client = new InventoryService.InventoryServiceClient(channel);
+var reply = await client.GetStockAsync(
+    new StockRequest { ProductId = "SKU-001" });
+
+// Message Queue（RabbitMQ + MassTransit）
+public class OrderPlacedConsumer : IConsumer<OrderPlacedEvent>
+{
+    public async Task Consume(ConsumeContext<OrderPlacedEvent> context)
+    {
+        var orderId = context.Message.OrderId;
+        // 冪等性檢查
+        if (await IsAlreadyProcessed(orderId)) return;
+        await ReserveInventory(orderId);
+        await MarkAsProcessed(orderId);
+    }
+}
+```
+
+### TypeScript 版本
+
+```typescript
+// REST Client（使用 axios + retry）
+import axios from "axios";
+import axiosRetry from "axios-retry";
+
+const inventoryClient = axios.create({
+  baseURL: "http://inventory-service",
+  timeout: 3000,
+});
+axiosRetry(inventoryClient, { retries: 3, retryDelay: axiosRetry.exponentialDelay });
+
+async function getStock(productId: string): Promise<number> {
+  const { data } = await inventoryClient.get(`/api/stock/${productId}`);
+  return data.quantity;
+}
+
+// Message Queue（RabbitMQ + amqplib）
+import amqp from "amqplib";
+
+async function publishEvent(event: string, data: object) {
+  const conn = await amqp.connect("amqp://rabbitmq");
+  const channel = await conn.createChannel();
+  await channel.assertExchange("events", "topic", { durable: true });
+  channel.publish("events", event, Buffer.from(JSON.stringify(data)), {
+    persistent: true,
+    messageId: crypto.randomUUID(), // 冪等性 key
+  });
+}
+
+// 消費者
+async function consumeEvents() {
+  const conn = await amqp.connect("amqp://rabbitmq");
+  const channel = await conn.createChannel();
+  await channel.assertQueue("inventory-queue", { durable: true });
+  await channel.bindQueue("inventory-queue", "events", "order.placed");
+
+  channel.consume("inventory-queue", async (msg) => {
+    if (!msg) return;
+    const event = JSON.parse(msg.content.toString());
+    await processOrder(event);
+    channel.ack(msg); // 手動確認
+  });
+}
+```
+
+### Python 版本
+
+```python
+# REST Client（使用 httpx + retry）
+import httpx
+from tenacity import retry, stop_after_attempt, wait_exponential
+
+@retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1))
+async def get_stock(product_id: str) -> int:
+    async with httpx.AsyncClient(base_url="http://inventory-service") as client:
+        response = await client.get(f"/api/stock/{product_id}", timeout=3.0)
+        response.raise_for_status()
+        return response.json()["quantity"]
+
+# Message Queue（Kafka + aiokafka）
+from aiokafka import AIOKafkaProducer, AIOKafkaConsumer
+import json
+
+# Producer
+async def publish_order_event(order_id: str, items: list):
+    producer = AIOKafkaProducer(bootstrap_servers="kafka:9092")
+    await producer.start()
+    await producer.send_and_wait(
+        "order-events",
+        key=order_id.encode(),
+        value=json.dumps({"order_id": order_id, "items": items}).encode()
+    )
+    await producer.stop()
+
+# Consumer
+async def consume_orders():
+    consumer = AIOKafkaConsumer(
+        "order-events",
+        bootstrap_servers="kafka:9092",
+        group_id="inventory-service"
+    )
+    await consumer.start()
+    async for msg in consumer:
+        event = json.loads(msg.value)
+        await reserve_inventory(event["order_id"])
+```
+
+## 結構圖
+
+<Diagram data='{"nodes":[{"id":"client","label":"Client","type":"muted"},{"id":"gateway","label":"API Gateway","type":"default"},{"id":"order","label":"Order Service","type":"highlight"},{"id":"payment","label":"Payment Service","type":"default"},{"id":"inventory","label":"Inventory Service","type":"default"},{"id":"notify","label":"Notification Service","type":"default"},{"id":"mq","label":"Message Queue","type":"highlight"}],"edges":[{"from":"client","to":"gateway","label":"REST"},{"from":"gateway","to":"order","label":"REST/gRPC"},{"from":"order","to":"payment","label":"gRPC (sync)"},{"from":"order","to":"mq","label":"publish event"},{"from":"mq","to":"inventory","label":"subscribe"},{"from":"mq","to":"notify","label":"subscribe"}]}' />
+
+圖中展示了混合通訊模式：Client 透過 REST 存取 API Gateway，Gateway 用 REST 或 gRPC 轉發給 Order Service。Order Service 與 Payment Service 之間用 gRPC 同步通訊（下單需要即時知道付款結果）。對於 Inventory 和 Notification 服務，Order Service 透過 Message Queue 發布事件，讓它們非同步處理。
+
+## 面試常見問題
+
+**Q: REST 和 gRPC 各自的優勢？什麼時候選哪個？**
+
+A: REST 的優勢是普及度高、瀏覽器原生支援、生態系完整，適合對外 API。gRPC 的優勢是效能高（Protobuf binary 編碼比 JSON 小 60-80%）、型別安全、支援雙向 streaming，適合內部服務間高頻通訊。常見策略是「對外 REST，對內 gRPC」。
+
+**Q: 如何確保 Message Queue 的消息不丟失？**
+
+A: 三個環節都要保證：Producer 用 confirm mode 確認 broker 已收到；Broker 開啟 persistence 將訊息寫入磁碟；Consumer 用 manual ack，處理完成後才確認。如果需要更強保證，可以用 Outbox Pattern — 將訊息和業務操作寫入同一個 DB transaction，再由背景程序發送到 MQ。
+
+**Q: 什麼是 Idempotency？為什麼在微服務中特別重要？**
+
+A: 冪等性是指同一個操作執行一次和多次的結果相同。在微服務中，網路超時可能導致 client 重試，message queue 可能重複投遞。如果操作不是冪等的，就會出現重複扣款、重複建立訂單等問題。實作方式是每個請求帶唯一 ID，server 端去重。
+
+## 理解測驗
+
+<Quiz data='{"question":"下單時需要即時確認庫存是否足夠，應該用哪種通訊方式？","options":["Message Queue 非同步通訊","REST 或 gRPC 同步通訊","Email 通知","定期輪詢"],"answer":1,"explanation":"即時確認庫存需要同步通訊，呼叫方等待回應後才能繼續流程。REST 或 gRPC 都適合這個場景。"}' />
+
+<Quiz data='{"question":"以下哪個不是 Message Queue 的優勢？","options":["服務解耦","流量削峰","即時回應","訊息持久化"],"answer":2,"explanation":"Message Queue 是非同步通訊，訊息被放入佇列後由消費者稍後處理，不適合需要即時回應的場景。"}' />
+
+<Quiz data='{"question":"gRPC 相較 REST 的主要效能優勢來自哪裡？","options":["使用 HTTP/1.1","JSON 序列化","Protobuf binary 編碼 + HTTP/2 多工","WebSocket"],"answer":2,"explanation":"gRPC 使用 Protobuf 二進位編碼（比 JSON 更小更快）搭配 HTTP/2（支援多工和 header 壓縮），在效能上顯著優於 REST + JSON。"}' />
+
+## 重點整理
+
+<Callout type="tip" title="一句話記住">
+**Service Communication = 同步求即時 + 非同步求解耦。** 口訣：「對外 REST，對內 gRPC，解耦用 MQ」
+</Callout>
+
+| 概念 | 說明 |
+|------|------|
+| **REST** | HTTP + JSON，對外 API 首選 |
+| **gRPC** | HTTP/2 + Protobuf，內部高效能通訊 |
+| **Message Queue** | 非同步解耦，削峰填谷 |
+| **Idempotency** | 確保重複處理不會造成副作用 |
+| **核心原則** | 混合使用，根據業務需求選擇通訊方式 |

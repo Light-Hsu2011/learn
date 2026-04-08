@@ -1,0 +1,174 @@
+---
+title: "CI/CD 基礎概念"
+order: 1
+description: "持續整合與持續部署的核心流程與實踐原則"
+difficulty: "easy"
+interviewImportance: 5
+related:
+  - "tdd/test-pyramid"
+  - "ci-cd/github-actions"
+---
+
+# CI/CD 基礎概念與流程
+
+<ELI5>
+想像你在組裝一台車：
+
+- **沒有 CI/CD**：每個人各自做自己的零件，最後才組裝在一起，結果螺絲孔對不上、線路接錯，花好幾天才修好
+- **有 CI**：每做好一個零件就馬上裝上去試試，立刻發現問題
+- **有 CD**：車子組裝好後，自動送到展示間（部署到生產環境），不用人工搬運
+
+CI/CD 讓程式碼的「生產線」全自動化 — 提交程式碼後自動測試、自動建置、自動部署。
+</ELI5>
+
+## 是什麼？
+
+**CI（Continuous Integration，持續整合）** 是開發者頻繁將程式碼合併到主分支，每次合併自動觸發建置和測試。**CD（Continuous Delivery / Deployment，持續交付/部署）** 是在 CI 的基礎上自動將通過測試的程式碼部署到各環境。
+
+<Callout type="info" title="Delivery vs Deployment">
+**Continuous Delivery**：自動部署到 Staging，但上 Production 需要手動核准。**Continuous Deployment**：連 Production 都自動部署，完全不需要人工介入。大多數團隊採用 Delivery，因為 Production 部署通常需要人工確認。
+</Callout>
+
+## 核心觀念
+
+- **Pipeline（管線）**：定義從程式碼提交到部署的所有自動化步驟，每個步驟稱為 Stage 或 Job
+- **Build Stage**：編譯程式碼、安裝依賴、產生 Artifact（如 Docker Image、NuGet Package）
+- **Test Stage**：執行單元測試、整合測試、靜態分析（Linting）。任何測試失敗都中斷 Pipeline
+- **Deploy Stage**：將 Artifact 部署到 Dev → Staging → Production 各環境
+- **Artifact**：Build 產生的可部署產物，如 Docker Image、ZIP 檔、npm Package
+
+## 常見誤區
+
+<Callout type="warning" title="常見誤區">
+- **Pipeline 只跑測試不跑 Lint**：靜態分析能在測試之前就抓到低級錯誤（型別錯誤、未使用變數），應該放在 Pipeline 的第一個 Stage
+- **Build 一次、Deploy 多次的原則被忽略**：每個環境都重新 Build 會導致 Dev 和 Production 的 Artifact 不一致。正確做法是 Build 一次，同一個 Artifact 部署到所有環境
+- **Pipeline 太慢沒人想修**：Pipeline 超過 10 分鐘開發者就會開始跳過。目標是 5 分鐘內完成 CI，用並行執行和快取加速
+</Callout>
+
+## 流程/步驟
+
+<StepDiagram data='[{"title":"Code Commit","description":"開發者推送程式碼或發 Pull Request","icon":"1"},{"title":"Lint & Static Analysis","description":"檢查程式碼風格、型別錯誤、安全漏洞","icon":"2"},{"title":"Build","description":"編譯程式碼、安裝依賴、產生 Artifact","icon":"3"},{"title":"Test","description":"執行單元測試、整合測試，生成覆蓋率報告","icon":"4"},{"title":"Deploy to Staging","description":"自動部署到 Staging 環境進行驗收","icon":"5"},{"title":"Deploy to Production","description":"手動核准或自動部署到生產環境","icon":"6"}]' />
+
+流程解讀：每次程式碼提交觸發 Pipeline。先做輕量的 Lint 檢查，再 Build 產出 Artifact，然後跑各層級的測試。全部通過後自動部署到 Staging。最後一步到 Production 通常需要人工核准（Continuous Delivery）或全自動（Continuous Deployment）。
+
+## 程式碼範例
+
+### C# 版本
+
+```csharp
+// .github/workflows/ci.yml — GitHub Actions for .NET
+// (YAML 格式，此處用 C# 專案為例)
+
+// 典型的 .NET CI Pipeline 步驟：
+// 1. dotnet restore（還原依賴）
+// 2. dotnet build --no-restore（編譯）
+// 3. dotnet test --no-build（測試）
+// 4. dotnet publish -o ./publish（產生 Artifact）
+
+// 程式碼中確保測試可自動執行
+[Fact]
+public void CreateUser_WithValidData_ReturnsCreatedUser()
+{
+    // Arrange
+    var service = new UserService(new FakeUserRepository());
+
+    // Act
+    var result = service.Create("Alice", "alice@example.com");
+
+    // Assert
+    Assert.NotNull(result);
+    Assert.Equal("Alice", result.Name);
+}
+```
+
+### TypeScript 版本
+
+```typescript
+// package.json — 定義 CI 會用到的 scripts
+// {
+//   "scripts": {
+//     "lint": "eslint . --ext .ts",
+//     "build": "tsc",
+//     "test": "jest --coverage",
+//     "test:ci": "jest --ci --coverage --reporters=default"
+//   }
+// }
+
+// CI 中執行的測試範例
+describe("UserService", () => {
+  it("should create a user with valid data", async () => {
+    const service = new UserService(mockRepo);
+    const user = await service.create("Alice", "alice@example.com");
+
+    expect(user).toBeDefined();
+    expect(user.name).toBe("Alice");
+  });
+});
+```
+
+### Python 版本
+
+```python
+# CI Pipeline 中的測試
+# 執行命令：pytest --cov=app --cov-report=xml
+
+import pytest
+from app.services import UserService
+
+class TestUserService:
+    def test_create_user_with_valid_data(self):
+        service = UserService(fake_repo)
+        user = service.create("Alice", "alice@example.com")
+
+        assert user is not None
+        assert user.name == "Alice"
+
+    def test_create_user_with_duplicate_email_raises(self):
+        service = UserService(fake_repo)
+        service.create("Alice", "alice@example.com")
+
+        with pytest.raises(ValueError, match="Email already exists"):
+            service.create("Bob", "alice@example.com")
+```
+
+## 架構圖/概念圖
+
+<Diagram data='{"nodes":[{"id":"dev","label":"Developer (git push)","type":"muted"},{"id":"ci","label":"CI Server (GitHub Actions)","type":"highlight"},{"id":"lint","label":"Lint + Build + Test","type":"default"},{"id":"artifact","label":"Artifact (Docker Image)","type":"default"},{"id":"staging","label":"Staging Environment","type":"muted"},{"id":"prod","label":"Production","type":"muted"}],"edges":[{"from":"dev","to":"ci","label":"triggers"},{"from":"ci","to":"lint","label":"runs"},{"from":"lint","to":"artifact","label":"produces"},{"from":"artifact","to":"staging","label":"auto deploy"},{"from":"staging","to":"prod","label":"manual approve"}]}' />
+
+Developer 推送程式碼觸發 CI Server。CI 依序執行 Lint、Build、Test，通過後產生 Artifact。Artifact 自動部署到 Staging，經人工核准後再部署到 Production。同一個 Artifact 用於所有環境。
+
+## 實戰補充
+
+**Q: CI Pipeline 太慢怎麼辦？**
+
+A: 三招加速 — (1) **並行執行**：Lint、Unit Test、Integration Test 各自獨立的 Job 同時跑。(2) **快取依賴**：快取 node_modules、NuGet packages，避免每次重新下載。(3) **只跑受影響的測試**：用 `--changed` 標記只跑修改過的檔案相關測試。
+
+**Q: 什麼情況下 Pipeline 應該失敗？**
+
+A: Lint 不通過、任何測試失敗、Build 失敗、測試覆蓋率低於設定門檻、有已知的安全漏洞。Pipeline 失敗是正常的，它在保護你。
+
+**Q: Trunk-based Development 和 GitFlow 哪個更適合 CI？**
+
+A: **Trunk-based** 更適合 CI — 所有人直接提交到 main（或用 short-lived branch），搭配 Feature Flag 控制功能上線。GitFlow 的長期分支會延遲整合，違反 CI 的「頻繁整合」原則。
+
+## 理解測驗
+
+<Quiz data='{"question":"CI（持續整合）的核心精神是什麼？","options":["每月發佈一次版本","開發者頻繁合併程式碼到主分支，每次自動測試","只在發佈前才跑測試","用最新的工具鏈"],"answer":1,"explanation":"CI 的核心是「頻繁整合 + 自動測試」。越早發現問題，修復成本越低。"}' />
+
+<Quiz data='{"question":"為什麼要「Build 一次、Deploy 多次」？","options":["節省 CI 伺服器費用","確保所有環境部署的是同一個 Artifact，避免環境差異導致的問題","Build 太慢所以只做一次","工具限制"],"answer":1,"explanation":"每次 Build 可能因為依賴版本、環境變數等因素產出不同的 Artifact。Build 一次確保 Dev/Staging/Production 用的是完全相同的產物。"}' />
+
+<Quiz data='{"question":"Continuous Delivery 和 Continuous Deployment 的差別是什麼？","options":["完全一樣","Delivery 自動部署到 Staging，Production 需手動核准；Deployment 全自動","Delivery 比 Deployment 更進階","Deployment 不需要測試"],"answer":1,"explanation":"Continuous Delivery 在部署到 Production 前需要人工核准，Continuous Deployment 則完全自動化到 Production。"}' />
+
+## 重點整理
+
+<Callout type="tip" title="一句話記住">
+**CI/CD = 程式碼的自動化生產線，從提交到上線全自動。** 口訣：「提交就測試，通過就部署」
+</Callout>
+
+| 概念 | 說明 |
+|------|------|
+| **CI** | 頻繁合併 + 自動測試 |
+| **CD (Delivery)** | 自動部署到 Staging，手動上 Production |
+| **CD (Deployment)** | 全自動部署到 Production |
+| **Pipeline** | 定義 Lint → Build → Test → Deploy 流程 |
+| **Artifact** | Build 產出的可部署產物，一次 Build 多次 Deploy |

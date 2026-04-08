@@ -1,0 +1,175 @@
+---
+title: "雲端基礎概念"
+order: 1
+description: "IaaS、PaaS、SaaS 三種服務模式的差異與選擇策略"
+difficulty: "easy"
+interviewImportance: 4
+related:
+  - "system-design/scalability-basics"
+  - "cloud-architecture/compute-services"
+---
+
+# 雲端基礎概念（IaaS / PaaS / SaaS）
+
+<ELI5>
+想像你要吃晚餐：
+
+- **IaaS（自己煮）**：你買食材、用自己的廚房煮。最自由，但什麼都要自己來（OS、Runtime、維護全你負責）
+- **PaaS（餐廳煮、你決定菜色）**：你告訴主廚要什麼料理，廚房和食材他搞定。你只管應用程式碼
+- **SaaS（直接外帶）**：打開就吃，完全不用管怎麼做的。像 Gmail、Slack 直接用就好
+
+越往 SaaS 移動，你管的事越少，但客製化能力也越低。
+</ELI5>
+
+## 是什麼？
+
+雲端服務依照「你管多少 vs 雲端商管多少」分為三種模式：IaaS 提供基礎設施、PaaS 提供開發平台、SaaS 提供完整應用程式。選擇取決於你需要多少控制權和願意承擔多少維運工作。
+
+<Callout type="info" title="雲端 vs 地端">
+**地端（On-Premises）**：自己買伺服器、自己建機房、自己維護一切。**雲端**：用多少付多少（Pay-as-you-go），彈性擴縮（Scale），全球部署。雲端不一定比地端便宜，但在彈性和速度上有巨大優勢。
+</Callout>
+
+## 核心觀念
+
+- **IaaS（Infrastructure as a Service）**：雲端提供 VM、Storage、Network。你負責 OS、Runtime、應用程式。例如 Azure VM、AWS EC2、GCP Compute Engine
+- **PaaS（Platform as a Service）**：雲端提供執行平台。你只管應用程式碼和資料。例如 Azure App Service、AWS Elastic Beanstalk、Google App Engine
+- **SaaS（Software as a Service）**：雲端提供完整應用。你只管使用和設定。例如 Microsoft 365、Salesforce、GitHub
+- **Shared Responsibility Model（共責模型）**：雲端商和你各自負責一部分安全。IaaS 你管最多、SaaS 你管最少
+- **Region 和 Availability Zone**：Region 是地理區域（如 East Asia），AZ 是同一 Region 內的獨立機房。跨 AZ 部署提高可用性
+
+## 常見誤區
+
+<Callout type="warning" title="常見誤區">
+- **雲端一定比較便宜**：小規模或穩定負載的應用，地端 TCO（Total Cost of Ownership）可能更低。雲端的優勢是彈性，不是絕對價格
+- **上雲就等於高可用**：雲端機器也會掛。你必須自己做多 AZ 部署、健康檢查、自動回復才能達到高可用
+- **PaaS 沒有 Vendor Lock-in 問題**：深度使用特定 PaaS 服務（如 Azure Functions 的 Binding）會讓你很難遷移到其他雲。評估 Lock-in 風險
+</Callout>
+
+## 流程/步驟
+
+<StepDiagram data='[{"title":"評估需求","description":"需要多少控制權？團隊有多少維運能力？","icon":"1"},{"title":"選擇服務模式","description":"需要完全控制用 IaaS，專注開發用 PaaS，現成工具用 SaaS","icon":"2"},{"title":"選擇雲端商","description":"Azure、AWS、GCP 各有優勢，考量價格、生態系、地理位置","icon":"3"},{"title":"設計架構","description":"選擇 Region、規劃 Network、設定 IAM 權限","icon":"4"},{"title":"成本優化","description":"用 Reserved Instance 省錢、設定預算警報、定期清理閒置資源","icon":"5"}]' />
+
+流程解讀：從需求評估開始，決定要多少控制權。選擇服務模式後挑選雲端商，考量的不只是價格，還有團隊技術棧和雲端商的區域覆蓋。架構設計時注意高可用和安全，上線後持續做成本優化。
+
+## 程式碼範例
+
+### C# 版本
+
+```csharp
+// Azure SDK — 用程式碼管理雲端資源
+using Azure.Identity;
+using Azure.ResourceManager;
+
+// 認證 — 用 DefaultAzureCredential（支援本機開發和雲端環境）
+var credential = new DefaultAzureCredential();
+var armClient = new ArmClient(credential);
+
+// 列出所有 Resource Group
+var subscription = await armClient.GetDefaultSubscriptionAsync();
+await foreach (var rg in subscription.GetResourceGroups())
+{
+    Console.WriteLine($"Resource Group: {rg.Data.Name}, Location: {rg.Data.Location}");
+}
+
+// 環境設定 — 不同環境用不同的雲端服務
+// appsettings.Development.json → 本機 Docker
+// appsettings.Staging.json → Azure App Service (PaaS)
+// appsettings.Production.json → Azure App Service + Redis + SQL
+builder.Configuration
+    .AddJsonFile("appsettings.json")
+    .AddJsonFile($"appsettings.{env.EnvironmentName}.json", optional: true)
+    .AddAzureKeyVault(new Uri(vaultUri), credential); // 從 Key Vault 取密鑰
+```
+
+### TypeScript 版本
+
+```typescript
+// AWS SDK v3 — 管理雲端資源
+import { EC2Client, DescribeInstancesCommand } from "@aws-sdk/client-ec2";
+import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
+
+// 列出 EC2 Instance（IaaS）
+const ec2 = new EC2Client({ region: "us-east-1" });
+const instances = await ec2.send(new DescribeInstancesCommand({}));
+instances.Reservations?.forEach((r) =>
+  r.Instances?.forEach((i) =>
+    console.log(`Instance: ${i.InstanceId}, State: ${i.State?.Name}`)
+  )
+);
+
+// 上傳檔案到 S3（Storage）
+const s3 = new S3Client({ region: "us-east-1" });
+await s3.send(
+  new PutObjectCommand({
+    Bucket: "my-app-bucket",
+    Key: "uploads/photo.jpg",
+    Body: fileBuffer,
+    ContentType: "image/jpeg",
+  })
+);
+```
+
+### Python 版本
+
+```python
+# Azure SDK — Python
+from azure.identity import DefaultAzureCredential
+from azure.mgmt.resource import ResourceManagementClient
+
+credential = DefaultAzureCredential()
+subscription_id = "your-subscription-id"
+
+# 列出 Resource Group
+resource_client = ResourceManagementClient(credential, subscription_id)
+for rg in resource_client.resource_groups.list():
+    print(f"Resource Group: {rg.name}, Location: {rg.location}")
+
+# Boto3 — AWS Python SDK
+import boto3
+
+# 列出 S3 Bucket
+s3 = boto3.client("s3")
+response = s3.list_buckets()
+for bucket in response["Buckets"]:
+    print(f"Bucket: {bucket['Name']}")
+```
+
+## 架構圖/概念圖
+
+<Diagram data='{"nodes":[{"id":"you","label":"You (Developer)","type":"muted"},{"id":"app","label":"Application Code","type":"highlight"},{"id":"runtime","label":"Runtime / Middleware","type":"default"},{"id":"os","label":"OS","type":"default"},{"id":"infra","label":"VM / Network / Storage","type":"default"},{"id":"physical","label":"Physical Hardware","type":"muted"}],"edges":[{"from":"you","to":"app","label":"always manage"},{"from":"app","to":"runtime","label":"PaaS manages below"},{"from":"runtime","to":"os","label":"IaaS manages below"},{"from":"os","to":"infra","label":""},{"from":"infra","to":"physical","label":"cloud always manages"}]}' />
+
+由上到下，Application Code 永遠是你的責任。PaaS 幫你管 Runtime 和 OS。IaaS 只管實體硬體和虛擬化層，OS 以上都是你的。理解這個分界線是選擇服務模式的關鍵。
+
+## 實戰補充
+
+**Q: 新專案應該選 IaaS 還是 PaaS？**
+
+A: 預設選 **PaaS**，除非有明確的理由需要控制 OS（如特殊驅動程式、效能調校）。PaaS 讓你專注在業務邏輯，維運成本低很多。等到 PaaS 真的限制了你，再考慮降級到 IaaS。
+
+**Q: 如何避免 Vendor Lock-in？**
+
+A: (1) 核心業務邏輯不要依賴雲端特定 API，用抽象層隔離。(2) 資料格式用標準格式（JSON、Parquet），不用雲端專屬格式。(3) 容器化應用程式，Docker Image 跨雲皆可執行。
+
+**Q: 多雲（Multi-Cloud）值得嗎？**
+
+A: 大多數中小團隊不值得。多雲增加架構複雜度、團隊學習成本、且無法享受單一雲端的深度整合和量大折扣。除非有法規要求（資料落地）或極高可用需求，否則先專注單一雲端。
+
+## 理解測驗
+
+<Quiz data='{"question":"PaaS 和 IaaS 的核心差異是什麼？","options":["PaaS 比較便宜","PaaS 幫你管 OS 和 Runtime，你只管應用程式碼","PaaS 效能比較好","PaaS 不能用自訂程式碼"],"answer":1,"explanation":"PaaS 管理 OS、Runtime、Middleware，你只需上傳應用程式碼。IaaS 只提供 VM，OS 以上都由你管理。"}' />
+
+<Quiz data='{"question":"雲端的 Shared Responsibility Model 指的是什麼？","options":["雲端商負責所有安全","你負責所有安全","雲端商和你各自負責一部分安全，依服務模式不同分界也不同","安全由第三方公司負責"],"answer":2,"explanation":"IaaS 中你負責 OS 安全、應用安全、資料安全。PaaS 中雲端商多管了 OS 安全。SaaS 中幾乎全由雲端商管，你只管帳號權限和資料存取。"}' />
+
+<Quiz data='{"question":"以下哪個是選擇 PaaS 而非 IaaS 的好理由？","options":["需要安裝自訂 OS Kernel Module","團隊想專注在業務邏輯開發，減少維運負擔","需要完全控制網路設定","應用程式需要特殊硬體"],"answer":1,"explanation":"PaaS 最大的優勢是減少維運工作 — 不用管 OS 更新、Runtime 安裝、環境設定，讓團隊專注在寫業務程式碼。"}' />
+
+## 重點整理
+
+<Callout type="tip" title="一句話記住">
+**IaaS 全自己管、PaaS 專注寫 Code、SaaS 開了就用。** 口訣：「越懶越 SaaS，越控越 IaaS」
+</Callout>
+
+| 模式 | 你管什麼 | 雲端管什麼 | 範例 |
+|------|---------|-----------|------|
+| **IaaS** | OS + Runtime + App | 硬體 + 虛擬化 | Azure VM, EC2 |
+| **PaaS** | App + Data | OS + Runtime + 硬體 | App Service, Beanstalk |
+| **SaaS** | 設定 + 使用 | 全部 | M365, Salesforce |

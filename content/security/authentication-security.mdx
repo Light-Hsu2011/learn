@@ -1,0 +1,221 @@
+---
+title: "Authentication Security"
+order: 4
+description: "安全的身份驗證：Password Hashing、MFA、Session 管理"
+difficulty: "hard"
+interviewImportance: 5
+related:
+  - "api-design/authentication"
+  - "cloud-architecture/identity-and-access"
+---
+
+# Authentication Security（安全的身份驗證）
+
+<ELI5>
+想像你家大門有三道鎖：
+
+- 第一道：**鑰匙**（你知道的東西 — 密碼）
+- 第二道：**指紋辨識**（你身上的東西 — 手機驗證碼）
+- 第三道：**門衛認你的臉**（你本人 — 生物辨識）
+
+如果小偷偷到你的鑰匙，還有指紋辨識擋著。這就是 **Multi-Factor Authentication（MFA）** 的概念 — 多一層保護，安全多一倍。
+
+而密碼就像你家鑰匙的模具 — 你不會把模具原樣放在門口，而是鎖在保險箱裡打亂（**Hashing**），就算被偷走也配不出原本的鑰匙。
+</ELI5>
+
+## 是什麼？
+
+Authentication Security 涵蓋三大核心領域：
+
+1. **Password Hashing** — 用單向雜湊函數將密碼轉為不可逆的雜湊值儲存
+2. **Multi-Factor Authentication（MFA）** — 結合多種驗證因子確認使用者身份
+3. **Session Management** — 管理使用者的登入狀態，控制存取期限與安全性
+
+<Callout type="info" title="驗證三因子">
+**Something you know**（密碼）+ **Something you have**（手機/硬體金鑰）+ **Something you are**（指紋/臉部辨識）。MFA 至少結合其中兩種。
+</Callout>
+
+## 核心觀念
+
+### Password Hashing
+
+| 演算法 | 安全性 | 說明 |
+|--------|--------|------|
+| MD5 / SHA-1 | 已淘汰 | 速度太快，容易被暴力破解 |
+| bcrypt | 推薦 | 內建 salt，可調整 cost factor |
+| Argon2 | 最推薦 | 2015 Password Hashing Competition 冠軍，抗 GPU 攻擊 |
+| scrypt | 推薦 | 記憶體密集，抗 ASIC 攻擊 |
+
+關鍵原則：密碼雜湊必須是**慢的** — cost factor 設定目標為每次雜湊耗時 250ms 以上。
+
+### Session 管理要點
+
+- Session ID 長度至少 128 bits，使用 CSPRNG 產生
+- 登入後必須更換 Session ID（防 Session Fixation）
+- 設定合理的 idle timeout（15-30 分鐘）和 absolute timeout（8-24 小時）
+- Cookie 設定：`HttpOnly`、`Secure`、`SameSite=Strict`
+
+## 常見誤區
+
+<Callout type="warning" title="致命錯誤">
+- 用 SHA-256 直接 hash 密碼（沒有 salt，容易被 rainbow table 攻擊）
+- 自己實作加密演算法（永遠使用經過驗證的函式庫）
+- Session ID 放在 URL query string 中（會被 Referer header 洩漏）
+- MFA 的備用碼（Recovery Code）以明文儲存
+</Callout>
+
+## 執行流程
+
+<StepDiagram data='[{"title":"使用者註冊","description":"收到密碼後立即用 Argon2/bcrypt 雜湊，只儲存雜湊值","icon":"1"},{"title":"使用者登入","description":"比對輸入密碼的雜湊值與資料庫中的雜湊值","icon":"2"},{"title":"MFA 驗證","description":"密碼正確後要求第二因子（TOTP / WebAuthn）","icon":"3"},{"title":"建立 Session","description":"產生安全的 Session ID，設定 Cookie 屬性","icon":"4"},{"title":"持續驗證","description":"每次請求檢查 Session 有效性，定期強制重新驗證","icon":"5"}]' />
+
+流程解讀：安全的身份驗證是一條完整的鏈，從密碼儲存到 Session 維護每一環都不能出錯。密碼在收到的第一時間就必須雜湊，明文密碼不能出現在 log 或任何持久化儲存中。MFA 作為第二道防線，即使密碼洩漏也能擋下攻擊者。Session 管理則確保驗證後的狀態安全且有時效性。
+
+## 程式碼範例
+
+### C# 版本
+
+```csharp
+using BCrypt.Net;
+using System.Security.Cryptography;
+
+// Password Hashing with bcrypt
+public class PasswordService
+{
+    // 註冊時：雜湊密碼
+    public string HashPassword(string password)
+    {
+        // workFactor: 12 表示 2^12 = 4096 次迭代
+        return BCrypt.Net.BCrypt.HashPassword(password, workFactor: 12);
+    }
+
+    // 登入時：驗證密碼
+    public bool VerifyPassword(string password, string hashedPassword)
+    {
+        return BCrypt.Net.BCrypt.Verify(password, hashedPassword);
+    }
+}
+
+// Session ID 產生
+public class SessionService
+{
+    public string GenerateSessionId()
+    {
+        var bytes = new byte[32]; // 256 bits
+        using var rng = RandomNumberGenerator.Create();
+        rng.GetBytes(bytes);
+        return Convert.ToBase64String(bytes);
+    }
+}
+```
+
+### TypeScript 版本
+
+```typescript
+import bcrypt from "bcrypt";
+import crypto from "crypto";
+
+// Password Hashing
+async function hashPassword(password: string): Promise<string> {
+  const saltRounds = 12;
+  return bcrypt.hash(password, saltRounds);
+}
+
+async function verifyPassword(
+  password: string,
+  hash: string
+): Promise<boolean> {
+  return bcrypt.compare(password, hash);
+}
+
+// Session ID 產生
+function generateSessionId(): string {
+  return crypto.randomBytes(32).toString("hex"); // 256 bits
+}
+
+// TOTP 驗證（使用 otpauth 函式庫）
+import { TOTP } from "otpauth";
+
+const totp = new TOTP({
+  secret: "JBSWY3DPEHPK3PXP",
+  digits: 6,
+  period: 30,
+});
+
+function verifyTotp(token: string): boolean {
+  const delta = totp.validate({ token, window: 1 });
+  return delta !== null;
+}
+```
+
+### Python 版本
+
+```python
+import bcrypt
+import secrets
+import pyotp
+
+# Password Hashing
+def hash_password(password: str) -> bytes:
+    salt = bcrypt.gensalt(rounds=12)
+    return bcrypt.hashpw(password.encode("utf-8"), salt)
+
+def verify_password(password: str, hashed: bytes) -> bool:
+    return bcrypt.checkpw(password.encode("utf-8"), hashed)
+
+# Session ID 產生
+def generate_session_id() -> str:
+    return secrets.token_hex(32)  # 256 bits
+
+# TOTP 驗證
+def setup_totp(user_email: str) -> str:
+    secret = pyotp.random_base32()
+    totp = pyotp.TOTP(secret)
+    uri = totp.provisioning_uri(name=user_email, issuer_name="MyApp")
+    return secret, uri
+
+def verify_totp(secret: str, token: str) -> bool:
+    totp = pyotp.TOTP(secret)
+    return totp.verify(token, valid_window=1)
+```
+
+## 結構圖
+
+<Diagram data='{"nodes":[{"id":"user","label":"User","type":"muted"},{"id":"auth","label":"Auth Service","type":"highlight"},{"id":"hash","label":"Password Hasher (bcrypt/Argon2)","type":"default"},{"id":"mfa","label":"MFA Provider (TOTP/WebAuthn)","type":"default"},{"id":"session","label":"Session Store (Redis)","type":"default"},{"id":"db","label":"User Database","type":"muted"}],"edges":[{"from":"user","to":"auth","label":"credentials"},{"from":"auth","to":"hash","label":"hash & verify"},{"from":"auth","to":"mfa","label":"2nd factor"},{"from":"auth","to":"session","label":"create/validate"},{"from":"hash","to":"db","label":"store hash"}]}' />
+
+圖中 User 將憑證（帳號密碼）送給 Auth Service。Auth Service 透過 Password Hasher 雜湊並比對密碼，通過後交由 MFA Provider 進行第二因子驗證。驗證完成後 Auth Service 在 Session Store（通常是 Redis）中建立 Session。整個流程中明文密碼只存在於記憶體中的極短時間，資料庫只儲存雜湊值。
+
+## 面試常見問題
+
+**Q: 為什麼不能用 SHA-256 hash 密碼？bcrypt 和 Argon2 差在哪？**
+
+A: SHA-256 設計目標是「快」，GPU 每秒可算數十億次，攻擊者可以快速暴力破解。bcrypt/Argon2 設計目標是「慢」且消耗資源。bcrypt 用 cost factor 控制 CPU 時間；Argon2 額外控制記憶體用量，能抵擋 GPU/ASIC 平行攻擊，是目前最推薦的選擇。
+
+**Q: JWT 和 Session-based Authentication 各自的優缺點？**
+
+A: Session-based 將狀態存在 server 端，可以隨時撤銷，但需要 Session Store 且不利於水平擴展。JWT 是 stateless，利於微服務架構，但 token 一旦簽發就無法撤銷（除非搭配黑名單機制）。高安全需求場景優先用 Session-based；微服務架構中可用短期 JWT + Refresh Token 搭配。
+
+**Q: TOTP 和 WebAuthn 哪個更安全？**
+
+A: WebAuthn（FIDO2）更安全。TOTP 的 shared secret 儲存在 server 和 client 兩端，server 洩漏就會被攻破，且容易被釣魚。WebAuthn 使用公私鑰架構，private key 永遠不離開使用者裝置，且綁定 origin 無法被釣魚。
+
+## 理解測驗
+
+<Quiz data='{"question":"為什麼密碼雜湊演算法要設計成「慢」的？","options":["因為快的演算法不夠準確","因為慢的演算法能增加攻擊者暴力破解的成本","因為資料庫寫入需要時間","因為網路傳輸需要延遲"],"answer":1,"explanation":"密碼雜湊故意設計成慢速運算，讓攻擊者無法在合理時間內嘗試大量密碼組合。bcrypt 和 Argon2 都可以調整運算成本。"}' />
+
+<Quiz data='{"question":"Session Fixation 攻擊的防禦方式是什麼？","options":["使用更長的 Session ID","登入成功後更換新的 Session ID","將 Session ID 加密","使用 JWT 取代 Session"],"answer":1,"explanation":"Session Fixation 是攻擊者預先設定 Session ID，誘使使用者用該 ID 登入。防禦方式是登入成功後立即產生新的 Session ID，使攻擊者持有的舊 ID 失效。"}' />
+
+<Quiz data='{"question":"MFA 的三種驗證因子中，以下何者屬於 Something you have？","options":["密碼","手機上的 TOTP 驗證碼","指紋","安全問題的答案"],"answer":1,"explanation":"TOTP 驗證碼來自你持有的裝置（手機），屬於 Something you have。密碼和安全問題答案屬於 Something you know，指紋屬於 Something you are。"}' />
+
+## 重點整理
+
+<Callout type="tip" title="一句話記住">
+**Authentication Security = 慢雜湊 + 多因子 + 安全 Session。** 口訣：「密碼要慢 hash，登入要雙重，Session 要短命」
+</Callout>
+
+| 概念 | 說明 |
+|------|------|
+| **Password Hashing** | 用 bcrypt/Argon2 慢速雜湊，不用 MD5/SHA |
+| **Salt** | 每個密碼獨立的隨機值，防 rainbow table |
+| **MFA** | 至少兩種驗證因子，TOTP 或 WebAuthn |
+| **Session 安全** | HttpOnly + Secure + SameSite，登入換 ID |
+| **核心原則** | 永遠不儲存明文密碼，永遠不自己造輪子 |

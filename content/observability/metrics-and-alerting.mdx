@@ -1,0 +1,261 @@
+---
+title: "Metrics and Alerting"
+order: 3
+description: "指標監控與告警：RED/USE 方法、Prometheus、Alertmanager"
+difficulty: "medium"
+interviewImportance: 4
+related:
+  - "observability/dashboards"
+  - "system-design/notification-system"
+---
+
+# Metrics and Alerting（指標與告警）
+
+<ELI5>
+想像你開一間餐廳，你需要關注幾個「數字」來知道生意好不好：
+
+- **每小時來幾桌客人？**（Request Rate）
+- **多少客人等太久走了？**（Error Rate）
+- **平均等餐時間多久？**（Duration/Latency）
+
+如果「等餐時間超過 30 分鐘」，你需要**立刻收到通知**（Alert）去處理，而不是等到月底看報表才發現。
+
+Metrics 就是這些「即時數字」，Alerting 就是「數字超標時自動通知你」的機制。
+</ELI5>
+
+## 是什麼？
+
+**Metrics** 是以時間序列數值表示的系統行為量測。**Alerting** 是當 Metrics 超過預設閾值時自動通知相關人員的機制。兩者搭配形成系統健康的「自動體檢和警報系統」。
+
+<Callout type="info" title="為什麼不用 Log 做告警？">
+Log 是離散事件，要從海量 log 中統計「過去 5 分鐘的錯誤率」需要大量運算。Metrics 天生就是聚合數值，Prometheus 每 15 秒抓一次就能即時計算趨勢，效率遠高於 log aggregation。
+</Callout>
+
+## 核心觀念
+
+### RED 方法（面向請求的服務）
+
+| 指標 | 全稱 | 說明 |
+|------|------|------|
+| **R**ate | Request Rate | 每秒請求數（QPS / RPS） |
+| **E**rror | Error Rate | 錯誤率（5xx / 總請求） |
+| **D**uration | Request Duration | 請求延遲（P50、P95、P99） |
+
+RED 適用於 API 服務、Web 服務等「處理請求」的系統。
+
+### USE 方法（面向資源的基礎設施）
+
+| 指標 | 全稱 | 說明 |
+|------|------|------|
+| **U**tilization | 使用率 | 資源被佔用的比例（CPU 80%） |
+| **S**aturation | 飽和度 | 超過容量的排隊程度（佇列長度） |
+| **E**rrors | 錯誤數 | 硬體/資源錯誤事件數 |
+
+USE 適用於 CPU、Memory、Disk、Network 等基礎設施。
+
+### Metrics 的四種類型（Prometheus）
+
+| 類型 | 說明 | 範例 |
+|------|------|------|
+| **Counter** | 只增不減的累計值 | 請求總數、錯誤總數 |
+| **Gauge** | 可增可減的瞬時值 | 記憶體使用量、活躍連線數 |
+| **Histogram** | 數值的分布統計 | 請求延遲的百分位數 |
+| **Summary** | 類似 Histogram，在 client 端計算 | P50/P90/P99 延遲 |
+
+### 告警設計原則
+
+- **可操作**：收到告警後有明確的處理步驟
+- **不重複**：同一問題不重複通知（使用 grouping 和 silence）
+- **分級**：Critical（立即處理）、Warning（工作時間處理）、Info（觀察）
+- **有上下文**：告警訊息包含足夠的資訊（哪個服務、哪個指標、當前值）
+
+## 常見誤區
+
+<Callout type="warning" title="常犯錯誤">
+- 只監控平均值不看百分位數（平均延遲 100ms，但 P99 可能是 5s）
+- 告警閾值設太低（Alert Fatigue — 告警太多，真正的問題被淹沒）
+- 沒有設定告警的「恢復通知」（不知道問題什麼時候解決了）
+- 監控指標太多但沒有關聯（100 個 dashboard 但無法快速定位問題）
+</Callout>
+
+## 執行流程
+
+<StepDiagram data='[{"title":"定義關鍵指標","description":"用 RED/USE 方法選擇最重要的指標","icon":"1"},{"title":"Instrumentation","description":"在程式碼中埋入 Counter、Histogram 等 metrics","icon":"2"},{"title":"收集與儲存","description":"Prometheus pull 模式每 15 秒抓取 /metrics endpoint","icon":"3"},{"title":"設定告警規則","description":"在 Alertmanager 中定義閾值和通知管道","icon":"4"},{"title":"驗證與調整","description":"定期回顧告警準確度，調整閾值減少 false positive","icon":"5"}]' />
+
+流程解讀：指標監控從選擇「量什麼」開始。RED 和 USE 方法提供了結構化的思考框架。Instrumentation 在程式碼中埋點，Prometheus 定期抓取。告警規則的設計是一門藝術 — 太敏感會產生 Alert Fatigue，太遲鈍會錯過問題。定期回顧告警的準確度和有用性是持續改善的關鍵。
+
+## 程式碼範例
+
+### C# 版本
+
+```csharp
+// Prometheus Metrics（prometheus-net）
+using Prometheus;
+
+// Counter
+private static readonly Counter RequestCounter = Metrics.CreateCounter(
+    "http_requests_total", "Total HTTP requests",
+    new CounterConfiguration { LabelNames = new[] { "method", "path", "status" } });
+
+// Histogram
+private static readonly Histogram RequestDuration = Metrics.CreateHistogram(
+    "http_request_duration_seconds", "HTTP request duration",
+    new HistogramConfiguration
+    {
+        LabelNames = new[] { "method", "path" },
+        Buckets = Histogram.LinearBuckets(0.01, 0.05, 20) // 10ms ~ 1s
+    });
+
+// Gauge
+private static readonly Gauge ActiveConnections = Metrics.CreateGauge(
+    "active_connections_total", "Current active connections");
+
+// Middleware
+app.Use(async (context, next) =>
+{
+    ActiveConnections.Inc();
+    using (RequestDuration
+        .WithLabels(context.Request.Method, context.Request.Path)
+        .NewTimer())
+    {
+        await next();
+    }
+    RequestCounter
+        .WithLabels(context.Request.Method, context.Request.Path,
+                     context.Response.StatusCode.ToString())
+        .Inc();
+    ActiveConnections.Dec();
+});
+
+// 暴露 /metrics endpoint
+app.MapMetrics(); // GET /metrics -> Prometheus format
+```
+
+### TypeScript 版本
+
+```typescript
+// prom-client
+import { Counter, Histogram, Gauge, Registry, collectDefaultMetrics } from "prom-client";
+
+const register = new Registry();
+collectDefaultMetrics({ register }); // Node.js 預設指標
+
+const requestCounter = new Counter({
+  name: "http_requests_total",
+  help: "Total HTTP requests",
+  labelNames: ["method", "path", "status"],
+  registers: [register],
+});
+
+const requestDuration = new Histogram({
+  name: "http_request_duration_seconds",
+  help: "HTTP request duration in seconds",
+  labelNames: ["method", "path"],
+  buckets: [0.01, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5],
+  registers: [register],
+});
+
+// Express middleware
+app.use((req, res, next) => {
+  const end = requestDuration.startTimer({ method: req.method, path: req.route?.path ?? req.path });
+  res.on("finish", () => {
+    end();
+    requestCounter.inc({ method: req.method, path: req.route?.path ?? req.path, status: res.statusCode });
+  });
+  next();
+});
+
+// /metrics endpoint
+app.get("/metrics", async (req, res) => {
+  res.set("Content-Type", register.contentType);
+  res.end(await register.metrics());
+});
+```
+
+### Python 版本
+
+```python
+from prometheus_client import Counter, Histogram, Gauge, generate_latest
+import time
+
+# 定義指標
+REQUEST_COUNT = Counter(
+    "http_requests_total", "Total HTTP requests",
+    ["method", "path", "status"]
+)
+REQUEST_DURATION = Histogram(
+    "http_request_duration_seconds", "HTTP request duration",
+    ["method", "path"],
+    buckets=[0.01, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5]
+)
+ACTIVE_CONNECTIONS = Gauge(
+    "active_connections_total", "Current active connections"
+)
+
+# FastAPI middleware
+@app.middleware("http")
+async def metrics_middleware(request, call_next):
+    ACTIVE_CONNECTIONS.inc()
+    start = time.time()
+    response = await call_next(request)
+    duration = time.time() - start
+
+    REQUEST_COUNT.labels(
+        method=request.method,
+        path=request.url.path,
+        status=response.status_code
+    ).inc()
+    REQUEST_DURATION.labels(
+        method=request.method,
+        path=request.url.path
+    ).observe(duration)
+    ACTIVE_CONNECTIONS.dec()
+    return response
+
+# /metrics endpoint
+@app.get("/metrics")
+def metrics():
+    return Response(content=generate_latest(), media_type="text/plain")
+```
+
+## 結構圖
+
+<Diagram data='{"nodes":[{"id":"app","label":"Application (/metrics)","type":"default"},{"id":"prom","label":"Prometheus","type":"highlight"},{"id":"alert","label":"Alertmanager","type":"default"},{"id":"grafana","label":"Grafana Dashboard","type":"default"},{"id":"slack","label":"Slack / PagerDuty","type":"muted"},{"id":"rules","label":"Alert Rules","type":"muted"}],"edges":[{"from":"prom","to":"app","label":"pull every 15s"},{"from":"prom","to":"rules","label":"evaluate"},{"from":"rules","to":"alert","label":"fire alert"},{"from":"alert","to":"slack","label":"notify"},{"from":"prom","to":"grafana","label":"query (PromQL)"}]}' />
+
+圖中 Prometheus 每 15 秒主動 pull Application 的 /metrics endpoint。Prometheus 根據 Alert Rules 持續評估指標，當閾值被觸發時發送到 Alertmanager。Alertmanager 根據路由規則通知 Slack 或 PagerDuty。Grafana 透過 PromQL 查詢 Prometheus 資料進行視覺化。
+
+## 面試常見問題
+
+**Q: 為什麼要看 P99 而不只看平均值？**
+
+A: 平均值會被大量正常請求稀釋，隱藏少數極慢的請求。例如 1000 個請求中 990 個 50ms、10 個 5000ms，平均值是 99.5ms 看起來正常，但 P99 是 5000ms 代表 1% 的使用者等了 5 秒。這 1% 可能是付費大戶。P99 更能反映使用者的真實體驗。
+
+**Q: Pull-based（Prometheus）和 Push-based（Datadog）的差異？**
+
+A: Pull-based 由 Prometheus 主動抓取，好處是中央控制抓取頻率、服務不需要知道 Prometheus 的位置、掛掉的服務自然消失。Push-based 由服務主動推送，好處是支援短生命週期的 job、防火牆友善、不需要 service discovery。Prometheus 用 Pushgateway 解決短生命週期 job 的問題。
+
+**Q: 如何減少 Alert Fatigue？**
+
+A: 五個策略：(1) 只告警可操作的問題（不是 symptom 而是 cause）；(2) 設定合理的閾值和持續時間（如「錯誤率超過 5% 且持續 5 分鐘」而非瞬間超過）；(3) 使用 grouping 合併相關告警；(4) 定期回顧和清理不再有用的告警；(5) 分級通知（Critical 打電話、Warning 發 Slack）。
+
+## 理解測驗
+
+<Quiz data='{"question":"RED 方法中的三個指標分別是什麼？","options":["Read, Execute, Delete","Rate, Error, Duration","Request, Event, Data","Reliability, Efficiency, Durability"],"answer":1,"explanation":"RED 方法量測面向請求的服務：Rate（請求速率）、Error（錯誤率）、Duration（延遲）。這三個指標能快速評估一個 API 服務的健康狀況。"}' />
+
+<Quiz data='{"question":"Prometheus 的 Counter 和 Gauge 有什麼差別？","options":["Counter 用於字串，Gauge 用於數字","Counter 只增不減，Gauge 可增可減","Counter 比 Gauge 更精確","兩者沒有差別"],"answer":1,"explanation":"Counter 是只增不減的累計值（如請求總數），只在服務重啟時歸零。Gauge 是可增可減的瞬時值（如記憶體使用量、活躍連線數）。"}' />
+
+<Quiz data='{"question":"以下哪個告警設定最合理？","options":["CPU 使用率超過 10% 就告警","錯誤率超過 5% 且持續 5 分鐘","某個 API 被呼叫就告警","每小時發送一次系統狀態摘要"],"answer":1,"explanation":"好的告警應該有明確的閾值和持續時間，避免瞬間波動造成 false positive。「錯誤率超過 5% 且持續 5 分鐘」是可操作且有意義的告警條件。"}' />
+
+## 重點整理
+
+<Callout type="tip" title="一句話記住">
+**Metrics + Alerting = 即時體檢 + 自動警報。** 口訣：「RED 量服務，USE 量資源，告警要可操作」
+</Callout>
+
+| 概念 | 說明 |
+|------|------|
+| **RED** | Rate / Error / Duration — 服務導向指標 |
+| **USE** | Utilization / Saturation / Errors — 資源導向指標 |
+| **Counter** | 只增不減的累計值 |
+| **Histogram** | 數值的分布統計（百分位數） |
+| **核心原則** | 看 P99 不只看平均值，告警必須可操作 |

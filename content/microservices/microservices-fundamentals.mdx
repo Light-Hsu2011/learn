@@ -1,0 +1,229 @@
+---
+title: "Microservices Fundamentals"
+order: 1
+description: "微服務 vs Monolith：架構選擇的核心考量與取捨"
+difficulty: "easy"
+interviewImportance: 5
+related:
+  - "ddd/bounded-context"
+  - "microservices/decomposition"
+---
+
+# Microservices Fundamentals（微服務基礎）
+
+<ELI5>
+想像一間大型餐廳：
+
+**Monolith（單體架構）** 就像一個超級廚師什麼都做 — 前菜、主菜、甜點、飲料。他很厲害，但如果他生病了，整間餐廳就停擺。而且他一次只能做一道菜，忙不過來。
+
+**Microservices（微服務）** 就像把廚房分成好幾個小站：沙拉站、燒烤站、甜點站、飲料站。每個站有自己的廚師，可以獨立運作。燒烤站壞了，沙拉站照樣出餐。忙的時候可以只加開燒烤站，不用整間廚房複製一份。
+</ELI5>
+
+## 是什麼？
+
+**Microservices Architecture** 是一種將應用程式拆分為多個小型、獨立部署的服務的架構風格。每個服務擁有自己的資料庫、獨立的部署週期，透過 API 或 Message Queue 溝通。
+
+<Callout type="info" title="不是新概念">
+微服務的本質是 **SOA（Service-Oriented Architecture）** 的進化版，加上了 DevOps 文化、容器化技術、和 CI/CD 的支撐。沒有這些基礎設施，微服務的維運成本會高到不值得。
+</Callout>
+
+## 核心觀念
+
+### Monolith vs Microservices
+
+| 面向 | Monolith | Microservices |
+|------|----------|---------------|
+| 部署 | 整個應用一起部署 | 每個服務獨立部署 |
+| 擴展 | 整體水平擴展 | 按服務需求個別擴展 |
+| 技術棧 | 統一 | 每個服務可以不同 |
+| 資料庫 | 共用一個 | 每個服務自己的資料庫 |
+| 團隊 | 按技術分工（前端/後端/DBA） | 按業務功能分工（訂單團隊/支付團隊） |
+| 複雜度 | 程式碼內部複雜 | 網路通訊與分散式系統複雜 |
+| 一致性 | 容易（ACID Transaction） | 困難（需要 Saga 等模式） |
+
+### 什麼時候該用微服務？
+
+- 團隊人數超過 15-20 人，開始互相干擾
+- 不同模組的變更頻率和擴展需求差異大
+- 組織已具備 DevOps、CI/CD、容器化的成熟度
+- 業務領域可以清楚劃分 Bounded Context
+
+### 什麼時候不該用？
+
+- 新創早期（業務邊界不清楚）
+- 團隊小於 5 人
+- 沒有自動化部署和監控基礎設施
+- 追求快速驗證 MVP
+
+## 常見誤區
+
+<Callout type="warning" title="微服務不是銀彈">
+- 「微服務比較先進，所以一定比 Monolith 好」（Monolith 不是壞架構，很多成功產品用 Monolith）
+- 「先建微服務，再找業務邊界」（應該先建 Monolith，再根據真實需求拆分）
+- 「每個 API endpoint 就是一個微服務」（微服務按業務能力劃分，不是按 API）
+- 「微服務可以解決程式碼品質問題」（爛的程式碼搬到微服務只會變成分散式的爛程式碼）
+</Callout>
+
+## 執行流程
+
+<StepDiagram data='[{"title":"從 Monolith 開始","description":"先用單體架構快速驗證業務，釐清領域邊界","icon":"1"},{"title":"識別 Bounded Context","description":"找出業務邊界，決定哪些模組適合拆分","icon":"2"},{"title":"建立基礎設施","description":"CI/CD、容器化、Service Mesh、監控告警","icon":"3"},{"title":"漸進拆分","description":"用 Strangler Fig 模式逐步將模組抽出為獨立服務","icon":"4"},{"title":"持續演進","description":"根據實際需求持續調整服務邊界和粒度","icon":"5"}]' />
+
+流程解讀：微服務的採用是一個漸進的過程，而非一步到位。Martin Fowler 提出的「Monolith First」策略建議先用單體架構釐清業務邊界，等到團隊規模和系統複雜度真正需要時再拆分。基礎設施的準備是關鍵前提 — 沒有自動化部署和監控，維運微服務的成本會遠超收益。
+
+## 程式碼範例
+
+### C# 版本
+
+```csharp
+// Monolith: 所有邏輯在同一個專案
+public class OrderService
+{
+    private readonly OrderDbContext _db;
+    private readonly PaymentService _payment;
+    private readonly InventoryService _inventory;
+    private readonly NotificationService _notification;
+
+    public async Task<Order> PlaceOrder(OrderRequest request)
+    {
+        // 所有操作在同一個 transaction
+        using var tx = await _db.Database.BeginTransactionAsync();
+        var order = await CreateOrder(request);
+        await _payment.Charge(order);       // 直接呼叫
+        await _inventory.Reserve(order);    // 直接呼叫
+        await _notification.Send(order);    // 直接呼叫
+        await tx.CommitAsync();
+        return order;
+    }
+}
+
+// Microservices: 每個服務獨立，透過 HTTP/Message Queue 溝通
+public class OrderService  // 訂單服務
+{
+    private readonly HttpClient _paymentClient;
+    private readonly IMessageBus _bus;
+
+    public async Task<Order> PlaceOrder(OrderRequest request)
+    {
+        var order = await CreateOrder(request);
+        // 透過 HTTP 呼叫支付服務
+        await _paymentClient.PostAsJsonAsync("/api/payments", new
+        {
+            OrderId = order.Id,
+            Amount = order.Total
+        });
+        // 透過 Message Queue 通知庫存和通知服務
+        await _bus.PublishAsync(new OrderPlacedEvent(order.Id));
+        return order;
+    }
+}
+```
+
+### TypeScript 版本
+
+```typescript
+// Monolith: Express app 包含所有 routes
+const app = express();
+app.use("/api/orders", orderRoutes);
+app.use("/api/payments", paymentRoutes);
+app.use("/api/inventory", inventoryRoutes);
+// 全部跑在同一個 process
+
+// Microservices: 每個服務是獨立的 Express app
+// order-service/index.ts
+const orderApp = express();
+orderApp.post("/api/orders", async (req, res) => {
+  const order = await createOrder(req.body);
+  // 發送事件通知其他服務
+  await messageBus.publish("order.placed", {
+    orderId: order.id,
+    items: order.items,
+  });
+  res.json(order);
+});
+orderApp.listen(3001);
+
+// payment-service/index.ts（獨立 process）
+const paymentApp = express();
+messageBus.subscribe("order.placed", async (event) => {
+  await processPayment(event.orderId);
+});
+paymentApp.listen(3002);
+```
+
+### Python 版本
+
+```python
+# Monolith: Django 或 Flask 的所有模組在一起
+# 優點：簡單、一個 DB transaction 搞定
+class OrderView:
+    def post(self, request):
+        with transaction.atomic():
+            order = Order.objects.create(**request.data)
+            Payment.objects.charge(order)
+            Inventory.objects.reserve(order)
+            Notification.objects.send(order)
+        return Response(order)
+
+# Microservices: 每個服務獨立部署
+# order_service/main.py
+from fastapi import FastAPI
+import httpx
+import aio_pika
+
+app = FastAPI()
+
+@app.post("/api/orders")
+async def place_order(request: OrderRequest):
+    order = await create_order(request)
+    # HTTP 呼叫支付服務
+    async with httpx.AsyncClient() as client:
+        await client.post(
+            "http://payment-service/api/payments",
+            json={"order_id": order.id, "amount": order.total}
+        )
+    # 發布事件
+    await publish_event("order.placed", {"order_id": order.id})
+    return order
+```
+
+## 結構圖
+
+<Diagram data='{"nodes":[{"id":"client","label":"Client","type":"muted"},{"id":"gateway","label":"API Gateway","type":"highlight"},{"id":"order","label":"Order Service","type":"default"},{"id":"payment","label":"Payment Service","type":"default"},{"id":"inventory","label":"Inventory Service","type":"default"},{"id":"mq","label":"Message Queue","type":"default"},{"id":"orderdb","label":"Order DB","type":"muted"},{"id":"paydb","label":"Payment DB","type":"muted"}],"edges":[{"from":"client","to":"gateway","label":"request"},{"from":"gateway","to":"order","label":"route"},{"from":"gateway","to":"payment","label":"route"},{"from":"order","to":"mq","label":"publish event"},{"from":"mq","to":"inventory","label":"subscribe"},{"from":"order","to":"orderdb","label":"read/write"},{"from":"payment","to":"paydb","label":"read/write"}]}' />
+
+圖中 Client 透過 API Gateway 統一入口存取各個微服務。Order Service 和 Payment Service 各自擁有獨立的資料庫（Database per Service 模式）。服務之間透過 Message Queue 進行非同步溝通，降低耦合度。API Gateway 負責路由、認證、限流等橫切關注點。
+
+## 面試常見問題
+
+**Q: 什麼時候該從 Monolith 轉向 Microservices？**
+
+A: 當出現以下訊號時考慮拆分：部署頻率受限（一個小改動要部署整個系統）、團隊之間頻繁衝突（改 A 模組影響 B 模組）、不同模組的擴展需求差異大（訂單服務需要 10 個 instance，報表服務只需要 1 個）。前提是已具備 CI/CD、容器化、監控等基礎設施。
+
+**Q: Microservices 最大的挑戰是什麼？**
+
+A: 分散式系統的固有複雜性：網路不可靠（需要重試和熔斷）、資料一致性（沒有 ACID transaction，需要 Saga）、服務發現和負載均衡、分散式追蹤和除錯、部署和配置管理的複雜度。這些都需要額外的基礎設施和團隊能力。
+
+**Q: Database per Service 模式的利弊？**
+
+A: 好處是服務之間完全解耦，可以各自選擇最適合的資料庫類型（SQL/NoSQL），獨立擴展和優化。壞處是跨服務查詢變得困難（需要 API Composition 或 CQRS），資料一致性需要額外處理（Saga Pattern），資料冗餘是常態。
+
+## 理解測驗
+
+<Quiz data='{"question":"以下哪個不是微服務架構的特徵？","options":["每個服務獨立部署","每個服務有自己的資料庫","所有服務共用同一個 transaction","服務之間透過 API 溝通"],"answer":2,"explanation":"微服務架構中每個服務有自己的資料庫，無法使用跨服務的 ACID transaction。需要 Saga 等模式處理分散式一致性。"}' />
+
+<Quiz data='{"question":"Martin Fowler 建議的微服務採用策略是什麼？","options":["直接從微服務開始","先建 Monolith，等需求清楚後再拆分","先建微服務，再合併成 Monolith","只在大公司才用微服務"],"answer":1,"explanation":"Monolith First 策略建議先用單體架構快速驗證業務和釐清領域邊界，等到團隊規模和複雜度真正需要時再拆分為微服務。"}' />
+
+<Quiz data='{"question":"以下哪個團隊最適合採用微服務架構？","options":["3 人新創團隊，正在開發 MVP","20 人團隊，有成熟的 CI/CD 和 DevOps 文化","5 人團隊，第一次使用雲端服務","10 人團隊，沒有自動化部署"],"answer":1,"explanation":"微服務需要 DevOps 成熟度作為基礎，包括 CI/CD、容器化、監控等。20 人團隊且有成熟 DevOps 文化最適合。"}' />
+
+## 重點整理
+
+<Callout type="tip" title="一句話記住">
+**Microservices = 獨立部署 + 獨立資料庫 + API 溝通。** 口訣：「Monolith 先行，痛點再拆，基建先備」
+</Callout>
+
+| 概念 | 說明 |
+|------|------|
+| **Monolith** | 所有功能在一個部署單位，簡單但耦合 |
+| **Microservices** | 按業務拆分的獨立服務，靈活但複雜 |
+| **Database per Service** | 每個服務擁有自己的資料庫 |
+| **API Gateway** | 微服務的統一入口 |
+| **核心取捨** | 用分散式複雜度換取獨立部署和擴展的靈活性 |

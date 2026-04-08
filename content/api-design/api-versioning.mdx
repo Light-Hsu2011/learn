@@ -1,0 +1,199 @@
+---
+title: "API 版本控制"
+order: 2
+description: "URL、Header、Query 三種版本策略的取捨與實務選擇"
+difficulty: "medium"
+interviewImportance: 4
+related:
+  - "api-design/rest-fundamentals"
+  - "microservices/api-gateway"
+---
+
+# API 版本控制（API Versioning）
+
+<ELI5>
+想像你經營一間餐廳，菜單改版了：
+
+- **舊客人**還想吃舊菜單上的招牌菜
+- **新客人**想試新菜色
+
+你不能直接撕掉舊菜單，而是要**同時提供新舊菜單**，讓客人自己選。API 版本控制就是讓新舊版本的 API **同時存在**，確保舊客戶不會因為你改版而壞掉。
+</ELI5>
+
+## 是什麼？
+
+API Versioning 是一種管理 API 演進的策略，當 API 需要進行**破壞性變更（Breaking Change）**時，透過版本號讓舊客戶端繼續使用舊版，新客戶端使用新版。
+
+<Callout type="info" title="何時需要版本控制">
+只有**破壞性變更**才需要升版 — 例如刪除欄位、改變欄位型別、改變回應結構。新增欄位通常不算破壞性變更，不需要升版。
+</Callout>
+
+## 核心觀念
+
+- **URL 版本控制**：在路徑中加版本號，如 `/api/v1/users`。最直覺、最常見，GitHub 和 Stripe 都用這種方式
+- **Header 版本控制**：在 Request Header 中指定版本，如 `Accept: application/vnd.myapi.v2+json`。URL 保持乾淨但不易發現
+- **Query 版本控制**：用查詢參數指定版本，如 `/api/users?version=2`。簡單但容易被忽略或快取干擾
+- **破壞性變更（Breaking Change）**：會讓現有客戶端壞掉的改動 — 刪除欄位、改變型別、改變必填規則、改變回應結構
+- **非破壞性變更**：新增欄位、新增選填參數、新增端點 — 這些不需要升版
+
+## 常見誤區
+
+<Callout type="warning" title="常見誤區">
+- **每次改動都升版**：只有破壞性變更才升版，頻繁升版會造成維護噩夢
+- **不設定棄用期限**：舊版本必須有明確的棄用日期（Deprecation Date），否則永遠無法下線
+- **在 URL 中用日期當版本**：`/api/2024-01-01/users` 對開發者不直覺，除非是 AWS 等大型雲端平台的風格
+</Callout>
+
+## 流程/步驟
+
+<StepDiagram data='[{"title":"評估變更類型","description":"判斷是否為破壞性變更，非破壞性不需升版","icon":"1"},{"title":"選擇版本策略","description":"根據團隊慣例選擇 URL/Header/Query 策略","icon":"2"},{"title":"實作新版本","description":"建立新版 Controller 或路由，保留舊版","icon":"3"},{"title":"公告棄用計畫","description":"在舊版回應中加入 Deprecation Header 和遷移文件","icon":"4"},{"title":"下線舊版","description":"棄用期結束後關閉舊版，回傳 410 Gone","icon":"5"}]' />
+
+流程解讀：版本控制的起點是正確判斷變更類型。選定策略後同時維護新舊版本，透過 Deprecation Header 通知客戶端遷移，最終在合理期限後下線舊版。
+
+## 程式碼範例
+
+### C# 版本
+
+```csharp
+// ASP.NET Core — URL 版本控制
+// 安裝 NuGet: Asp.Versioning.Mvc
+
+builder.Services.AddApiVersioning(options =>
+{
+    options.DefaultApiVersion = new ApiVersion(1, 0);
+    options.AssumeDefaultVersionWhenUnspecified = true;
+    options.ReportApiVersions = true; // 在 Response Header 回傳支援版本
+});
+
+// V1 Controller
+[ApiController]
+[Route("api/v{version:apiVersion}/users")]
+[ApiVersion("1.0")]
+public class UsersV1Controller : ControllerBase
+{
+    [HttpGet("{id}")]
+    public ActionResult<UserV1Dto> GetById(int id)
+    {
+        return Ok(new UserV1Dto { Id = id, Name = "Alice" });
+    }
+}
+
+// V2 Controller — 新增 email 欄位，name 拆成 firstName + lastName
+[ApiController]
+[Route("api/v{version:apiVersion}/users")]
+[ApiVersion("2.0")]
+public class UsersV2Controller : ControllerBase
+{
+    [HttpGet("{id}")]
+    public ActionResult<UserV2Dto> GetById(int id)
+    {
+        return Ok(new UserV2Dto
+        {
+            Id = id,
+            FirstName = "Alice",
+            LastName = "Chen",
+            Email = "alice@example.com"
+        });
+    }
+}
+```
+
+### TypeScript 版本
+
+```typescript
+// Express.js — URL 版本控制
+import express from "express";
+const app = express();
+
+// V1
+app.get("/api/v1/users/:id", (req, res) => {
+  res.json({ id: req.params.id, name: "Alice" });
+});
+
+// V2 — name 拆成 firstName + lastName
+app.get("/api/v2/users/:id", (req, res) => {
+  res.json({
+    id: req.params.id,
+    firstName: "Alice",
+    lastName: "Chen",
+    email: "alice@example.com",
+  });
+});
+
+// Header 版本控制
+app.get("/api/users/:id", (req, res) => {
+  const version = req.headers["api-version"] || "1";
+  if (version === "2") {
+    res.json({ id: req.params.id, firstName: "Alice", lastName: "Chen" });
+  } else {
+    res.json({ id: req.params.id, name: "Alice" });
+  }
+});
+```
+
+### Python 版本
+
+```python
+# FastAPI — URL 版本控制
+from fastapi import FastAPI, APIRouter
+
+app = FastAPI()
+v1 = APIRouter(prefix="/api/v1")
+v2 = APIRouter(prefix="/api/v2")
+
+@v1.get("/users/{user_id}")
+async def get_user_v1(user_id: int):
+    return {"id": user_id, "name": "Alice"}
+
+@v2.get("/users/{user_id}")
+async def get_user_v2(user_id: int):
+    return {
+        "id": user_id,
+        "first_name": "Alice",
+        "last_name": "Chen",
+        "email": "alice@example.com",
+    }
+
+app.include_router(v1)
+app.include_router(v2)
+```
+
+## 架構圖/概念圖
+
+<Diagram data='{"nodes":[{"id":"client","label":"Client","type":"muted"},{"id":"gateway","label":"API Gateway / Router","type":"highlight"},{"id":"v1","label":"V1 Handler","type":"default"},{"id":"v2","label":"V2 Handler","type":"default"},{"id":"db","label":"Shared Database","type":"muted"}],"edges":[{"from":"client","to":"gateway","label":"api-version: 1 or 2"},{"from":"gateway","to":"v1","label":"route v1"},{"from":"gateway","to":"v2","label":"route v2"},{"from":"v1","to":"db","label":"read/write"},{"from":"v2","to":"db","label":"read/write"}]}' />
+
+Client 帶版本資訊發送請求，API Gateway 根據版本路由到對應的 Handler。V1 和 V2 通常共用同一個資料庫，但各自負責自己的 DTO 轉換邏輯。
+
+## 實戰補充
+
+**Q: 三種版本策略怎麼選？**
+
+A: 大多數團隊選 **URL 版本控制**，因為最直覺、最好除錯（直接從 URL 看到版本）。Header 版本適合追求 URL 潔癖的 API，Query 版本通常是最後選擇。實務上 80% 以上的公開 API 用 URL 方式。
+
+**Q: 需要同時維護幾個版本？**
+
+A: 業界常見做法是最多同時維護 **2-3 個版本**，舊版給 6-12 個月的棄用期。超過 3 個版本會讓測試和維護成本暴增。
+
+**Q: 微服務架構下版本控制有什麼特別考量？**
+
+A: 用 API Gateway 統一管理版本路由，各微服務只需關注自己的版本。避免讓版本資訊穿透到服務間通訊，內部服務間用 gRPC 或 Contract Testing 確保相容性。
+
+## 理解測驗
+
+<Quiz data='{"question":"以下哪種改動屬於破壞性變更（Breaking Change）？","options":["新增一個選填的查詢參數","在回應中新增一個欄位","將回應中的 name 欄位拆成 firstName 和 lastName","新增一個新的 API 端點"],"answer":2,"explanation":"將 name 拆成 firstName + lastName 會讓依賴 name 欄位的舊客戶端壞掉，這是典型的破壞性變更。"}' />
+
+<Quiz data='{"question":"URL 版本控制（/api/v1/users）的最大優點是什麼？","options":["效能最好","URL 最乾淨","最直覺，從 URL 就能看到版本","不需要改任何程式碼"],"answer":2,"explanation":"URL 版本控制最大的優點是直覺性 — 開發者從 URL 就能判斷使用的版本，方便除錯和溝通。"}' />
+
+<Quiz data='{"question":"當你要下線一個舊版 API 時，應該回傳什麼狀態碼？","options":["404 Not Found","200 OK 加上錯誤訊息","410 Gone","301 Moved Permanently"],"answer":2,"explanation":"410 Gone 表示資源曾經存在但已永久移除，正好表達「此版本已下線」的語意。"}' />
+
+## 重點整理
+
+<Callout type="tip" title="一句話記住">
+**版本控制 = 讓新舊 API 共存，給客戶端遷移的時間。** 口訣：「破壞才升版，URL 最直覺」
+</Callout>
+
+| 策略 | 範例 | 優點 | 缺點 |
+|------|------|------|------|
+| **URL** | `/api/v1/users` | 最直覺、易除錯 | URL 不夠「純粹」 |
+| **Header** | `Accept: vnd.api.v2+json` | URL 乾淨 | 不易發現、除錯較難 |
+| **Query** | `/api/users?version=2` | 簡單實作 | 易被忽略、快取問題 |

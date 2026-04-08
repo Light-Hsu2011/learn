@@ -1,0 +1,269 @@
+---
+title: "Saga Pattern"
+order: 4
+description: "Saga 分散式交易：Choreography vs Orchestration 的設計與實作"
+difficulty: "hard"
+interviewImportance: 4
+related:
+  - "ddd/domain-events"
+  - "microservices/event-driven"
+---
+
+# Saga Pattern（分散式交易）
+
+<ELI5>
+你在網路上訂了一趟旅行：訂機票 → 訂飯店 → 租車。如果租車公司說「沒車了」，你不想只取消租車，你要把機票和飯店也一起退掉。
+
+在單體架構中，這三個操作可以用一個 Database Transaction 包起來，全部成功或全部回滾。但在微服務中，機票、飯店、租車是三個不同的服務、三個不同的資料庫，沒辦法用一個 Transaction。
+
+**Saga Pattern** 就是解決這個問題的方案：每一步成功就繼續下一步，任何一步失敗就依序執行**補償操作（Compensation）**把前面的步驟撤銷。
+</ELI5>
+
+## 是什麼？
+
+Saga 是一種管理微服務間分散式交易的模式。它將一個長交易拆成多個本地交易（Local Transaction），每個本地交易都有對應的補償交易（Compensating Transaction）。當某一步失敗時，依序執行前面步驟的補償交易來回滾。
+
+<Callout type="info" title="為什麼不用 2PC？">
+Two-Phase Commit（2PC）需要所有參與者同時鎖定資源等待協調者的決定，在微服務中會造成嚴重的效能問題和服務耦合。Saga 用「最終一致性（Eventual Consistency）」取代「強一致性」，犧牲即時一致換取可用性和效能。
+</Callout>
+
+## 核心觀念
+
+### 兩種實作方式
+
+| 面向 | Choreography（編舞） | Orchestration（指揮） |
+|------|----------------------|----------------------|
+| 控制方式 | 服務之間透過事件互相協調 | 中央 Orchestrator 指揮每一步 |
+| 耦合度 | 低（服務只知道事件） | 中（Orchestrator 知道所有步驟） |
+| 複雜流程 | 難以追蹤和除錯 | 清晰的流程控制 |
+| 適用場景 | 3-4 步的簡單流程 | 5 步以上的複雜流程 |
+| 單點故障 | 無 | Orchestrator 需要高可用 |
+
+### 補償交易設計原則
+
+- 補償操作必須是**冪等的**（可能被重試多次）
+- 補償不一定是「完美回滾」（例如退款而非「取消付款」）
+- 有些操作不可補償（例如已發送的 Email），需要在設計時考慮
+- 補償的執行順序是反向的（最後成功的先補償）
+
+### Saga 的狀態機
+
+每個 Saga 實例有明確的狀態：
+
+`STARTED` → `STEP_1_COMPLETED` → `STEP_2_COMPLETED` → ... → `COMPLETED`
+
+失敗時：`STEP_N_FAILED` → `COMPENSATING` → `COMPENSATED`
+
+## 常見誤區
+
+<Callout type="warning" title="常犯錯誤">
+- 以為 Saga 能提供 ACID 一致性（Saga 只保證最終一致性）
+- 補償操作沒有設計冪等性（重試時會產生副作用）
+- Choreography 在複雜流程中變成「事件義大利麵」（超過 4 步建議用 Orchestration）
+- 忽略了 Saga 執行過程中的「中間狀態」對使用者的影響
+</Callout>
+
+## 執行流程
+
+<StepDiagram data='[{"title":"發起 Saga","description":"Orchestrator 或第一個服務啟動 Saga 流程","icon":"1"},{"title":"執行本地交易","description":"每個服務執行自己的本地 DB transaction","icon":"2"},{"title":"發布結果事件","description":"成功則觸發下一步，失敗則觸發補償","icon":"3"},{"title":"補償回滾","description":"失敗時反向執行已完成步驟的補償交易","icon":"4"},{"title":"完成或回滾","description":"所有步驟成功為 COMPLETED，全部補償後為 COMPENSATED","icon":"5"}]' />
+
+流程解讀：Saga 的核心是「前進或回退」的決策鏈。每一步的本地交易完成後，結果事件決定了 Saga 的走向。成功就繼續下一步，失敗就開始反向補償。補償的順序和設計是 Saga 最關鍵的部分 — 每一步在設計時就必須同時考慮「如果失敗了，前面的步驟怎麼撤銷」。
+
+## 程式碼範例
+
+### C# 版本
+
+```csharp
+// Orchestration Saga — 旅行訂購
+public class TripBookingSaga
+{
+    private readonly IFlightService _flight;
+    private readonly IHotelService _hotel;
+    private readonly ICarService _car;
+
+    public async Task<SagaResult> Execute(TripRequest request)
+    {
+        var sagaId = Guid.NewGuid().ToString();
+        string flightId = null, hotelId = null, carId = null;
+
+        try
+        {
+            // Step 1: 訂機票
+            flightId = await _flight.BookAsync(request.Flight);
+
+            // Step 2: 訂飯店
+            hotelId = await _hotel.BookAsync(request.Hotel);
+
+            // Step 3: 租車
+            carId = await _car.RentAsync(request.Car);
+
+            return SagaResult.Completed(sagaId);
+        }
+        catch (Exception ex)
+        {
+            // 補償：反向順序
+            if (carId != null) await _car.CancelAsync(carId);
+            if (hotelId != null) await _hotel.CancelAsync(hotelId);
+            if (flightId != null) await _flight.CancelAsync(flightId);
+
+            return SagaResult.Compensated(sagaId, ex.Message);
+        }
+    }
+}
+
+// MassTransit Saga State Machine（更完整的實作）
+public class OrderSagaState : SagaStateMachineInstance
+{
+    public Guid CorrelationId { get; set; }
+    public string CurrentState { get; set; }
+    public string OrderId { get; set; }
+    public string PaymentId { get; set; }
+}
+```
+
+### TypeScript 版本
+
+```typescript
+// Orchestration Saga
+interface SagaStep {
+  name: string;
+  execute: () => Promise<string>;
+  compensate: (id: string) => Promise<void>;
+}
+
+async function executeSaga(steps: SagaStep[]): Promise<string[]> {
+  const completedIds: string[] = [];
+
+  try {
+    for (const step of steps) {
+      const id = await step.execute();
+      completedIds.push(id);
+    }
+    return completedIds; // 全部成功
+  } catch (error) {
+    // 反向補償已完成的步驟
+    for (let i = completedIds.length - 1; i >= 0; i--) {
+      await steps[i].compensate(completedIds[i]);
+    }
+    throw new SagaCompensatedError(error.message);
+  }
+}
+
+// 使用
+const tripSaga: SagaStep[] = [
+  {
+    name: "book-flight",
+    execute: () => flightService.book(flightRequest),
+    compensate: (id) => flightService.cancel(id),
+  },
+  {
+    name: "book-hotel",
+    execute: () => hotelService.book(hotelRequest),
+    compensate: (id) => hotelService.cancel(id),
+  },
+  {
+    name: "rent-car",
+    execute: () => carService.rent(carRequest),
+    compensate: (id) => carService.cancel(id),
+  },
+];
+
+await executeSaga(tripSaga);
+```
+
+### Python 版本
+
+```python
+from dataclasses import dataclass
+from typing import Callable, Awaitable
+import asyncio
+
+@dataclass
+class SagaStep:
+    name: str
+    execute: Callable[[], Awaitable[str]]
+    compensate: Callable[[str], Awaitable[None]]
+
+async def execute_saga(steps: list[SagaStep]) -> list[str]:
+    completed = []
+
+    try:
+        for step in steps:
+            step_id = await step.execute()
+            completed.append((step, step_id))
+        return [sid for _, sid in completed]
+    except Exception as e:
+        # 反向補償
+        for step, step_id in reversed(completed):
+            try:
+                await step.compensate(step_id)
+            except Exception as comp_error:
+                # 記錄補償失敗，需要人工介入
+                log.error(f"Compensation failed for {step.name}: {comp_error}")
+        raise SagaCompensatedError(str(e))
+
+# Choreography 範例 — 用事件驅動
+class OrderService:
+    async def place_order(self, request):
+        order = await self.create_order(request)
+        # 發布事件，不直接呼叫其他服務
+        await self.event_bus.publish("order.created", {
+            "order_id": order.id,
+            "amount": order.total
+        })
+        return order
+
+class PaymentService:
+    async def handle_order_created(self, event):
+        try:
+            payment = await self.charge(event["order_id"], event["amount"])
+            await self.event_bus.publish("payment.completed", {
+                "order_id": event["order_id"]
+            })
+        except Exception:
+            await self.event_bus.publish("payment.failed", {
+                "order_id": event["order_id"]
+            })
+```
+
+## 結構圖
+
+<Diagram data='{"nodes":[{"id":"orch","label":"Saga Orchestrator","type":"highlight"},{"id":"order","label":"Order Service","type":"default"},{"id":"payment","label":"Payment Service","type":"default"},{"id":"inventory","label":"Inventory Service","type":"default"},{"id":"shipping","label":"Shipping Service","type":"default"}],"edges":[{"from":"orch","to":"order","label":"1. create order"},{"from":"orch","to":"payment","label":"2. charge payment"},{"from":"orch","to":"inventory","label":"3. reserve stock"},{"from":"orch","to":"shipping","label":"4. schedule delivery"},{"from":"shipping","to":"orch","label":"fail: compensate all"}]}' />
+
+圖中 Saga Orchestrator 按順序指揮每一步：建立訂單、收款、扣庫存、安排出貨。如果 Shipping Service 失敗，Orchestrator 會反向依序通知 Inventory、Payment、Order 服務執行補償操作。Orchestrator 是流程的「指揮中心」，掌握整個 Saga 的狀態。
+
+## 面試常見問題
+
+**Q: Choreography 和 Orchestration 怎麼選？**
+
+A: 步驟在 3-4 步以內、流程簡單明確用 Choreography，因為不需要額外的 Orchestrator 服務。步驟超過 4 步、有條件分支、需要清楚追蹤進度用 Orchestration。實務上很多團隊偏好 Orchestration，因為流程邏輯集中在一個地方，除錯和修改比較容易。
+
+**Q: Saga 的中間狀態如何處理？**
+
+A: Saga 執行過程中系統處於不一致狀態（例如已扣款但還沒出貨）。解法：用「語義鎖（Semantic Lock）」在 Order 上標記狀態為 PENDING，UI 顯示「處理中」。使用者查看時看到的是明確的中間狀態，而非不一致的資料。
+
+**Q: 如果補償操作本身也失敗了怎麼辦？**
+
+A: 補償必須設計為冪等且可重試。如果重試仍然失敗，記錄到 Dead Letter Queue，透過告警通知人工介入處理。這是分散式系統中「最終手段」的兜底機制。設計時要考慮到這種情況並提供人工處理的 admin 介面。
+
+## 理解測驗
+
+<Quiz data='{"question":"Saga Pattern 和 Database Transaction 的核心差異是什麼？","options":["Saga 比較快","Saga 提供最終一致性而非即時一致性","Saga 不需要資料庫","Saga 只能用在 NoSQL"],"answer":1,"explanation":"Database Transaction 提供 ACID 強一致性，Saga 用補償交易實現最終一致性。在微服務中無法跨服務做 ACID transaction，Saga 是實務上的替代方案。"}' />
+
+<Quiz data='{"question":"Choreography 模式的主要缺點是什麼？","options":["需要額外的 Orchestrator 服務","複雜流程難以追蹤和除錯","效能比 Orchestration 差","不能使用 Message Queue"],"answer":1,"explanation":"Choreography 沒有中央控制點，服務之間透過事件互相觸發。當流程超過 4-5 步時，事件鏈變得難以追蹤和除錯，被稱為「事件義大利麵」。"}' />
+
+<Quiz data='{"question":"補償交易（Compensating Transaction）的設計原則是什麼？","options":["必須和原始操作完全相反","必須是冪等的","必須在 1 秒內完成","必須在同一個資料庫中執行"],"answer":1,"explanation":"補償交易可能因為重試而被執行多次，所以必須設計為冪等的（執行多次結果相同）。補償不一定是完美回滾，例如退款而非取消付款。"}' />
+
+## 重點整理
+
+<Callout type="tip" title="一句話記住">
+**Saga = 每步有正有反，失敗就反向補償。** 口訣：「前進靠事件，後退靠補償，最終會一致」
+</Callout>
+
+| 概念 | 說明 |
+|------|------|
+| **Saga** | 分散式交易的替代方案，用補償取代回滾 |
+| **Choreography** | 服務用事件互相協調，無中央控制 |
+| **Orchestration** | Orchestrator 集中指揮每一步 |
+| **Compensation** | 失敗時反向撤銷已完成步驟的操作 |
+| **核心取捨** | 用最終一致性換取可用性和效能 |

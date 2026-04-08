@@ -1,0 +1,315 @@
+---
+title: "AI Agents"
+order: 4
+description: "AI Agent：ReAct、Tool Use、Multi-Agent 架構與實作"
+difficulty: "hard"
+interviewImportance: 3
+related:
+  - "ai-for-developers/prompt-engineering"
+  - "ai-for-developers/rag"
+---
+
+# AI Agents
+
+<ELI5>
+普通的 AI 像一個**只會用嘴巴回答問題的人** — 你問什麼他就回答什麼，但他不能自己去查資料、不能打電話、不能幫你操作電腦。
+
+**AI Agent** 像一個**有手有腳的助手** — 他不只能回答問題，還能：
+- 自己 Google 搜尋（Tool Use）
+- 查你的資料庫（Function Calling）
+- 根據結果決定下一步做什麼（Reasoning）
+- 甚至指派工作給其他 Agent（Multi-Agent）
+
+關鍵差別：普通 AI 只能「想」，Agent 能「想」+「做」+「觀察結果」+「再想」。
+</ELI5>
+
+## 是什麼？
+
+AI Agent 是一個能夠**自主決策和執行行動**的 AI 系統。它透過 LLM 進行推理，使用外部工具（Tool）執行行動，觀察結果後決定下一步，形成一個「思考 → 行動 → 觀察 → 再思考」的循環。
+
+<Callout type="info" title="Agent 的核心能力">
+**Reasoning**（推理）— 理解任務並制定計畫。**Tool Use**（工具使用）— 呼叫 API、查詢資料庫、執行程式碼。**Memory**（記憶）— 記住對話歷史和執行結果。**Planning**（規劃）— 將複雜任務拆解為多個步驟。
+</Callout>
+
+## 核心觀念
+
+### ReAct 模式（Reasoning + Acting）
+
+ReAct 是最經典的 Agent 模式，交替進行推理和行動：
+
+```
+Thought: 使用者問台北今天天氣。我需要查詢天氣 API。
+Action: call_weather_api(city="Taipei")
+Observation: 晴天，28°C，濕度 65%
+Thought: 我已經取得天氣資料，可以回答了。
+Answer: 台北今天晴天，氣溫 28°C，濕度 65%。
+```
+
+### Tool Use / Function Calling
+
+LLM 本身不能執行程式碼或呼叫 API，但它可以「決定」要呼叫什麼工具以及傳什麼參數。開發者定義可用的工具清單，LLM 根據任務選擇合適的工具。
+
+| 工具類型 | 範例 |
+|----------|------|
+| API 呼叫 | 天氣 API、股價 API、搜尋引擎 |
+| 資料庫查詢 | SQL 查詢、向量搜尋 |
+| 程式碼執行 | Python sandbox、Shell command |
+| 文件操作 | 讀檔、寫檔、解析 PDF |
+
+### Multi-Agent 架構
+
+| 模式 | 說明 | 適用場景 |
+|------|------|----------|
+| **Sequential** | Agent A 的輸出作為 Agent B 的輸入 | 流程式任務（收集 → 分析 → 報告） |
+| **Hierarchical** | Manager Agent 分派任務給 Worker Agent | 複雜專案管理 |
+| **Peer-to-Peer** | Agent 之間互相溝通協作 | 辯論、code review |
+
+## 常見誤區
+
+<Callout type="warning" title="常犯錯誤">
+- 給 Agent 太多工具（選擇困難，準確度下降。控制在 5-10 個工具以內）
+- 沒有設定迴圈上限（Agent 可能陷入無限循環不停呼叫工具）
+- 讓 Agent 執行危險操作沒有確認機制（例如直接刪除資料庫）
+- 以為 Agent 能處理所有任務（簡單的 if-else 流程不需要 Agent 的推理能力）
+</Callout>
+
+## 執行流程
+
+<StepDiagram data='[{"title":"接收任務","description":"使用者提出請求，Agent 開始推理","icon":"1"},{"title":"制定計畫","description":"LLM 分析任務，決定需要哪些步驟和工具","icon":"2"},{"title":"執行工具","description":"呼叫選定的工具（API、DB、Code）","icon":"3"},{"title":"觀察結果","description":"將工具回傳的結果送回 LLM 分析","icon":"4"},{"title":"決策","description":"根據結果決定：繼續行動、回答使用者、或報錯","icon":"5"}]' />
+
+流程解讀：Agent 的核心是一個 ReAct 循環。接收任務後，LLM 先推理需要什麼資訊和行動，然後選擇並執行工具。工具的結果送回 LLM，LLM 觀察結果後決定：(1) 資訊足夠了，生成最終回答；(2) 還需要更多資訊，繼續執行下一個工具；(3) 遇到錯誤，重新規劃或報錯。這個循環直到任務完成或達到迴圈上限。
+
+## 程式碼範例
+
+### C# 版本
+
+```csharp
+// Semantic Kernel — Agent with Tools
+using Microsoft.SemanticKernel;
+
+var kernel = Kernel.CreateBuilder()
+    .AddOpenAIChatCompletion("gpt-4o", apiKey)
+    .Build();
+
+// 定義工具（Plugin）
+public class WeatherPlugin
+{
+    [KernelFunction, Description("取得指定城市的天氣資訊")]
+    public string GetWeather(
+        [Description("城市名稱")] string city)
+    {
+        // 實際呼叫天氣 API
+        return $"{city}: 晴天，28°C，濕度 65%";
+    }
+}
+
+public class DatabasePlugin
+{
+    [KernelFunction, Description("查詢訂單資訊")]
+    public string QueryOrder(
+        [Description("訂單 ID")] string orderId)
+    {
+        return $"訂單 {orderId}: 狀態=已出貨, 金額=1500";
+    }
+}
+
+// 註冊工具
+kernel.Plugins.AddFromType<WeatherPlugin>();
+kernel.Plugins.AddFromType<DatabasePlugin>();
+
+// Agent 自動選擇工具
+var settings = new OpenAIPromptExecutionSettings
+{
+    ToolCallBehavior = ToolCallBehavior.AutoInvokeKernelFunctions
+};
+
+var result = await kernel.InvokePromptAsync(
+    "查一下台北天氣，還有訂單 ORD-001 的狀態",
+    new(settings));
+```
+
+### TypeScript 版本
+
+```typescript
+import Anthropic from "@anthropic-ai/sdk";
+
+const client = new Anthropic();
+
+// 定義工具
+const tools: Anthropic.Tool[] = [
+  {
+    name: "get_weather",
+    description: "取得指定城市的天氣資訊",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        city: { type: "string", description: "城市名稱" },
+      },
+      required: ["city"],
+    },
+  },
+  {
+    name: "query_database",
+    description: "用 SQL 查詢資料庫",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        sql: { type: "string", description: "SQL 查詢語句" },
+      },
+      required: ["sql"],
+    },
+  },
+];
+
+// 工具執行器
+function executeTool(name: string, input: Record<string, string>): string {
+  switch (name) {
+    case "get_weather":
+      return `${input.city}: 晴天，28°C`;
+    case "query_database":
+      return `查詢結果: [{"id": 1, "status": "shipped"}]`;
+    default:
+      return "未知工具";
+  }
+}
+
+// Agent 循環
+async function runAgent(userMessage: string) {
+  let messages: Anthropic.MessageParam[] = [
+    { role: "user", content: userMessage },
+  ];
+
+  for (let i = 0; i < 5; i++) { // 最多 5 次迴圈
+    const response = await client.messages.create({
+      model: "claude-sonnet-4-20250514",
+      max_tokens: 1024,
+      tools,
+      messages,
+    });
+
+    if (response.stop_reason === "end_turn") {
+      return response.content; // 完成
+    }
+
+    // 處理 tool use
+    const toolUse = response.content.find(b => b.type === "tool_use");
+    if (toolUse && toolUse.type === "tool_use") {
+      const result = executeTool(toolUse.name, toolUse.input as Record<string, string>);
+      messages.push({ role: "assistant", content: response.content });
+      messages.push({
+        role: "user",
+        content: [{ type: "tool_result", tool_use_id: toolUse.id, content: result }],
+      });
+    }
+  }
+}
+```
+
+### Python 版本
+
+```python
+import anthropic
+
+client = anthropic.Anthropic()
+
+# 定義工具
+tools = [
+    {
+        "name": "search_docs",
+        "description": "搜尋技術文件庫",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "搜尋關鍵字"}
+            },
+            "required": ["query"]
+        }
+    },
+    {
+        "name": "run_code",
+        "description": "在 sandbox 中執行 Python 程式碼",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "code": {"type": "string", "description": "Python 程式碼"}
+            },
+            "required": ["code"]
+        }
+    }
+]
+
+def execute_tool(name: str, inputs: dict) -> str:
+    if name == "search_docs":
+        return f"找到 3 篇相關文件：[微服務基礎, API Gateway, Circuit Breaker]"
+    elif name == "run_code":
+        # 在 sandbox 中安全執行
+        return f"執行結果：{eval(inputs['code'])}"  # 簡化示例
+    return "未知工具"
+
+# ReAct Agent 循環
+async def run_agent(question: str, max_turns: int = 5):
+    messages = [{"role": "user", "content": question}]
+
+    for _ in range(max_turns):
+        response = client.messages.create(
+            model="claude-sonnet-4-20250514",
+            max_tokens=1024,
+            system="你是一個技術助手。使用提供的工具來回答問題。",
+            tools=tools,
+            messages=messages,
+        )
+
+        if response.stop_reason == "end_turn":
+            return response.content[0].text
+
+        # 處理 tool use
+        for block in response.content:
+            if block.type == "tool_use":
+                result = execute_tool(block.name, block.input)
+                messages.append({"role": "assistant", "content": response.content})
+                messages.append({"role": "user", "content": [
+                    {"type": "tool_result", "tool_use_id": block.id, "content": result}
+                ]})
+```
+
+## 結構圖
+
+<Diagram data='{"nodes":[{"id":"user","label":"User","type":"muted"},{"id":"llm","label":"LLM (Reasoning)","type":"highlight"},{"id":"tools","label":"Tool Registry","type":"default"},{"id":"api","label":"External API","type":"default"},{"id":"db","label":"Database","type":"default"},{"id":"code","label":"Code Sandbox","type":"default"},{"id":"memory","label":"Memory / Context","type":"default"}],"edges":[{"from":"user","to":"llm","label":"task"},{"from":"llm","to":"tools","label":"select tool"},{"from":"tools","to":"api","label":"call API"},{"from":"tools","to":"db","label":"query DB"},{"from":"tools","to":"code","label":"execute code"},{"from":"api","to":"llm","label":"observation"},{"from":"db","to":"llm","label":"observation"},{"from":"llm","to":"memory","label":"store context"},{"from":"memory","to":"llm","label":"recall"}]}' />
+
+圖中 User 將任務交給 LLM。LLM 進行推理後從 Tool Registry 中選擇合適的工具（External API、Database、Code Sandbox）。工具執行結果作為 Observation 回傳給 LLM，LLM 將過程存入 Memory。這個循環持續直到 LLM 判斷任務完成。
+
+## 面試常見問題
+
+**Q: AI Agent 和普通的 LLM 呼叫有什麼差別？**
+
+A: 普通的 LLM 呼叫是單次 input → output，模型不能執行行動。Agent 是一個循環：LLM 推理 → 選擇工具 → 執行工具 → 觀察結果 → 繼續推理。Agent 能處理需要多步驟、需要外部資料、需要動態決策的複雜任務。
+
+**Q: 如何確保 Agent 的安全性？**
+
+A: 四個層面：(1) 工具權限控制 — 每個工具有明確的權限範圍，危險操作需要人工確認；(2) 迴圈上限 — 防止無限循環，設定最大步驟數；(3) 輸入驗證 — 工具的輸入必須經過驗證，防止 prompt injection 導致非預期的工具呼叫；(4) 審計日誌 — 記錄每一步的推理和行動。
+
+**Q: Multi-Agent 架構什麼時候比 Single Agent 好？**
+
+A: 當任務需要多種專業知識（如程式碼撰寫 + 安全審查 + 文件撰寫），或需要互相驗證（如一個 Agent 寫程式碼、另一個 Agent review），或需要平行處理多個子任務時。但 Multi-Agent 增加了通訊複雜度和成本，簡單任務用 Single Agent 就好。
+
+## 理解測驗
+
+<Quiz data='{"question":"ReAct 模式的循環順序是什麼？","options":["Action → Thought → Observation","Thought → Action → Observation → Thought","Observation → Action → Thought","Action → Observation → Action"],"answer":1,"explanation":"ReAct 的循環是：Thought（推理要做什麼）→ Action（執行工具）→ Observation（觀察結果）→ Thought（根據結果繼續推理）。這個循環直到任務完成。"}' />
+
+<Quiz data='{"question":"為什麼 Agent 需要設定迴圈上限？","options":["為了節省電費","防止 Agent 陷入無限循環不停呼叫工具","讓回答更快","減少程式碼行數"],"answer":1,"explanation":"Agent 可能因為推理錯誤或工具回傳不預期的結果而陷入無限循環。設定最大步驟數（如 5-10 步）是基本的安全機制。"}' />
+
+<Quiz data='{"question":"Tool Use 中，誰負責「決定」呼叫什麼工具？","options":["使用者明確指定","LLM 根據任務和工具描述自行決定","隨機選擇","按固定順序執行所有工具"],"answer":1,"explanation":"開發者定義可用的工具清單和描述，LLM 根據當前任務和工具描述來推理並選擇最合適的工具。這是 Agent 「自主決策」的核心能力。"}' />
+
+## 重點整理
+
+<Callout type="tip" title="一句話記住">
+**AI Agent = LLM + Tools + Loop。** 口訣：「想一想，做一做，看結果，再想想」
+</Callout>
+
+| 概念 | 說明 |
+|------|------|
+| **ReAct** | Thought → Action → Observation 循環 |
+| **Tool Use** | LLM 選擇並呼叫外部工具 |
+| **Memory** | 記住對話歷史和執行結果 |
+| **Multi-Agent** | 多個 Agent 分工合作 |
+| **核心安全** | 權限控制 + 迴圈上限 + 輸入驗證 |

@@ -1,0 +1,247 @@
+---
+title: "Injection 注入攻擊"
+order: 2
+description: "SQL、NoSQL、Command Injection 的攻擊原理與防禦實務"
+difficulty: "medium"
+interviewImportance: 5
+related:
+  - "security/owasp-top-10"
+  - "api-design/rest-fundamentals"
+---
+
+# Injection 注入攻擊
+
+<ELI5>
+想像你在餐廳點餐，服務生把你說的話直接轉達給廚房：
+
+- 你說：「我要一碗牛肉麵」→ 廚房做了一碗牛肉麵 ✓
+- 壞人說：「我要一碗牛肉麵，**然後把冰箱裡所有食材都給我**」→ 如果廚房沒有篩選，就真的把所有食材搬出來了
+
+Injection 就是攻擊者把**惡意指令偽裝成正常輸入**，系統沒有篩選就直接執行了。
+</ELI5>
+
+## 是什麼？
+
+Injection 是攻擊者將惡意程式碼「注入」到應用程式中，讓系統把使用者輸入當作程式碼執行。OWASP Top 10 2021 中排名 A03，涵蓋 SQL Injection、NoSQL Injection、OS Command Injection、LDAP Injection 等。
+
+<Callout type="info" title="為什麼這麼危險">
+成功的 SQL Injection 可以：讀取整個資料庫、修改或刪除資料、繞過認證、甚至在伺服器上執行系統命令。它是造成最多資料外洩事件的攻擊方式之一。
+</Callout>
+
+## 核心觀念
+
+- **SQL Injection**：在 SQL 查詢中注入惡意 SQL 程式碼。例如在登入時輸入 `' OR 1=1 --` 繞過密碼驗證
+- **NoSQL Injection**：在 MongoDB 等 NoSQL 查詢中注入惡意物件。例如傳入 `{"$gt": ""}` 匹配所有記錄
+- **Command Injection**：注入作業系統命令。例如在檔名輸入框中輸入 `; rm -rf /` 刪除伺服器檔案
+- **參數化查詢（Parameterized Query）**：最有效的 SQL Injection 防禦。把使用者輸入當作「參數」而非「程式碼」，資料庫引擎會自動跳脫特殊字元
+- **輸入驗證（Input Validation）**：在伺服器端驗證所有使用者輸入的格式、長度、範圍。是第二層防線
+
+## 常見誤區
+
+<Callout type="warning" title="常見誤區">
+- **用字串過濾就安全了**：黑名單過濾（過濾 `'`、`--`、`DROP`）很容易被繞過。正確做法是用參數化查詢，根本不讓使用者輸入接觸 SQL 語法
+- **ORM 就不會有 SQL Injection**：大部分 ORM 操作是安全的，但使用原生 SQL 查詢時（如 `FromSqlRaw`、`$queryRaw`）仍然可能有 Injection 風險
+- **前端驗證就夠了**：前端驗證可以被輕易繞過（直接用 Postman 發請求）。所有驗證必須在伺服器端重複一次
+</Callout>
+
+## 流程/步驟
+
+<StepDiagram data='[{"title":"辨識注入點","description":"所有使用者輸入都是潛在注入點 — 表單、URL、Header、Cookie","icon":"1"},{"title":"使用參數化查詢","description":"SQL 查詢永遠用 @param 或 $1 佔位符，不拼接字串","icon":"2"},{"title":"輸入驗證","description":"在伺服器端驗證格式、長度、類型，拒絕不合法輸入","icon":"3"},{"title":"最小權限原則","description":"資料庫帳號只給需要的權限，不用 sa/root 帳號連線","icon":"4"},{"title":"自動化掃描","description":"在 CI/CD 中用 SAST 工具掃描潛在的 Injection 漏洞","icon":"5"},{"title":"WAF 防護","description":"Web Application Firewall 攔截常見的 Injection 攻擊模式","icon":"6"}]' />
+
+流程解讀：防禦 Injection 的核心是參數化查詢（從根本消除 SQL Injection 的可能）。輸入驗證是第二層防線。資料庫最小權限確保即使被注入，損害範圍有限。自動化掃描和 WAF 提供額外的安全網。
+
+## 程式碼範例
+
+### C# 版本
+
+```csharp
+// 危險！SQL Injection 漏洞
+public async Task<User?> GetUserUnsafe(string email)
+{
+    // 永遠不要這樣做 — 字串拼接 SQL
+    var sql = $"SELECT * FROM Users WHERE Email = '{email}'";
+    // 攻擊者輸入: ' OR 1=1 --
+    // 變成: SELECT * FROM Users WHERE Email = '' OR 1=1 --'
+    // 結果: 回傳所有使用者
+    return await _db.Users.FromSqlRaw(sql).FirstOrDefaultAsync();
+}
+
+// 正確！參數化查詢
+public async Task<User?> GetUserSafe(string email)
+{
+    // 方法 1: EF Core LINQ（天然安全）
+    return await _db.Users.FirstOrDefaultAsync(u => u.Email == email);
+
+    // 方法 2: 參數化原生 SQL
+    return await _db.Users
+        .FromSqlInterpolated($"SELECT * FROM Users WHERE Email = {email}")
+        .FirstOrDefaultAsync();
+
+    // 方法 3: 明確的參數
+    return await _db.Users
+        .FromSqlRaw("SELECT * FROM Users WHERE Email = @email",
+            new SqlParameter("@email", email))
+        .FirstOrDefaultAsync();
+}
+
+// 輸入驗證 — 伺服器端
+public class CreateUserDto
+{
+    [Required]
+    [EmailAddress]
+    [MaxLength(256)]
+    public string Email { get; set; } = "";
+
+    [Required]
+    [MinLength(2)]
+    [MaxLength(100)]
+    [RegularExpression(@"^[\p{L}\s'-]+$")] // 只允許字母、空格、連字號
+    public string Name { get; set; } = "";
+}
+```
+
+### TypeScript 版本
+
+```typescript
+// 危險！SQL Injection
+app.get("/users", async (req, res) => {
+  // 永遠不要這樣做
+  const query = `SELECT * FROM users WHERE email = '${req.query.email}'`;
+  const result = await db.query(query); // 危險！
+});
+
+// 正確！參數化查詢
+app.get("/users", async (req, res) => {
+  // PostgreSQL — $1 佔位符
+  const result = await db.query(
+    "SELECT * FROM users WHERE email = $1",
+    [req.query.email]
+  );
+  res.json(result.rows);
+});
+
+// Prisma ORM（天然安全）
+app.get("/users", async (req, res) => {
+  const user = await prisma.user.findUnique({
+    where: { email: req.query.email as string },
+  });
+  res.json(user);
+});
+
+// NoSQL Injection 防禦 — MongoDB
+app.post("/login", async (req, res) => {
+  // 危險！攻擊者可以傳 { "email": {"$gt": ""}, "password": {"$gt": ""} }
+  // const user = await User.findOne(req.body);
+
+  // 正確！確保輸入是字串
+  const email = String(req.body.email);
+  const password = String(req.body.password);
+  const user = await User.findOne({ email });
+  if (!user || !await bcrypt.compare(password, user.passwordHash)) {
+    return res.status(401).json({ error: "Invalid credentials" });
+  }
+});
+
+// 輸入驗證 — Zod
+import { z } from "zod";
+
+const CreateUserSchema = z.object({
+  email: z.string().email().max(256),
+  name: z.string().min(2).max(100).regex(/^[\p{L}\s'-]+$/u),
+});
+
+app.post("/users", async (req, res) => {
+  const parsed = CreateUserSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ errors: parsed.error.issues });
+  // parsed.data 已經驗證過，安全使用
+});
+```
+
+### Python 版本
+
+```python
+# 危險！SQL Injection
+@app.get("/users")
+async def get_user_unsafe(email: str):
+    # 永遠不要這樣做
+    query = f"SELECT * FROM users WHERE email = '{email}'"
+    return await db.execute(query)
+
+# 正確！參數化查詢
+@app.get("/users")
+async def get_user_safe(email: str):
+    query = "SELECT * FROM users WHERE email = :email"
+    return await db.execute(query, {"email": email})
+
+# SQLAlchemy ORM（天然安全）
+@app.get("/users")
+async def get_user_orm(email: str):
+    return await db.query(User).filter(User.email == email).first()
+
+# Command Injection 防禦
+import subprocess
+import shlex
+
+# 危險！
+# os.system(f"convert {filename} output.png")  # 攻擊者可注入命令
+
+# 正確！用 list 傳參數，不經過 shell
+def convert_image(filename: str):
+    # 先驗證檔名
+    if not filename.replace(".", "").replace("-", "").replace("_", "").isalnum():
+        raise ValueError("Invalid filename")
+
+    subprocess.run(
+        ["convert", filename, "output.png"],
+        check=True,
+        shell=False,  # 關鍵：不用 shell
+    )
+
+# 輸入驗證 — Pydantic
+from pydantic import BaseModel, EmailStr, constr
+
+class CreateUserDto(BaseModel):
+    email: EmailStr
+    name: constr(min_length=2, max_length=100, pattern=r"^[\w\s'-]+$")
+```
+
+## 架構圖/概念圖
+
+<Diagram data='{"nodes":[{"id":"attacker","label":"Attacker Input","type":"muted"},{"id":"validation","label":"Input Validation","type":"default"},{"id":"parameterized","label":"Parameterized Query","type":"highlight"},{"id":"db","label":"Database","type":"default"},{"id":"waf","label":"WAF (Web Application Firewall)","type":"muted"}],"edges":[{"from":"attacker","to":"waf","label":"first defense"},{"from":"waf","to":"validation","label":"passed"},{"from":"validation","to":"parameterized","label":"validated input"},{"from":"parameterized","to":"db","label":"safe query"}]}' />
+
+攻擊者的輸入先經過 WAF 攔截明顯的攻擊模式，再經過 Input Validation 驗證格式。最後透過 Parameterized Query 送到資料庫，確保輸入永遠被當作「資料」而非「程式碼」。三層防禦讓 Injection 攻擊無處下手。
+
+## 實戰補充
+
+**Q: 面試怎麼解釋 SQL Injection？**
+
+A: 用具體例子：「登入時 SQL 是 `WHERE email = '{input}'`。攻擊者輸入 `' OR 1=1 --`，SQL 變成 `WHERE email = '' OR 1=1 --'`，`1=1` 永遠為 true，所以回傳所有使用者。防禦方式是用參數化查詢，讓資料庫把輸入當作字串值而非 SQL 程式碼。」
+
+**Q: 二階注入（Second-Order Injection）是什麼？**
+
+A: 攻擊者先把惡意資料存進資料庫（此時未觸發 Injection），之後系統讀取這筆資料並拼接到另一個 SQL 中時才觸發。防禦：所有 SQL 都用參數化查詢，不只是處理使用者直接輸入的地方。
+
+**Q: ORM 百分之百安全嗎？**
+
+A: 不是。ORM 的標準操作（如 LINQ、Prisma Query）是安全的，但使用原生 SQL 功能（如 `FromSqlRaw`、`$queryRawUnsafe`、`db.execute`）時仍然可能有 Injection。規則：任何拼接字串到查詢中的地方都有風險。
+
+## 理解測驗
+
+<Quiz data='{"question":"防禦 SQL Injection 最有效的方法是什麼？","options":["過濾使用者輸入中的特殊字元","用參數化查詢（Parameterized Query），讓輸入永遠被當作資料","前端表單做輸入驗證","用 HTTPS 加密傳輸"],"answer":1,"explanation":"參數化查詢從根本上消除 SQL Injection — 資料庫引擎會自動區分「SQL 語法」和「參數值」，攻擊者的輸入永遠不會被當作 SQL 程式碼執行。"}' />
+
+<Quiz data='{"question":"為什麼前端驗證不能防禦 Injection？","options":["前端驗證太慢","前端驗證可以被繞過（直接用 Postman 或 cURL 發送未驗證的請求）","前端不支援正則表達式","前端驗證會拖慢頁面"],"answer":1,"explanation":"攻擊者可以完全跳過前端，直接用 Postman、cURL 或自己寫的程式發送請求到 API。所有驗證必須在伺服器端重複執行。"}' />
+
+<Quiz data='{"question":"以下哪個做法可以限制 SQL Injection 成功後的損害？","options":["用更快的伺服器","資料庫連線帳號遵循最小權限原則，不用 sa/root","加入更多前端驗證","用更新的資料庫版本"],"answer":1,"explanation":"即使攻擊者成功注入 SQL，如果連線帳號只有 SELECT 權限，就無法 DELETE 或 DROP TABLE。最小權限原則限制了損害的範圍。"}' />
+
+## 重點整理
+
+<Callout type="tip" title="一句話記住">
+**Injection 防禦 = 永遠不要信任使用者輸入 + 永遠用參數化查詢。** 口訣：「輸入是敵人，參數化是護盾」
+</Callout>
+
+| 注入類型 | 攻擊方式 | 核心防禦 |
+|---------|---------|---------|
+| **SQL Injection** | 在 SQL 中注入惡意語句 | 參數化查詢、ORM |
+| **NoSQL Injection** | 在查詢物件中注入運算子 | 強制型別轉換、驗證 |
+| **Command Injection** | 在系統命令中注入額外命令 | 不用 shell、白名單 |
+| **通用防禦** | — | 輸入驗證 + 最小權限 + WAF |

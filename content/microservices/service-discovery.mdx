@@ -1,0 +1,262 @@
+---
+title: "Service Discovery"
+order: 5
+description: "服務發現：Consul、Eureka、DNS 與服務註冊機制"
+difficulty: "medium"
+interviewImportance: 3
+related:
+  - "microservices/api-gateway"
+  - "cloud-architecture/networking"
+---
+
+# Service Discovery（服務發現）
+
+<ELI5>
+想像你搬到一個新城市，想找一家好吃的拉麵店。你有三種方法：
+
+1. **翻電話簿**（靜態設定）— 但拉麵店可能搬家了，電話簿沒更新
+2. **問 Google Maps**（Service Registry）— 它知道所有店家的最新地址，而且店家搬家會自動更新
+3. **問朋友的朋友**（Gossip Protocol）— 每個人都知道一些店家，互相分享資訊
+
+微服務也一樣：服務的 IP 和 Port 會隨著擴展和部署不斷變化，需要一個「Google Maps」來追蹤每個服務的最新位置。
+</ELI5>
+
+## 是什麼？
+
+Service Discovery 是微服務架構中自動偵測服務實例的網路位置（IP + Port）的機制。當服務啟動、停止或擴展時，Service Discovery 確保其他服務能找到最新的可用實例。
+
+<Callout type="info" title="為什麼需要？">
+在容器化環境中，服務的 IP 和 Port 是動態分配的。每次部署、擴展、故障重啟都可能改變位置。硬編碼 IP 地址在微服務中完全行不通。
+</Callout>
+
+## 核心觀念
+
+### 兩種模式
+
+| 面向 | Client-Side Discovery | Server-Side Discovery |
+|------|----------------------|----------------------|
+| 機制 | Client 直接查詢 Registry，自己做負載均衡 | Client 請求 Load Balancer，LB 查詢 Registry |
+| 代表 | Netflix Eureka + Ribbon | AWS ALB + ECS、Kubernetes Service |
+| 優點 | 減少一層網路跳轉 | Client 不需要 Discovery 邏輯 |
+| 缺點 | 每個 Client 都要整合 SDK | 多一層 LB，但簡化 Client |
+
+### 常見工具比較
+
+| 工具 | 類型 | 健康檢查 | 一致性模型 | 適用環境 |
+|------|------|----------|-----------|---------|
+| Consul | Registry + KV Store | HTTP/TCP/gRPC | Raft（CP） | 跨平台 |
+| Eureka | Registry | Client Heartbeat | AP（最終一致） | Spring Cloud |
+| etcd | KV Store | TTL Lease | Raft（CP） | Kubernetes |
+| Kubernetes DNS | DNS-based | Pod Probe | — | Kubernetes |
+
+### 健康檢查機制
+
+- **Heartbeat**：服務定期向 Registry 發送心跳，超時未收到就標記為不健康
+- **Active Check**：Registry 主動向服務發送健康檢查請求（HTTP GET /health）
+- **TTL（Time to Live）**：服務必須在 TTL 到期前更新註冊，否則自動移除
+
+## 常見誤區
+
+<Callout type="warning" title="常犯錯誤">
+- 健康檢查只檢查服務是否活著（還要檢查它是否能正常處理請求）
+- Registry 本身沒有高可用部署（Registry 掛了，所有服務都找不到彼此）
+- 服務停止時沒有反註冊（Deregister），導致其他服務呼叫已關閉的實例
+- 在 Kubernetes 環境中額外部署 Consul（K8s 內建的 Service Discovery 通常就夠用）
+</Callout>
+
+## 執行流程
+
+<StepDiagram data='[{"title":"服務啟動","description":"服務啟動後向 Registry 註冊自己的 IP、Port、健康檢查端點","icon":"1"},{"title":"健康檢查","description":"Registry 定期檢查服務是否健康，標記不健康的實例","icon":"2"},{"title":"服務查詢","description":"Client 查詢 Registry 取得目標服務的可用實例清單","icon":"3"},{"title":"負載均衡","description":"Client 或 LB 從可用實例中選擇一個發送請求","icon":"4"},{"title":"服務停止","description":"服務 graceful shutdown 時主動反註冊","icon":"5"}]' />
+
+流程解讀：服務發現是一個持續運作的生命週期管理。服務啟動時「報到」（Register），持續「簽到」（Health Check），停止時「簽退」（Deregister）。Registry 維護一份即時的服務實例清單，其他服務透過查詢這份清單來找到目標服務。健康檢查確保清單中只有真正可用的實例。
+
+## 程式碼範例
+
+### C# 版本
+
+```csharp
+// Consul 服務註冊（ASP.NET Core）
+using Consul;
+
+var builder = WebApplication.CreateBuilder(args);
+builder.Services.AddSingleton<IConsulClient>(
+    new ConsulClient(c => c.Address = new Uri("http://consul:8500")));
+
+var app = builder.Build();
+
+// 啟動時註冊
+app.Lifetime.ApplicationStarted.Register(async () =>
+{
+    var consul = app.Services.GetRequiredService<IConsulClient>();
+    await consul.Agent.ServiceRegister(new AgentServiceRegistration
+    {
+        ID = $"order-service-{Environment.MachineName}",
+        Name = "order-service",
+        Address = "order-service",
+        Port = 80,
+        Check = new AgentServiceCheck
+        {
+            HTTP = "http://order-service:80/health",
+            Interval = TimeSpan.FromSeconds(10),
+            Timeout = TimeSpan.FromSeconds(5),
+            DeregisterCriticalServiceAfter = TimeSpan.FromMinutes(1)
+        }
+    });
+});
+
+// 停止時反註冊
+app.Lifetime.ApplicationStopping.Register(async () =>
+{
+    var consul = app.Services.GetRequiredService<IConsulClient>();
+    await consul.Agent.ServiceDeregister(
+        $"order-service-{Environment.MachineName}");
+});
+
+// 查詢服務
+app.MapGet("/api/discover/{serviceName}", async (
+    string serviceName, IConsulClient consul) =>
+{
+    var services = await consul.Health.Service(serviceName, tag: null,
+        passingOnly: true);
+    return services.Response.Select(s => new
+    {
+        s.Service.Address,
+        s.Service.Port
+    });
+});
+```
+
+### TypeScript 版本
+
+```typescript
+import Consul from "consul";
+
+const consul = new Consul({ host: "consul", port: 8500 });
+const serviceId = `order-service-${process.env.HOSTNAME}`;
+
+// 註冊服務
+async function register() {
+  await consul.agent.service.register({
+    id: serviceId,
+    name: "order-service",
+    address: "order-service",
+    port: 3001,
+    check: {
+      http: "http://order-service:3001/health",
+      interval: "10s",
+      timeout: "5s",
+      deregistercriticalserviceafter: "1m",
+    },
+  });
+}
+
+// 反註冊
+async function deregister() {
+  await consul.agent.service.deregister(serviceId);
+}
+
+process.on("SIGTERM", async () => {
+  await deregister();
+  process.exit(0);
+});
+
+// 查詢服務並呼叫
+async function callService(serviceName: string, path: string) {
+  const result = await consul.health.service({
+    service: serviceName,
+    passing: true,
+  });
+  if (result.length === 0) throw new Error(`No healthy ${serviceName}`);
+
+  // 簡單的 Round Robin 負載均衡
+  const index = Math.floor(Math.random() * result.length);
+  const { Address, Port } = result[index].Service;
+  return fetch(`http://${Address}:${Port}${path}`);
+}
+```
+
+### Python 版本
+
+```python
+import consul
+import socket
+import atexit
+
+c = consul.Consul(host="consul", port=8500)
+service_id = f"order-service-{socket.gethostname()}"
+
+# 註冊
+def register():
+    c.agent.service.register(
+        name="order-service",
+        service_id=service_id,
+        address="order-service",
+        port=8001,
+        check=consul.Check.http(
+            "http://order-service:8001/health",
+            interval="10s", timeout="5s",
+            deregister="1m"
+        )
+    )
+
+# 反註冊
+def deregister():
+    c.agent.service.deregister(service_id)
+
+atexit.register(deregister)
+
+# 查詢服務
+def discover(service_name: str) -> list[tuple[str, int]]:
+    _, services = c.health.service(service_name, passing=True)
+    return [
+        (s["Service"]["Address"], s["Service"]["Port"])
+        for s in services
+    ]
+
+# Kubernetes 中的服務發現（內建 DNS）
+# 不需要額外 Registry，直接用 Service DNS 名稱
+# http://order-service.default.svc.cluster.local:80/api/orders
+# 簡寫：http://order-service/api/orders（同 namespace）
+```
+
+## 結構圖
+
+<Diagram data='{"nodes":[{"id":"svc1","label":"Order Service (instance 1)","type":"default"},{"id":"svc2","label":"Order Service (instance 2)","type":"default"},{"id":"registry","label":"Service Registry (Consul)","type":"highlight"},{"id":"client","label":"Payment Service (Client)","type":"default"},{"id":"lb","label":"Load Balancer","type":"muted"}],"edges":[{"from":"svc1","to":"registry","label":"register + heartbeat"},{"from":"svc2","to":"registry","label":"register + heartbeat"},{"from":"client","to":"registry","label":"query instances"},{"from":"client","to":"lb","label":"or via LB"},{"from":"lb","to":"svc1","label":"route"},{"from":"lb","to":"svc2","label":"route"}]}' />
+
+圖中 Order Service 的兩個 instance 各自向 Service Registry（Consul）註冊並持續發送心跳。Payment Service 作為 Client 可以直接查詢 Registry 取得可用實例清單（Client-Side Discovery），或者透過 Load Balancer 間接存取（Server-Side Discovery）。Registry 確保 Client 永遠拿到最新的健康實例列表。
+
+## 面試常見問題
+
+**Q: Client-Side 和 Server-Side Discovery 各自的優缺點？**
+
+A: Client-Side（如 Eureka + Ribbon）少了一層 LB 跳轉，延遲較低，但每個 Client 都要整合 Discovery SDK，增加了 Client 的複雜度。Server-Side（如 K8s Service + kube-proxy）Client 完全不用管 Discovery，但多了 LB 這一層。Kubernetes 環境中 Server-Side 是主流，因為 K8s 原生支援。
+
+**Q: Consul 和 Kubernetes DNS 的差異？何時需要額外的 Service Discovery？**
+
+A: K8s DNS 提供基本的服務名稱解析，足以應付大多數場景。Consul 額外提供跨叢集/跨雲的服務發現、Key-Value Store、Service Mesh 功能。如果系統全在一個 K8s 叢集內，通常不需要額外的 Discovery。跨叢集、跨雲、或混合環境時才需要 Consul。
+
+**Q: 服務發現中的一致性問題怎麼處理？**
+
+A: CP 系統（Consul、etcd）在網路分區時可能拒絕讀取，保證一致但犧牲可用性。AP 系統（Eureka）允許讀取可能過時的資料，保證可用但資料不一定最新。選擇取決於業務需求：金融交易偏 CP，一般 Web 服務偏 AP。
+
+## 理解測驗
+
+<Quiz data='{"question":"為什麼微服務需要 Service Discovery？","options":["為了讓程式碼更簡潔","因為服務的 IP 和 Port 在容器化環境中是動態變化的","為了加密服務之間的通訊","為了減少服務數量"],"answer":1,"explanation":"在容器化和雲端環境中，服務的 IP 和 Port 隨著部署、擴展、重啟而不斷變化。Service Discovery 自動追蹤這些變化，讓服務能找到彼此。"}' />
+
+<Quiz data='{"question":"服務停止時最重要的動作是什麼？","options":["清除日誌","主動反註冊（Deregister）","重啟 Registry","通知所有其他服務"],"answer":1,"explanation":"服務停止時必須主動向 Registry 反註冊，否則其他服務會繼續嘗試呼叫已關閉的實例，導致請求失敗。"}' />
+
+<Quiz data='{"question":"在純 Kubernetes 環境中，通常使用哪種 Service Discovery？","options":["Consul","Eureka","Kubernetes 內建的 DNS-based Service Discovery","ZooKeeper"],"answer":2,"explanation":"Kubernetes 內建 Service 和 DNS 機制，Pod 可以直接用 Service 名稱存取其他服務，不需要額外部署 Discovery 工具。"}' />
+
+## 重點整理
+
+<Callout type="tip" title="一句話記住">
+**Service Discovery = 服務的 GPS，隨時知道每個服務在哪裡。** 口訣：「啟動要註冊，運行要心跳，停止要反註冊」
+</Callout>
+
+| 概念 | 說明 |
+|------|------|
+| **Service Registry** | 維護所有服務實例位置的中央資料庫 |
+| **Health Check** | 定期確認服務是否健康可用 |
+| **Client-Side** | Client 查詢 Registry 自己做負載均衡 |
+| **Server-Side** | 透過 LB 間接存取，Client 不需 Discovery 邏輯 |
+| **核心原則** | 註冊、心跳、反註冊三步缺一不可 |

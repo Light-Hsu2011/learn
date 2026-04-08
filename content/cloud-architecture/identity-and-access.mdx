@@ -1,0 +1,208 @@
+---
+title: "身份與存取管理"
+order: 5
+description: "IAM、RBAC、Service Principal 的核心概念與實務設計"
+difficulty: "hard"
+interviewImportance: 5
+related:
+  - "api-design/authentication"
+  - "security/authentication-security"
+---
+
+# 身份與存取管理（IAM）
+
+<ELI5>
+想像你是一間大公司的管理員：
+
+- **IAM（身份管理）**= 公司的門禁系統。每個人有員工證（身份），你控制誰能進哪間辦公室
+- **RBAC（角色基礎存取控制）**= 按「職位」給權限。經理能進會議室，工程師能進機房，不用一個一個設定
+- **Service Principal（服務主體）**= 給機器人發的員工證。你的 CI/CD Pipeline 不是人，但也需要權限去部署程式
+
+核心原則：**最小權限** — 只給「做事需要的最少權限」，多一點都不給。
+</ELI5>
+
+## 是什麼？
+
+IAM（Identity and Access Management）是管理「誰能存取什麼資源」的系統。涵蓋身份驗證（你是誰）、授權（你能做什麼）、和稽核（你做了什麼）。是雲端安全的**第一道防線**。
+
+<Callout type="info" title="為什麼 IAM 這麼重要">
+80% 以上的雲端安全事件源自 IAM 設定錯誤 — 權限過大、密鑰外洩、未啟用 MFA。正確設定 IAM 比任何防火牆都重要。
+</Callout>
+
+## 核心觀念
+
+- **Identity（身份）**：可以被驗證的對象 — 使用者帳號、Group、Service Principal、Managed Identity
+- **RBAC（Role-Based Access Control）**：把權限打包成角色（如 Reader、Contributor、Owner），再把角色指派給身份。避免逐一設定權限
+- **Service Principal**：應用程式或自動化流程的身份。用 Client ID + Secret 或 Certificate 認證。CI/CD Pipeline 用 Service Principal 部署資源
+- **Managed Identity**：Azure 自動管理的 Service Principal，不需要自己管理密鑰。分為 System-assigned（和資源綁定）和 User-assigned（可跨資源共用）
+- **最小權限原則（Least Privilege）**：只授予完成工作所需的最少權限。不給 Owner 當 Contributor 就夠用，不給 Contributor 當 Reader 就夠用
+
+## 常見誤區
+
+<Callout type="warning" title="常見誤區">
+- **所有人都用 Owner 角色**：Owner 可以刪除資源和管理權限，日常操作用 Contributor 或更細的角色就夠了。Owner 只給少數管理員
+- **Service Principal 的 Secret 寫在程式碼裡**：Secret 必須存在 Key Vault 或環境變數中。更好的做法是用 Managed Identity，完全不需要管理 Secret
+- **不做存取 Review**：權限會隨時間膨脹。每季做一次 Access Review，清除不再需要的權限
+</Callout>
+
+## 流程/步驟
+
+<StepDiagram data='[{"title":"盤點身份","description":"列出所有需要存取雲端資源的人和服務","icon":"1"},{"title":"定義角色","description":"基於職責定義角色：Admin、Developer、CI/CD、ReadOnly","icon":"2"},{"title":"指派 RBAC","description":"在 Resource Group 或 Resource 層級指派角色","icon":"3"},{"title":"設定 Managed Identity","description":"應用程式用 Managed Identity 取代 Service Principal + Secret","icon":"4"},{"title":"啟用 MFA + 條件式存取","description":"人類帳號啟用 MFA，設定可疑登入的額外驗證","icon":"5"},{"title":"定期 Review","description":"每季檢視和清理不再需要的權限","icon":"6"}]' />
+
+流程解讀：從盤點身份開始，明確誰需要什麼權限。用 RBAC 按角色批次授權而非逐一設定。應用程式優先用 Managed Identity。人類帳號啟用 MFA。定期 Review 防止權限膨脹。
+
+## 程式碼範例
+
+### C# 版本
+
+```csharp
+// ASP.NET Core — 用 Managed Identity 存取 Azure 資源（零密鑰管理）
+using Azure.Identity;
+using Azure.Security.KeyVault.Secrets;
+
+// DefaultAzureCredential 自動偵測環境
+// 本機開發：用 Azure CLI 登入的身份
+// 雲端環境：用 Managed Identity
+var credential = new DefaultAzureCredential();
+
+// 從 Key Vault 取得密鑰 — 不需要在程式碼中寫任何 Secret
+var client = new SecretClient(new Uri("https://myvault.vault.azure.net/"), credential);
+var secret = await client.GetSecretAsync("database-connection-string");
+var connectionString = secret.Value.Value;
+
+// 用 Managed Identity 存取 SQL Database
+builder.Services.AddDbContext<AppDbContext>(options =>
+{
+    options.UseSqlServer(connectionString);
+});
+
+// RBAC — 在程式碼中檢查使用者角色
+[Authorize(Roles = "Admin")]
+[HttpDelete("api/users/{id}")]
+public async Task<IActionResult> DeleteUser(int id)
+{
+    // 只有 Admin 角色能刪除使用者
+    await _userService.DeleteAsync(id);
+    return NoContent();
+}
+
+[Authorize(Policy = "CanManageOrders")]
+[HttpPut("api/orders/{id}")]
+public async Task<IActionResult> UpdateOrder(int id, UpdateOrderDto dto)
+{
+    await _orderService.UpdateAsync(id, dto);
+    return NoContent();
+}
+```
+
+### TypeScript 版本
+
+```typescript
+// AWS IAM — Terraform 定義角色和策略
+```
+
+```hcl
+# IAM Role for Lambda Function
+resource "aws_iam_role" "lambda_role" {
+  name = "order-processor-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Action = "sts:AssumeRole"
+      Effect = "Allow"
+      Principal = { Service = "lambda.amazonaws.com" }
+    }]
+  })
+}
+
+# 最小權限策略 — 只允許讀取特定 S3 Bucket 和寫入特定 DynamoDB Table
+resource "aws_iam_role_policy" "lambda_policy" {
+  role = aws_iam_role.lambda_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = ["s3:GetObject"]
+        Resource = "arn:aws:s3:::order-bucket/*"
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["dynamodb:PutItem", "dynamodb:UpdateItem"]
+        Resource = "arn:aws:dynamodb:*:*:table/Orders"
+      }
+    ]
+  })
+}
+```
+
+### Python 版本
+
+```python
+# Azure SDK — 用 Managed Identity 存取資源
+from azure.identity import DefaultAzureCredential
+from azure.keyvault.secrets import SecretClient
+from azure.mgmt.authorization import AuthorizationManagementClient
+
+credential = DefaultAzureCredential()
+
+# 從 Key Vault 取密鑰
+secret_client = SecretClient(
+    vault_url="https://myvault.vault.azure.net/",
+    credential=credential
+)
+db_password = secret_client.get_secret("db-password").value
+
+# 列出角色指派（用於 Access Review）
+auth_client = AuthorizationManagementClient(credential, subscription_id)
+assignments = auth_client.role_assignments.list_for_scope(
+    scope=f"/subscriptions/{subscription_id}/resourceGroups/myapp-rg"
+)
+
+for assignment in assignments:
+    print(f"Principal: {assignment.principal_id}, Role: {assignment.role_definition_id}")
+```
+
+## 架構圖/概念圖
+
+<Diagram data='{"nodes":[{"id":"user","label":"User / Service","type":"muted"},{"id":"iam","label":"IAM (Identity Provider)","type":"highlight"},{"id":"rbac","label":"RBAC (Role Assignment)","type":"default"},{"id":"resource","label":"Cloud Resource","type":"default"},{"id":"audit","label":"Audit Log","type":"muted"}],"edges":[{"from":"user","to":"iam","label":"authenticate"},{"from":"iam","to":"rbac","label":"check role"},{"from":"rbac","to":"resource","label":"allow/deny"},{"from":"resource","to":"audit","label":"log access"}]}' />
+
+User 或 Service 先向 IAM 認證身份。IAM 查詢 RBAC 確認該身份有什麼角色。根據角色決定允許或拒絕存取資源。所有存取行為記錄到 Audit Log 供事後稽核。
+
+## 實戰補充
+
+**Q: Managed Identity 和 Service Principal 怎麼選？**
+
+A: 優先用 **Managed Identity** — 不需要管理 Secret，Azure 自動輪替憑證。只有 Managed Identity 不支援的場景（如跨雲、地端應用）才用 Service Principal + Secret/Certificate。
+
+**Q: RBAC 的 Scope 要設在哪一層？**
+
+A: 遵循最小範圍原則 — 能設在 Resource 層就不設在 Resource Group，能設在 Resource Group 就不設在 Subscription。範圍越小，權限越精確。
+
+**Q: 如何防止 IAM 權限膨脹？**
+
+A: (1) 用 Just-In-Time（JIT）存取 — 需要時才臨時提升權限，用完自動撤銷。(2) 每季做 Access Review。(3) 設定 Alert 監控異常的權限指派。(4) 用 Azure AD PIM（Privileged Identity Management）管理特權帳號。
+
+## 理解測驗
+
+<Quiz data='{"question":"最小權限原則（Least Privilege）的核心精神是什麼？","options":["給所有人 Reader 權限","只授予完成工作所需的最少權限","不給任何人任何權限","只給 Admin 權限"],"answer":1,"explanation":"最小權限原則是只給「做這件事需要的最少權限」。例如 CI/CD Pipeline 只需要部署 Web App 的權限，不需要管理整個 Subscription。"}' />
+
+<Quiz data='{"question":"Managed Identity 比 Service Principal 好在哪裡？","options":["效能更好","不需要手動管理 Secret 或 Certificate，Azure 自動處理","支援更多雲端服務","登入更快"],"answer":1,"explanation":"Service Principal 需要你管理 Secret（包括輪替、儲存），Managed Identity 由 Azure 自動管理憑證，消除了 Secret 洩漏的風險。"}' />
+
+<Quiz data='{"question":"RBAC 中的 Scope 設定原則是什麼？","options":["永遠設在 Subscription 層級最方便","設在 Management Group 層級","越小越好 — 能設在 Resource 層就不設在 Resource Group","隨便設都一樣"],"answer":2,"explanation":"Scope 越小越精確。設在 Resource 層只影響那一個資源，設在 Subscription 層會影響底下所有資源。遵循最小範圍原則降低風險。"}' />
+
+## 重點整理
+
+<Callout type="tip" title="一句話記住">
+**IAM = 控制誰能對什麼資源做什麼操作。** 口訣：「最小權限、Managed Identity、定期 Review」
+</Callout>
+
+| 概念 | 說明 |
+|------|------|
+| **IAM** | 管理身份、角色、權限的系統 |
+| **RBAC** | 按角色授權，避免逐一設定 |
+| **Service Principal** | 應用程式的身份，需要管理 Secret |
+| **Managed Identity** | Azure 自動管理的身份，零密鑰 |
+| **Least Privilege** | 只給最少需要的權限 |

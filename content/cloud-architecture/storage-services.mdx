@@ -1,0 +1,204 @@
+---
+title: "儲存服務"
+order: 3
+description: "Blob、Queue、Table Storage 的特性與適用場景"
+difficulty: "medium"
+interviewImportance: 3
+related:
+  - "system-design/distributed-file-storage"
+  - "cloud-architecture/cloud-fundamentals"
+---
+
+# 雲端儲存服務（Storage Services）
+
+<ELI5>
+想像你搬進一間大倉庫：
+
+- **Blob Storage（大型置物間）**：放大件物品 — 圖片、影片、備份檔。不管什麼形狀都塞得下
+- **Queue Storage（排隊叫號機）**：不是存東西，是傳訊息。A 丟訊息進去、B 取出來處理，先進先出
+- **Table Storage（電子表格）**：像 Excel 一樣的表格，存結構化的 Key-Value 資料，查詢超快
+
+三種儲存各有專長，不是所有資料都該塞進關聯式資料庫。
+</ELI5>
+
+## 是什麼？
+
+雲端儲存服務提供多種資料存放方式，依資料特性選擇最合適的服務。Blob Storage 存非結構化檔案、Queue Storage 做非同步訊息傳遞、Table Storage 存半結構化的 Key-Value 資料。
+
+<Callout type="info" title="不只是這三種">
+雲端儲存還包含 File Storage（SMB 檔案共享）、Disk Storage（VM 磁碟）、Archive Storage（冷資料歸檔）等。本篇聚焦最常用的三種。
+</Callout>
+
+## 核心觀念
+
+- **Blob Storage**：Binary Large Object 的縮寫。存放任意二進位檔案（圖片、影片、PDF、日誌）。支援 Hot/Cool/Archive 分層，越冷的資料存取費用越低但讀取延遲越高
+- **Queue Storage**：訊息佇列服務，用於服務間的非同步通訊。生產者（Producer）送訊息、消費者（Consumer）取訊息。解耦服務、削峰填谷
+- **Table Storage / NoSQL**：Key-Value 或 Document 型的 NoSQL 儲存。用 PartitionKey + RowKey 查詢極快（毫秒級），但不支援 JOIN 和複雜查詢
+- **存取層（Access Tier）**：Hot（頻繁存取）、Cool（偶爾存取，30 天最低保存期）、Archive（很少存取，180 天最低保存期）。根據存取頻率選擇可節省大量成本
+- **SAS Token（Shared Access Signature）**：為特定資源產生限時限權的存取令牌，不需要暴露 Storage Key
+
+## 常見誤區
+
+<Callout type="warning" title="常見誤區">
+- **什麼都存進 SQL Database**：圖片、影片、日誌這些非結構化資料存 Blob Storage 更便宜、更高效。SQL 適合存結構化的業務資料
+- **Queue 當作資料庫用**：Queue 是暫存訊息的，訊息被讀取後就刪除。要持久保存資料用 Database 或 Blob
+- **忘記設定存取權限**：Blob Container 預設是 Private，但很多人設成 Public 導致資料外洩。Production 永遠用 Private + SAS Token
+</Callout>
+
+## 流程/步驟
+
+<StepDiagram data='[{"title":"分析資料類型","description":"結構化（SQL）、半結構化（Table）、非結構化（Blob）","icon":"1"},{"title":"選擇儲存服務","description":"檔案用 Blob、訊息用 Queue、Key-Value 用 Table","icon":"2"},{"title":"設定存取權限","description":"Private + SAS Token，最小權限原則","icon":"3"},{"title":"設定存取層","description":"依存取頻率選擇 Hot/Cool/Archive 節省成本","icon":"4"},{"title":"實作生命週期管理","description":"自動將老舊資料從 Hot 搬到 Cool 再到 Archive","icon":"5"}]' />
+
+流程解讀：先分析資料特性決定用哪種儲存。設定好存取權限後，根據存取頻率選擇適當的儲存層。生命週期管理策略自動搬移老舊資料到更便宜的儲存層，持續優化成本。
+
+## 程式碼範例
+
+### C# 版本
+
+```csharp
+// Azure Blob Storage — 上傳和下載檔案
+using Azure.Storage.Blobs;
+using Azure.Storage.Sas;
+
+var blobServiceClient = new BlobServiceClient(connectionString);
+var containerClient = blobServiceClient.GetBlobContainerClient("images");
+
+// 上傳
+var blobClient = containerClient.GetBlobClient("photos/sunset.jpg");
+await blobClient.UploadAsync(fileStream, new BlobHttpHeaders
+{
+    ContentType = "image/jpeg"
+});
+
+// 產生 SAS Token（限時下載連結）
+var sasBuilder = new BlobSasBuilder
+{
+    BlobContainerName = "images",
+    BlobName = "photos/sunset.jpg",
+    ExpiresOn = DateTimeOffset.UtcNow.AddHours(1),
+};
+sasBuilder.SetPermissions(BlobSasPermissions.Read);
+var sasUrl = blobClient.GenerateSasUri(sasBuilder);
+
+// Azure Queue Storage — 非同步訊息
+var queueClient = new QueueClient(connectionString, "order-processing");
+await queueClient.SendMessageAsync(JsonSerializer.Serialize(new { OrderId = 123 }));
+
+// 接收訊息
+var messages = await queueClient.ReceiveMessagesAsync(maxMessages: 10);
+foreach (var msg in messages.Value)
+{
+    await ProcessOrder(msg.Body.ToString());
+    await queueClient.DeleteMessageAsync(msg.MessageId, msg.PopReceipt);
+}
+```
+
+### TypeScript 版本
+
+```typescript
+// AWS S3 — 上傳和下載
+import { S3Client, PutObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import { SQSClient, SendMessageCommand, ReceiveMessageCommand } from "@aws-sdk/client-sqs";
+
+const s3 = new S3Client({ region: "us-east-1" });
+
+// 上傳
+await s3.send(new PutObjectCommand({
+  Bucket: "my-images",
+  Key: "photos/sunset.jpg",
+  Body: fileBuffer,
+  ContentType: "image/jpeg",
+}));
+
+// 產生預簽名 URL（限時下載連結）
+const downloadUrl = await getSignedUrl(s3,
+  new GetObjectCommand({ Bucket: "my-images", Key: "photos/sunset.jpg" }),
+  { expiresIn: 3600 } // 1 小時
+);
+
+// SQS — 非同步訊息
+const sqs = new SQSClient({ region: "us-east-1" });
+await sqs.send(new SendMessageCommand({
+  QueueUrl: "https://sqs.us-east-1.amazonaws.com/123456/orders",
+  MessageBody: JSON.stringify({ orderId: 123 }),
+}));
+```
+
+### Python 版本
+
+```python
+# Azure Blob Storage
+from azure.storage.blob import BlobServiceClient, generate_blob_sas, BlobSasPermissions
+from datetime import datetime, timedelta
+
+blob_service = BlobServiceClient.from_connection_string(conn_str)
+container = blob_service.get_container_client("images")
+
+# 上傳
+with open("sunset.jpg", "rb") as f:
+    container.upload_blob("photos/sunset.jpg", f, content_settings={"content_type": "image/jpeg"})
+
+# 產生 SAS Token
+sas_token = generate_blob_sas(
+    account_name="myaccount",
+    container_name="images",
+    blob_name="photos/sunset.jpg",
+    account_key=account_key,
+    permission=BlobSasPermissions(read=True),
+    expiry=datetime.utcnow() + timedelta(hours=1),
+)
+
+# Boto3 S3
+import boto3
+
+s3 = boto3.client("s3")
+s3.upload_file("sunset.jpg", "my-images", "photos/sunset.jpg")
+
+# 預簽名 URL
+url = s3.generate_presigned_url(
+    "get_object",
+    Params={"Bucket": "my-images", "Key": "photos/sunset.jpg"},
+    ExpiresIn=3600,
+)
+```
+
+## 架構圖/概念圖
+
+<Diagram data='{"nodes":[{"id":"app","label":"Application","type":"muted"},{"id":"blob","label":"Blob Storage (Files)","type":"highlight"},{"id":"queue","label":"Queue (Messages)","type":"default"},{"id":"table","label":"Table Storage (KV)","type":"default"},{"id":"worker","label":"Background Worker","type":"muted"},{"id":"cdn","label":"CDN","type":"muted"}],"edges":[{"from":"app","to":"blob","label":"upload/download"},{"from":"app","to":"queue","label":"send message"},{"from":"queue","to":"worker","label":"consume"},{"from":"app","to":"table","label":"read/write"},{"from":"blob","to":"cdn","label":"static content"}]}' />
+
+Application 依資料類型使用不同的儲存服務。檔案存 Blob（可搭配 CDN 加速靜態內容）、非同步任務透過 Queue 傳遞給 Worker、結構化查詢用 Table Storage。
+
+## 實戰補充
+
+**Q: 圖片該存 Blob Storage 還是資料庫？**
+
+A: 永遠存 **Blob Storage**。資料庫存圖片的 URL 即可。Blob Storage 便宜（每 GB 幾毛錢）、支援 CDN 加速、有存取層分級。資料庫存二進位資料會拖慢查詢效能。
+
+**Q: Azure Queue 和 Service Bus 有什麼區別？**
+
+A: **Queue Storage**：簡單的 FIFO 佇列，適合基本的非同步訊息。**Service Bus**：企業級訊息中介（Message Broker），支援 Topic/Subscription、Dead Letter Queue、Transaction。複雜場景用 Service Bus。
+
+**Q: 如何用存取層節省成本？**
+
+A: 設定生命週期管理規則 — 超過 30 天未存取的 Blob 自動移到 Cool 層、超過 180 天移到 Archive 層。一個日誌系統這樣做可以節省 60-80% 的儲存費用。
+
+## 理解測驗
+
+<Quiz data='{"question":"以下哪種資料最適合存在 Blob Storage？","options":["使用者的帳號密碼","使用者上傳的大頭貼圖片","使用者的訂單記錄","使用者的登入歷史"],"answer":1,"explanation":"圖片是非結構化的二進位資料，最適合 Blob Storage。帳號密碼和訂單記錄是結構化資料，適合用關聯式資料庫。"}' />
+
+<Quiz data='{"question":"Queue Storage 的核心用途是什麼？","options":["永久儲存大檔案","服務間的非同步訊息傳遞，解耦生產者和消費者","取代關聯式資料庫","快取熱門資料"],"answer":1,"explanation":"Queue 是暫存訊息的管道，生產者放入訊息、消費者取出處理。解耦了兩端的服務，且在流量高峰時有削峰填谷的效果。"}' />
+
+<Quiz data='{"question":"SAS Token 的作用是什麼？","options":["加密儲存的資料","為特定資源產生限時限權的存取令牌，不需暴露 Storage Key","壓縮檔案","加速下載"],"answer":1,"explanation":"SAS Token 讓你給特定的 Blob 產生一個有時效的下載/上傳連結，使用者不需要知道 Storage Account 的 Key。"}' />
+
+## 重點整理
+
+<Callout type="tip" title="一句話記住">
+**檔案存 Blob、訊息走 Queue、Key-Value 用 Table。** 口訣：「大檔 Blob、傳話 Queue、查表 Table」
+</Callout>
+
+| 服務 | 適合存什麼 | 查詢方式 | 計費方式 |
+|------|-----------|---------|---------|
+| **Blob** | 圖片/影片/日誌/備份 | 路徑存取 | 儲存量 + 操作次數 |
+| **Queue** | 非同步訊息 | FIFO 取出 | 操作次數 |
+| **Table** | Key-Value 資料 | PK + RK 查詢 | 儲存量 + 操作次數 |

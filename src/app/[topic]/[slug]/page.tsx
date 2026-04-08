@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { getLessonContent, getAllLessonSlugs, getLessons } from "@/lib/content";
+import { getLessonContent, getAllLessonSlugs, getLessons, getRelatedLessons } from "@/lib/content";
 import { getTopicBySlug } from "@/lib/topics";
 import { parseFrontmatter } from "@/lib/mdx";
 import { MDXRemote } from "next-mdx-remote/rsc";
@@ -9,6 +9,9 @@ import { mdxComponents } from "@/components/mdx";
 import { LessonCompleteButton } from "@/components/lesson-complete-button";
 import { SearchHelper } from "@/components/search-helper";
 import { LessonNavKeys } from "@/components/lesson-nav-keys";
+import { DifficultyBadge } from "@/components/difficulty-badge";
+import { InterviewStars } from "@/components/interview-badge";
+import { RelatedLessons } from "@/components/related-lessons";
 import type { Metadata } from "next";
 
 interface Props {
@@ -68,9 +71,13 @@ export default async function LessonPage({ params }: Props) {
         <span className="mx-2">/</span>
         <span className="text-gray-800">{frontmatter.title}</span>
         {currentLesson && (
-          <span className="ml-3 text-xs text-gray-400">
-            {currentLesson.readingTime} min read
-          </span>
+          <>
+            <span className="ml-3"><DifficultyBadge difficulty={currentLesson.difficulty} /></span>
+            <span className="ml-2"><InterviewStars importance={currentLesson.interviewImportance} /></span>
+            <span className="ml-2 text-xs text-gray-400">
+              {currentLesson.readingTime} min read
+            </span>
+          </>
         )}
       </nav>
 
@@ -92,6 +99,9 @@ export default async function LessonPage({ params }: Props) {
       <div className="mt-10 flex justify-center">
         <LessonCompleteButton lessonId={`${topic}/${slug}`} />
       </div>
+
+      {/* Related lessons */}
+      <RelatedLessons lessons={getRelatedLessons(currentLesson?.related || [])} />
 
       {/* Prev / Next navigation */}
       <div className="mt-8 flex justify-between border-t border-gray-200 dark:border-gray-700 pt-6">

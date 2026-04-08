@@ -1,0 +1,208 @@
+---
+title: "CSRF and CORS"
+order: 5
+description: "跨站請求偽造與跨來源資源共享的攻防原理"
+difficulty: "medium"
+interviewImportance: 4
+related:
+  - "security/xss"
+  - "api-design/rest-fundamentals"
+---
+
+# CSRF 與 CORS
+
+<ELI5>
+想像你登入了銀行網站，瀏覽器記住了你的「通行證」（Cookie）。這時你打開了一個惡意網站，它偷偷在背後用你的通行證向銀行發送「轉帳 100 萬」的請求 — 銀行看到通行證是你的，就照做了。這就是 **CSRF（跨站請求偽造）**。
+
+**CORS** 則像是銀行大門口的保全名單：「只有這些網站的人可以進來拿資料。」瀏覽器會先問銀行：「這個網站可以存取你的資料嗎？」銀行說不行，瀏覽器就擋下來。
+</ELI5>
+
+## 是什麼？
+
+- **CSRF（Cross-Site Request Forgery）**：攻擊者誘使已登入的使用者在不知情的情況下，向目標網站發送惡意請求
+- **CORS（Cross-Origin Resource Sharing）**：瀏覽器的安全機制，控制哪些來源可以存取跨域資源
+
+<Callout type="info" title="同源政策（Same-Origin Policy）">
+瀏覽器預設禁止跨來源請求。CORS 是一種「有條件放寬」同源政策的標準。Origin 由 **Protocol + Host + Port** 三者組成。
+</Callout>
+
+## 核心觀念
+
+### CSRF 攻擊原理
+
+1. 使用者登入 `bank.com`，瀏覽器儲存 Session Cookie
+2. 使用者造訪惡意網站 `evil.com`
+3. `evil.com` 的頁面包含一個自動提交的表單，目標是 `bank.com/transfer`
+4. 瀏覽器自動帶上 `bank.com` 的 Cookie，銀行以為是使用者本人操作
+
+### CSRF 防禦方式
+
+| 方式 | 原理 | 推薦度 |
+|------|------|--------|
+| CSRF Token | Server 產生隨機 token，表單提交時一起送回驗證 | 高 |
+| SameSite Cookie | 設定 `SameSite=Strict` 或 `Lax`，阻止跨站攜帶 Cookie | 高 |
+| Double Submit Cookie | Token 同時放在 Cookie 和 Header，server 比對兩者 | 中 |
+| Origin/Referer 檢查 | 驗證請求來源是否合法 | 低（可被繞過） |
+
+### CORS 關鍵 Header
+
+| Header | 方向 | 說明 |
+|--------|------|------|
+| `Origin` | Request | 瀏覽器自動帶上，標示請求來源 |
+| `Access-Control-Allow-Origin` | Response | 允許的來源，不可在需要憑證時設為 `*` |
+| `Access-Control-Allow-Methods` | Response | 允許的 HTTP 方法 |
+| `Access-Control-Allow-Headers` | Response | 允許的自訂 Header |
+| `Access-Control-Allow-Credentials` | Response | 是否允許攜帶 Cookie |
+
+## 常見誤區
+
+<Callout type="warning" title="常犯錯誤">
+- 設定 `Access-Control-Allow-Origin: *` 同時又設 `Allow-Credentials: true`（瀏覽器會直接拒絕）
+- 以為 CORS 能防 CSRF（CORS 只管讀取回應，不管發送請求）
+- 以為只有 POST 需要防 CSRF（GET 請求如果有副作用也需要防）
+- 把 CORS 當成 server 端的安全機制（CORS 是瀏覽器執行的，API client 不受限制）
+</Callout>
+
+## 執行流程
+
+<StepDiagram data='[{"title":"瀏覽器發出跨域請求","description":"如果是 Simple Request 直接發送，否則先發 Preflight","icon":"1"},{"title":"Preflight（OPTIONS）","description":"瀏覽器自動發送 OPTIONS 請求詢問 server 是否允許","icon":"2"},{"title":"Server 回應 CORS Header","description":"回傳 Allow-Origin、Allow-Methods 等 header","icon":"3"},{"title":"瀏覽器檢查","description":"比對 Origin 與 server 回應，決定是否放行","icon":"4"},{"title":"實際請求","description":"Preflight 通過後才發送實際的 GET/POST 請求","icon":"5"}]' />
+
+流程解讀：CORS 的 Preflight 機制是瀏覽器自動執行的。當請求不符合 Simple Request 條件（例如使用自訂 Header、Content-Type 非表單格式），瀏覽器會先發一個 OPTIONS 請求「打探」server 的態度。只有 server 明確回應允許，瀏覽器才會發出實際請求。這整個過程對 JavaScript 程式碼是透明的。
+
+## 程式碼範例
+
+### C# 版本
+
+```csharp
+// ASP.NET Core — CSRF 防護（內建 Antiforgery）
+builder.Services.AddAntiforgery(options =>
+{
+    options.HeaderName = "X-CSRF-TOKEN";
+    options.Cookie.SameSite = SameSiteMode.Strict;
+    options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
+});
+
+// Controller 中使用
+[HttpPost]
+[ValidateAntiForgeryToken]
+public IActionResult Transfer(TransferRequest request)
+{
+    // CSRF token 已自動驗證
+    return Ok();
+}
+
+// CORS 設定
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("Production", policy =>
+    {
+        policy.WithOrigins("https://myapp.com", "https://admin.myapp.com")
+              .WithMethods("GET", "POST", "PUT", "DELETE")
+              .WithHeaders("Authorization", "Content-Type")
+              .AllowCredentials();
+    });
+});
+```
+
+### TypeScript 版本
+
+```typescript
+import express from "express";
+import cors from "cors";
+import csrf from "csurf";
+
+const app = express();
+
+// CORS 設定
+app.use(cors({
+  origin: ["https://myapp.com", "https://admin.myapp.com"],
+  methods: ["GET", "POST", "PUT", "DELETE"],
+  allowedHeaders: ["Authorization", "Content-Type", "X-CSRF-Token"],
+  credentials: true,
+}));
+
+// CSRF 防護
+const csrfProtection = csrf({ cookie: { sameSite: "strict", secure: true } });
+
+app.get("/api/csrf-token", csrfProtection, (req, res) => {
+  res.json({ token: req.csrfToken() });
+});
+
+app.post("/api/transfer", csrfProtection, (req, res) => {
+  // CSRF token 已驗證
+  res.json({ success: true });
+});
+```
+
+### Python 版本
+
+```python
+from flask import Flask
+from flask_cors import CORS
+from flask_wtf.csrf import CSRFProtect
+
+app = Flask(__name__)
+app.config["SECRET_KEY"] = "secure-random-key"
+
+# CORS 設定
+CORS(app, origins=["https://myapp.com"],
+     supports_credentials=True,
+     methods=["GET", "POST", "PUT", "DELETE"])
+
+# CSRF 防護
+csrf = CSRFProtect(app)
+
+@app.route("/api/transfer", methods=["POST"])
+def transfer():
+    # Flask-WTF 自動驗證 CSRF token
+    return {"success": True}
+
+# API endpoint 如果用 token-based auth 可以豁免 CSRF
+@csrf.exempt
+@app.route("/api/v1/data", methods=["POST"])
+def api_data():
+    # Bearer token auth 不受 CSRF 影響
+    return {"data": "ok"}
+```
+
+## 結構圖
+
+<Diagram data='{"nodes":[{"id":"browser","label":"Browser (Same-Origin Policy)","type":"highlight"},{"id":"myapp","label":"myapp.com (Legitimate)","type":"default"},{"id":"evil","label":"evil.com (Attacker)","type":"muted"},{"id":"server","label":"API Server","type":"default"},{"id":"cors","label":"CORS Headers","type":"default"},{"id":"csrf","label":"CSRF Token","type":"default"}],"edges":[{"from":"browser","to":"myapp","label":"same-origin OK"},{"from":"evil","to":"browser","label":"triggers request"},{"from":"browser","to":"server","label":"preflight OPTIONS"},{"from":"server","to":"cors","label":"returns policy"},{"from":"server","to":"csrf","label":"validates token"}]}' />
+
+圖中 Browser 執行同源政策，myapp.com 的請求直接放行。當 evil.com 企圖透過 Browser 發送跨域請求時，Browser 會先送 Preflight OPTIONS 詢問 Server。Server 透過 CORS Headers 回傳允許清單，Browser 據此決定是否放行。即使 CORS 放行（例如 Simple Request），Server 端的 CSRF Token 驗證仍然是最後一道防線。
+
+## 面試常見問題
+
+**Q: CORS 能防止 CSRF 嗎？**
+
+A: 不能。CORS 控制的是瀏覽器是否允許 JavaScript 讀取跨域回應，但不阻止請求的發送。CSRF 攻擊只需要「發送」請求（例如表單提交），不需要讀取回應。防 CSRF 必須用 CSRF Token 或 SameSite Cookie。
+
+**Q: 為什麼 SameSite=Lax 是現代瀏覽器的預設值？**
+
+A: Lax 在大多數情況下阻止跨站攜帶 Cookie（POST、iframe、AJAX），但允許頂層導航的 GET 請求攜帶（例如從外部連結點進來仍能保持登入狀態）。這在安全性和使用者體驗之間取得了平衡。
+
+**Q: Preflight 請求的觸發條件是什麼？**
+
+A: 不符合 Simple Request 條件的跨域請求都會觸發 Preflight。Simple Request 的條件：方法限 GET/HEAD/POST，Content-Type 限 `application/x-www-form-urlencoded`、`multipart/form-data`、`text/plain`，不能有自訂 Header。
+
+## 理解測驗
+
+<Quiz data='{"question":"CSRF 攻擊為什麼能成功？","options":["因為攻擊者知道使用者的密碼","因為瀏覽器會自動帶上目標網站的 Cookie","因為 server 沒有啟用 HTTPS","因為 JavaScript 可以讀取其他網站的 Cookie"],"answer":1,"explanation":"CSRF 利用瀏覽器自動帶 Cookie 的機制。攻擊者不需要知道 Cookie 內容，只要誘使瀏覽器發送請求，Cookie 就會自動附上。"}' />
+
+<Quiz data='{"question":"以下哪個 CORS 設定是錯誤的？","options":["Access-Control-Allow-Origin: https://myapp.com","Access-Control-Allow-Origin: * 且 Allow-Credentials: true","Access-Control-Allow-Methods: GET, POST","Access-Control-Max-Age: 3600"],"answer":1,"explanation":"當 Allow-Credentials 為 true 時，Allow-Origin 不能設為 *，必須指定確切的 origin。這是瀏覽器強制執行的安全規則。"}' />
+
+<Quiz data='{"question":"以下哪種方式最能有效防禦 CSRF？","options":["只用 HTTPS","檢查 User-Agent header","CSRF Token + SameSite Cookie","只允許 GET 請求"],"answer":2,"explanation":"CSRF Token 確保請求來自合法頁面，SameSite Cookie 阻止跨站攜帶 Cookie，兩者搭配提供最完整的防護。"}' />
+
+## 重點整理
+
+<Callout type="tip" title="一句話記住">
+**CSRF 是「借刀殺人」，CORS 是「門禁管制」。** 口訣：「CSRF 防偽造要 Token，CORS 防讀取靠 Header」
+</Callout>
+
+| 概念 | 說明 |
+|------|------|
+| **CSRF** | 攻擊者利用使用者的 Cookie 發送偽造請求 |
+| **CSRF Token** | Server 產生的隨機 token，驗證請求來源合法性 |
+| **SameSite Cookie** | 瀏覽器層級阻止跨站攜帶 Cookie |
+| **CORS** | 瀏覽器機制，控制跨域資源存取 |
+| **Preflight** | 瀏覽器自動發送 OPTIONS 請求確認是否允許跨域 |

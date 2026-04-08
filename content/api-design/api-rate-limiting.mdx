@@ -1,0 +1,193 @@
+---
+title: "API 限流設計"
+order: 7
+description: "Rate Limiting 演算法與實務設計，保護 API 不被濫用"
+difficulty: "medium"
+interviewImportance: 4
+related:
+  - "system-design/rate-limiter"
+  - "security/owasp-top-10"
+---
+
+# API 限流設計（Rate Limiting）
+
+<ELI5>
+想像一個遊樂園的熱門設施：
+
+- 每小時只能進 100 人（**固定窗口**）
+- 如果太多人同時擠進來，設施會壞掉（**伺服器當機**）
+- 所以門口有人在數人數，超過就讓你排隊等下一輪（**限流**）
+
+API 限流就是在 API 門口放一個「計數器」，防止任何人用太多次。
+</ELI5>
+
+## 是什麼？
+
+Rate Limiting 是限制客戶端在一定時間內能發送的請求數量，保護 API 不被惡意攻擊或意外過載。常見方式包含固定窗口、滑動窗口、Token Bucket 和 Leaky Bucket 演算法。
+
+<Callout type="info" title="為什麼需要限流">
+沒有限流的 API：一個失控的客戶端每秒發 10,000 次請求就能拖垮整個服務。限流是 API 安全和穩定性的**基礎防線**。
+</Callout>
+
+## 核心觀念
+
+- **Fixed Window（固定窗口）**：每個時間窗口（如每分鐘）有固定配額，窗口結束歸零。簡單但有邊界爆量問題（兩個窗口交界處瞬間可達 2 倍配額）
+- **Sliding Window（滑動窗口）**：結合固定窗口和滑動日誌，計算最近 N 秒內的請求數。更平滑但計算稍複雜
+- **Token Bucket（令牌桶）**：桶中以固定速率生成 Token，每次請求消耗一個。允許短暫的流量突增（burst），用完就限流
+- **Leaky Bucket（漏桶）**：請求進入桶中，以固定速率處理。超過桶容量的請求被丟棄。輸出速率恆定
+- **Rate Limit Headers**：回應中附帶 `X-RateLimit-Limit`、`X-RateLimit-Remaining`、`X-RateLimit-Reset`，讓客戶端知道配額狀況
+
+## 常見誤區
+
+<Callout type="warning" title="常見誤區">
+- **只靠 IP 限流**：同一個 NAT 後可能有成百上千個使用者共用一個 IP，純 IP 限流會誤傷正常用戶。應結合 API Key / User ID 限流
+- **限流後只回 429 不附資訊**：必須告訴客戶端何時可以重試（Retry-After Header），否則客戶端只能盲目重試
+- **分散式環境用本地計數器**：多台伺服器各自計數，總量會超標。必須用集中式存儲（如 Redis）
+</Callout>
+
+## 流程/步驟
+
+<StepDiagram data='[{"title":"辨識限流維度","description":"決定用 IP、User ID、API Key 或組合來識別客戶端","icon":"1"},{"title":"選擇演算法","description":"簡單場景用 Fixed Window，需要平滑限流用 Token Bucket","icon":"2"},{"title":"設定配額","description":"根據伺服器容量和業務需求設定每分鐘/每小時上限","icon":"3"},{"title":"實作計數器","description":"用 Redis 或記憶體快取儲存計數，設定 TTL 自動過期","icon":"4"},{"title":"回傳限流資訊","description":"加入 Rate Limit Headers，超限回傳 429 + Retry-After","icon":"5"}]' />
+
+流程解讀：先決定限流的「對象」（誰被限）和「演算法」（怎麼限），然後根據伺服器承載力設定合理配額。計數器必須用集中式儲存（如 Redis）確保分散式環境的一致性。回應中附帶限流 Header 讓客戶端自我調節。
+
+## 程式碼範例
+
+### C# 版本
+
+```csharp
+// ASP.NET Core — 內建 Rate Limiting（.NET 7+）
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = 429;
+
+    // Token Bucket 策略
+    options.AddTokenBucketLimiter("api", limiter =>
+    {
+        limiter.TokenLimit = 100;          // 桶容量
+        limiter.ReplenishmentPeriod = TimeSpan.FromMinutes(1);
+        limiter.TokensPerPeriod = 100;     // 每分鐘補充 100 個
+        limiter.AutoReplenishment = true;
+        limiter.QueueLimit = 0;            // 不排隊，直接拒絕
+    });
+
+    // 依 User ID 限流
+    options.AddPolicy("per-user", context =>
+    {
+        var userId = context.User?.FindFirst("sub")?.Value ?? "anonymous";
+        return RateLimitPartition.GetTokenBucketLimiter(userId,
+            _ => new TokenBucketRateLimiterOptions
+            {
+                TokenLimit = 50,
+                ReplenishmentPeriod = TimeSpan.FromMinutes(1),
+                TokensPerPeriod = 50
+            });
+    });
+});
+
+app.UseRateLimiter();
+
+[HttpGet]
+[EnableRateLimiting("per-user")]
+public ActionResult<IEnumerable<UserDto>> GetUsers() => Ok(_users);
+```
+
+### TypeScript 版本
+
+```typescript
+// Express.js — express-rate-limit
+import rateLimit from "express-rate-limit";
+
+// Fixed Window 限流
+const apiLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 分鐘
+  max: 100, // 每個 IP 最多 100 次
+  standardHeaders: true, // 回傳 RateLimit-* Headers
+  legacyHeaders: false,
+  message: {
+    type: "https://api.example.com/errors/rate-limit",
+    title: "Too Many Requests",
+    status: 429,
+    detail: "Rate limit exceeded. Try again later.",
+  },
+  keyGenerator: (req) => req.user?.id || req.ip, // 依 User ID 或 IP
+});
+
+app.use("/api/", apiLimiter);
+
+// Redis-based（分散式環境）
+import RedisStore from "rate-limit-redis";
+import Redis from "ioredis";
+
+const limiter = rateLimit({
+  store: new RedisStore({ sendCommand: (...args) => redis.call(...args) }),
+  windowMs: 60 * 1000,
+  max: 100,
+});
+```
+
+### Python 版本
+
+```python
+# FastAPI — slowapi
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+
+limiter = Limiter(key_func=get_remote_address)
+app.state.limiter = limiter
+
+@app.get("/api/users")
+@limiter.limit("100/minute")
+async def get_users(request: Request):
+    return {"data": await user_service.get_all()}
+
+# 依 User ID 限流
+def get_user_id(request: Request) -> str:
+    token = request.headers.get("authorization", "")
+    # 解析 token 取得 user_id
+    return decode_token(token).get("sub", request.client.host)
+
+user_limiter = Limiter(key_func=get_user_id)
+
+@app.get("/api/premium")
+@user_limiter.limit("1000/hour")
+async def premium_endpoint(request: Request):
+    return {"data": "premium content"}
+```
+
+## 架構圖/概念圖
+
+<Diagram data='{"nodes":[{"id":"client","label":"Client","type":"muted"},{"id":"limiter","label":"Rate Limiter (Middleware)","type":"highlight"},{"id":"redis","label":"Redis (Counter)","type":"default"},{"id":"api","label":"API Handler","type":"default"},{"id":"response429","label":"429 Too Many Requests","type":"muted"}],"edges":[{"from":"client","to":"limiter","label":"request"},{"from":"limiter","to":"redis","label":"check/increment"},{"from":"limiter","to":"api","label":"allowed"},{"from":"limiter","to":"response429","label":"exceeded"}]}' />
+
+每個請求先經過 Rate Limiter Middleware，它向 Redis 查詢並更新計數。未超限的請求放行到 API Handler，超限的直接回傳 429。Redis 作為集中式計數器確保多台伺服器的限流一致。
+
+## 實戰補充
+
+**Q: 如何為不同的 API 設定不同配額？**
+
+A: 按重要程度分級。例如：登入 API 每分鐘 10 次（防暴力破解）、讀取 API 每分鐘 100 次、寫入 API 每分鐘 30 次。付費用戶可以有更高的配額。
+
+**Q: Token Bucket 和 Leaky Bucket 哪個好？**
+
+A: **Token Bucket** 允許短暫的流量突增（burst），適合正常使用有波動的場景。**Leaky Bucket** 輸出速率恆定，適合需要穩定處理速率的場景（如寫入資料庫）。大多數 API 限流用 Token Bucket。
+
+## 理解測驗
+
+<Quiz data='{"question":"Fixed Window 限流的主要缺點是什麼？","options":["實作太複雜","不支援 Redis","兩個窗口交界處可能出現瞬間 2 倍流量","只能用 IP 限流"],"answer":2,"explanation":"假設每分鐘限 100 次，在第 1 分鐘的最後 1 秒和第 2 分鐘的前 1 秒各發 100 次，等於 2 秒內 200 次請求都通過。Sliding Window 可以解決此問題。"}' />
+
+<Quiz data='{"question":"分散式環境中為什麼不能用本地記憶體做限流計數？","options":["記憶體不夠","每台伺服器各自計數，總量會超過預期配額","本地記憶體速度太慢","HTTP 規範不允許"],"answer":1,"explanation":"假設限流 100 次/分鐘，4 台伺服器各自計數，每台允許 100 次，總共可能通過 400 次請求。必須用 Redis 等集中式存儲。"}' />
+
+<Quiz data='{"question":"客戶端收到 429 狀態碼時，哪個 Header 告訴它何時可以重試？","options":["X-RateLimit-Limit","X-RateLimit-Remaining","Retry-After","Cache-Control"],"answer":2,"explanation":"Retry-After Header 告訴客戶端等待多少秒後重試，避免盲目重試浪費資源。"}' />
+
+## 重點整理
+
+<Callout type="tip" title="一句話記住">
+**限流 = API 的保險絲，流量超標就斷開保護系統。** 口訣：「Token Bucket 容突發，Redis 管全局」
+</Callout>
+
+| 演算法 | 特性 | 適用場景 |
+|--------|------|---------|
+| **Fixed Window** | 簡單但有邊界問題 | 低精度需求 |
+| **Sliding Window** | 平滑但稍複雜 | 精確限流 |
+| **Token Bucket** | 允許 burst | 大多數 API |
+| **Leaky Bucket** | 恆定速率 | 穩定寫入場景 |

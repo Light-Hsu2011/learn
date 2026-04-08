@@ -1,0 +1,220 @@
+---
+title: "API 錯誤處理"
+order: 3
+description: "Problem Details RFC 7807 與一致的錯誤回應格式設計"
+difficulty: "easy"
+interviewImportance: 4
+related:
+  - "api-design/rest-fundamentals"
+  - "observability/structured-logging"
+---
+
+# API 錯誤處理（Error Handling）
+
+<ELI5>
+想像你去銀行辦事：
+
+- 如果你忘了帶身份證，櫃員會說：「你缺少身份證（原因），請下次帶來（怎麼修）」
+- 他不會只說「辦不了」然後把你趕走
+
+好的 API 錯誤處理就像**有禮貌的櫃員** — 不只告訴你「失敗了」，還告訴你**為什麼失敗**、**怎麼修正**。
+</ELI5>
+
+## 是什麼？
+
+API 錯誤處理是設計**一致且有用的錯誤回應格式**，讓客戶端能快速理解問題所在並採取行動。RFC 7807（Problem Details for HTTP APIs）是業界標準的錯誤格式規範。
+
+<Callout type="info" title="RFC 7807 / RFC 9457">
+RFC 7807 定義了標準的錯誤回應格式，2023 年被 RFC 9457 取代（內容大致相同，更新了一些細節）。ASP.NET Core 內建支援 `ProblemDetails` 類別。
+</Callout>
+
+## 核心觀念
+
+- **Problem Details 格式**：包含 `type`（錯誤類型 URI）、`title`（人類可讀的錯誤標題）、`status`（HTTP 狀態碼）、`detail`（具體錯誤描述）、`instance`（發生錯誤的請求 URI）
+- **錯誤分類**：4xx 是客戶端的錯（可以修正重試）、5xx 是伺服器的錯（客戶端無法修正）
+- **Validation Error**：欄位驗證失敗時回傳 400，附帶每個欄位的具體錯誤訊息
+- **冪等性考量**：重複請求不應產生不同的錯誤訊息，保持一致的錯誤回應
+- **不洩漏內部資訊**：錯誤訊息不能暴露 Stack Trace、SQL 語句、內部路徑等敏感資訊
+
+## 常見誤區
+
+<Callout type="warning" title="常見誤區">
+- **所有錯誤都回 500**：客戶端的錯（參數不對、未認證）用 4xx，只有伺服器自己的問題才用 5xx
+- **錯誤訊息直接丟 Exception Message**：可能洩漏資料庫結構、內部路徑等敏感資訊
+- **每個 API 回傳不同的錯誤格式**：整個系統必須統一錯誤格式，否則客戶端需要為每個 API 寫不同的錯誤處理邏輯
+</Callout>
+
+## 流程/步驟
+
+<StepDiagram data='[{"title":"定義錯誤格式","description":"採用 RFC 7807 Problem Details 作為統一格式","icon":"1"},{"title":"分類錯誤碼","description":"列出所有可能的錯誤類型，對應 HTTP 狀態碼","icon":"2"},{"title":"實作全域錯誤處理","description":"用 Middleware / Exception Filter 統一攔截錯誤","icon":"3"},{"title":"加入驗證錯誤細節","description":"Validation Error 附帶欄位層級的錯誤訊息","icon":"4"},{"title":"過濾敏感資訊","description":"確保生產環境不洩漏 Stack Trace 和內部細節","icon":"5"}]' />
+
+流程解讀：先統一錯誤格式，再分類所有錯誤類型。透過全域 Middleware 攔截未處理的例外，確保所有錯誤都經過統一格式化。驗證錯誤要提供欄位層級的訊息，但必須過濾掉敏感資訊。
+
+## 程式碼範例
+
+### C# 版本
+
+```csharp
+// ASP.NET Core — Problem Details 全域錯誤處理
+builder.Services.AddProblemDetails();
+
+// 自訂 Exception Handler Middleware
+app.UseExceptionHandler(appBuilder =>
+{
+    appBuilder.Run(async context =>
+    {
+        context.Response.ContentType = "application/problem+json";
+        var exception = context.Features.Get<IExceptionHandlerFeature>()?.Error;
+
+        var problemDetails = new ProblemDetails
+        {
+            Type = "https://api.example.com/errors/internal",
+            Title = "Internal Server Error",
+            Status = 500,
+            Detail = "An unexpected error occurred. Please try again later.",
+            Instance = context.Request.Path
+        };
+
+        context.Response.StatusCode = 500;
+        await context.Response.WriteAsJsonAsync(problemDetails);
+    });
+});
+
+// Controller 中的驗證錯誤回傳
+[HttpPost]
+public ActionResult<UserDto> Create(CreateUserDto dto)
+{
+    if (string.IsNullOrEmpty(dto.Email))
+    {
+        return BadRequest(new ValidationProblemDetails(
+            new Dictionary<string, string[]>
+            {
+                ["email"] = new[] { "Email is required" }
+            }
+        ));
+    }
+    // ...
+}
+```
+
+### TypeScript 版本
+
+```typescript
+// Express.js — 統一錯誤格式
+interface ProblemDetails {
+  type: string;
+  title: string;
+  status: number;
+  detail: string;
+  instance?: string;
+  errors?: Record<string, string[]>;
+}
+
+// 全域錯誤處理 Middleware
+app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
+  const problem: ProblemDetails = {
+    type: "https://api.example.com/errors/internal",
+    title: "Internal Server Error",
+    status: 500,
+    detail: "An unexpected error occurred.",
+    instance: req.originalUrl,
+  };
+  res.status(500).json(problem);
+});
+
+// 驗證錯誤
+app.post("/api/users", (req, res) => {
+  const errors: Record<string, string[]> = {};
+  if (!req.body.email) errors.email = ["Email is required"];
+  if (!req.body.name) errors.name = ["Name is required"];
+
+  if (Object.keys(errors).length > 0) {
+    return res.status(400).json({
+      type: "https://api.example.com/errors/validation",
+      title: "Validation Error",
+      status: 400,
+      detail: "One or more fields failed validation.",
+      errors,
+    });
+  }
+});
+```
+
+### Python 版本
+
+```python
+# FastAPI — 統一錯誤處理
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
+
+app = FastAPI()
+
+class ApiError(Exception):
+    def __init__(self, status: int, title: str, detail: str):
+        self.status = status
+        self.title = title
+        self.detail = detail
+
+@app.exception_handler(ApiError)
+async def api_error_handler(request: Request, exc: ApiError):
+    return JSONResponse(
+        status_code=exc.status,
+        content={
+            "type": f"https://api.example.com/errors/{exc.status}",
+            "title": exc.title,
+            "status": exc.status,
+            "detail": exc.detail,
+            "instance": str(request.url),
+        },
+    )
+
+@app.exception_handler(Exception)
+async def generic_error_handler(request: Request, exc: Exception):
+    return JSONResponse(
+        status_code=500,
+        content={
+            "type": "https://api.example.com/errors/internal",
+            "title": "Internal Server Error",
+            "status": 500,
+            "detail": "An unexpected error occurred.",
+        },
+    )
+```
+
+## 架構圖/概念圖
+
+<Diagram data='{"nodes":[{"id":"request","label":"Client Request","type":"muted"},{"id":"middleware","label":"Error Middleware","type":"highlight"},{"id":"controller","label":"Controller / Handler","type":"default"},{"id":"problem","label":"ProblemDetails (RFC 7807)","type":"default"},{"id":"response","label":"JSON Response","type":"muted"}],"edges":[{"from":"request","to":"controller","label":"normal flow"},{"from":"controller","to":"middleware","label":"throws exception"},{"from":"middleware","to":"problem","label":"formats"},{"from":"problem","to":"response","label":"returns"}]}' />
+
+正常流程中請求直接進入 Controller。當錯誤發生時，Exception 被 Error Middleware 攔截，轉換為標準的 ProblemDetails 格式後回傳。這確保所有錯誤都經過統一處理。
+
+## 實戰補充
+
+**Q: 前端團隊抱怨錯誤訊息不統一，怎麼推動改善？**
+
+A: 先定義一份「Error Contract」文件，規範所有 API 錯誤都用 Problem Details 格式。用全域 Middleware 攔截，確保即使開發者忘了處理，也會有標準格式的錯誤回應。
+
+**Q: 要不要在錯誤回應中包含 Error Code？**
+
+A: 建議加上。除了 HTTP 狀態碼，自定義的 Error Code（如 `USER_EMAIL_DUPLICATE`）能讓前端做更精確的錯誤處理，例如在特定欄位下方顯示對應的提示訊息。
+
+## 理解測驗
+
+<Quiz data='{"question":"RFC 7807 Problem Details 中，哪個欄位用來放人類可讀的錯誤描述？","options":["type","title","detail","instance"],"answer":2,"explanation":"detail 欄位放具體的錯誤描述，title 是短標題，type 是錯誤分類 URI，instance 是請求路徑。"}' />
+
+<Quiz data='{"question":"使用者送了一個 email 格式不正確的請求，應該回傳什麼狀態碼？","options":["500 Internal Server Error","200 OK 加錯誤訊息","400 Bad Request","404 Not Found"],"answer":2,"explanation":"參數驗證失敗是客戶端的錯，應回傳 400 Bad Request，並附帶欄位層級的錯誤訊息。"}' />
+
+<Quiz data='{"question":"為什麼生產環境的錯誤回應不應包含 Stack Trace？","options":["會讓回應變太大","會洩漏內部程式結構和路徑等敏感資訊","會讓前端當掉","HTTP 規範禁止"],"answer":1,"explanation":"Stack Trace 會暴露程式碼結構、檔案路徑、框架版本等資訊，攻擊者可以利用這些資訊找出漏洞。"}' />
+
+## 重點整理
+
+<Callout type="tip" title="一句話記住">
+**好的錯誤回應 = 統一格式 + 有用資訊 + 不洩密。** 口訣：「Problem Details 一統天下」
+</Callout>
+
+| 概念 | 說明 |
+|------|------|
+| **RFC 7807** | 標準錯誤回應格式（type/title/status/detail/instance） |
+| **4xx vs 5xx** | 4xx 客戶端錯（可修正）、5xx 伺服器錯（無法修正） |
+| **Validation Error** | 400 + 欄位層級錯誤訊息 |
+| **全域 Middleware** | 攔截所有未處理例外，確保統一格式 |
+| **安全原則** | 不洩漏 Stack Trace、SQL、內部路徑 |

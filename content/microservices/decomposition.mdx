@@ -1,0 +1,285 @@
+---
+title: "Decomposition"
+order: 8
+description: "拆分 Monolith：Strangler Fig、Branch by Abstraction 策略"
+difficulty: "hard"
+interviewImportance: 4
+related:
+  - "ddd/bounded-context"
+  - "microservices/microservices-fundamentals"
+---
+
+# Decomposition（拆分 Monolith）
+
+<ELI5>
+想像你住在一棟老公寓，水管老舊、電線混亂、隔音很差。你有兩個選擇：
+
+1. **全部拆掉重蓋**（Big Bang Rewrite）— 要搬出去住好幾個月，風險高、花費大
+2. **一間一間翻新**（Strangler Fig）— 先翻新廚房，廚房好了再翻新浴室，一直住在裡面，每翻新一間就好一點
+
+軟體也一樣：從 Monolith 轉向 Microservices，最聰明的方式不是一次重寫，而是**逐步替換** — 新功能用微服務寫，舊功能一塊一塊抽出來。
+</ELI5>
+
+## 是什麼？
+
+Decomposition 是將 Monolith 系統逐步拆分為微服務的策略和方法。核心原則是**漸進式遷移**（Incremental Migration），讓新舊系統在拆分過程中共存，降低風險。
+
+<Callout type="info" title="Big Bang Rewrite 的失敗率">
+根據業界經驗，大規模重寫專案的失敗率極高。原因是：重寫期間原系統仍在變化、重寫團隊必須同時理解舊系統和設計新系統、無法逐步驗證成果。漸進式遷移是工業界證明有效的策略。
+</Callout>
+
+## 核心觀念
+
+### 主要拆分策略
+
+| 策略 | 說明 | 適用時機 |
+|------|------|----------|
+| **Strangler Fig** | 用新服務逐步「絞殺」舊系統 | 有清楚的 API 邊界可以切換 |
+| **Branch by Abstraction** | 在 Monolith 內部先抽出介面層，再替換實作 | 內部模組緊密耦合 |
+| **Parallel Run** | 新舊系統同時運行，比對結果 | 高風險業務邏輯遷移 |
+| **Decorating Collaborator** | 新服務作為 Monolith 的裝飾器，攔截和增強功能 | 不修改 Monolith 的前提下擴展 |
+
+### Strangler Fig Pattern（絞殺者模式）
+
+命名來自一種熱帶植物 — 它先攀附在大樹上生長，最終包覆整棵樹取而代之。
+
+步驟：
+1. 在 Monolith 前面加一層 Router/Proxy
+2. 新功能直接用微服務開發
+3. 逐步將舊功能抽出為微服務
+4. Router 將流量從舊模組切換到新服務
+5. 舊模組不再有流量後移除
+
+### Branch by Abstraction
+
+步驟：
+1. 在 Monolith 中找到要拆出的模組
+2. 建立一個 Abstraction Layer（介面）
+3. 讓現有程式碼透過 Abstraction 呼叫
+4. 實作新版本（微服務），也符合同一個 Abstraction
+5. 切換 Abstraction 的實作，從舊模組指向新服務
+
+### 拆分判斷標準
+
+什麼模組先拆？
+
+- **變更頻率高**的模組（獨立部署收益最大）
+- **擴展需求不同**的模組（可以獨立 scale）
+- **團隊邊界清楚**的模組（一個團隊負責一個服務）
+- **技術差異大**的模組（需要不同技術棧）
+
+## 常見誤區
+
+<Callout type="warning" title="常犯錯誤">
+- 一次拆太多（應該一次只拆一個模組，驗證成功後再拆下一個）
+- 先拆最核心的模組（應該先拆風險低、邊界清楚的模組累積經驗）
+- 忽略資料拆分（程式碼拆了但還是共用同一個資料庫，沒有真正解耦）
+- 沒有建立監控和回滾機制（無法驗證拆分後的行為是否正確）
+</Callout>
+
+## 執行流程
+
+<StepDiagram data='[{"title":"評估與規劃","description":"用 DDD 識別 Bounded Context，決定拆分順序","icon":"1"},{"title":"建立基礎設施","description":"CI/CD、容器化、API Gateway、監控","icon":"2"},{"title":"Strangler Proxy","description":"在 Monolith 前加入路由層，準備流量切換","icon":"3"},{"title":"逐步拆分","description":"一次一個模組：抽出、測試、切換流量","icon":"4"},{"title":"清理舊程式碼","description":"確認新服務穩定後，移除 Monolith 中的舊模組","icon":"5"}]' />
+
+流程解讀：拆分 Monolith 是一場馬拉松，不是短跑。第一步用 DDD 的 Bounded Context 分析哪些模組有清楚的業務邊界。基礎設施是前提 — 沒有 CI/CD 和監控就不要開始拆分。Strangler Proxy 是流量切換的關鍵，讓你可以灰度地將請求從舊模組導向新服務。每拆完一個模組都要充分驗證（包括 Parallel Run 比對結果），確認穩定後才清理舊程式碼。
+
+## 程式碼範例
+
+### C# 版本
+
+```csharp
+// Branch by Abstraction — 在 Monolith 中建立介面
+public interface IInventoryService
+{
+    Task<int> GetStock(string productId);
+    Task<bool> ReserveStock(string productId, int quantity);
+}
+
+// 舊的實作（Monolith 內部直接查 DB）
+public class MonolithInventoryService : IInventoryService
+{
+    private readonly AppDbContext _db;
+
+    public async Task<int> GetStock(string productId)
+    {
+        var product = await _db.Products.FindAsync(productId);
+        return product?.Stock ?? 0;
+    }
+
+    public async Task<bool> ReserveStock(string productId, int quantity)
+    {
+        var product = await _db.Products.FindAsync(productId);
+        if (product == null || product.Stock < quantity) return false;
+        product.Stock -= quantity;
+        await _db.SaveChangesAsync();
+        return true;
+    }
+}
+
+// 新的實作（呼叫微服務）
+public class MicroserviceInventoryService : IInventoryService
+{
+    private readonly HttpClient _client;
+
+    public async Task<int> GetStock(string productId)
+    {
+        var response = await _client.GetAsync($"/api/stock/{productId}");
+        return await response.Content.ReadFromJsonAsync<int>();
+    }
+
+    public async Task<bool> ReserveStock(string productId, int quantity)
+    {
+        var response = await _client.PostAsJsonAsync("/api/stock/reserve",
+            new { ProductId = productId, Quantity = quantity });
+        return response.IsSuccessStatusCode;
+    }
+}
+
+// Feature Flag 切換
+services.AddScoped<IInventoryService>(sp =>
+    FeatureFlags.UseNewInventoryService
+        ? new MicroserviceInventoryService(sp.GetRequiredService<HttpClient>())
+        : new MonolithInventoryService(sp.GetRequiredService<AppDbContext>())
+);
+```
+
+### TypeScript 版本
+
+```typescript
+// Strangler Fig — NGINX 路由設定
+// nginx.conf
+// location /api/inventory/ {
+//     # 新服務
+//     proxy_pass http://inventory-service:3002;
+// }
+// location /api/ {
+//     # 其他還沒拆的走 Monolith
+//     proxy_pass http://monolith:3000;
+// }
+
+// Parallel Run — 同時呼叫新舊系統比對結果
+async function parallelRun<T>(
+  oldFn: () => Promise<T>,
+  newFn: () => Promise<T>,
+  compare: (a: T, b: T) => boolean
+): Promise<T> {
+  const [oldResult, newResult] = await Promise.allSettled([oldFn(), newFn()]);
+
+  // 永遠回傳舊系統的結果（安全）
+  const primary = oldResult.status === "fulfilled" ? oldResult.value : null;
+
+  // 比對差異（記錄但不影響使用者）
+  if (oldResult.status === "fulfilled" && newResult.status === "fulfilled") {
+    if (!compare(oldResult.value, newResult.value)) {
+      logger.warn("Parallel run mismatch", {
+        old: oldResult.value,
+        new: newResult.value,
+      });
+    }
+  }
+
+  if (!primary) throw new Error("Primary (old) system failed");
+  return primary;
+}
+
+// 使用
+const stock = await parallelRun(
+  () => monolith.getStock("SKU-001"),
+  () => inventoryService.getStock("SKU-001"),
+  (a, b) => a === b
+);
+```
+
+### Python 版本
+
+```python
+# Feature Flag 驅動的 Branch by Abstraction
+from abc import ABC, abstractmethod
+
+class InventoryService(ABC):
+    @abstractmethod
+    async def get_stock(self, product_id: str) -> int: ...
+
+    @abstractmethod
+    async def reserve(self, product_id: str, qty: int) -> bool: ...
+
+# 舊實作
+class MonolithInventory(InventoryService):
+    def __init__(self, db):
+        self.db = db
+
+    async def get_stock(self, product_id: str) -> int:
+        row = await self.db.fetchone(
+            "SELECT stock FROM products WHERE id = %s", (product_id,))
+        return row["stock"] if row else 0
+
+    async def reserve(self, product_id: str, qty: int) -> bool:
+        result = await self.db.execute(
+            "UPDATE products SET stock = stock - %s WHERE id = %s AND stock >= %s",
+            (qty, product_id, qty))
+        return result.rowcount > 0
+
+# 新實作
+class MicroserviceInventory(InventoryService):
+    def __init__(self, base_url: str):
+        self.base_url = base_url
+
+    async def get_stock(self, product_id: str) -> int:
+        async with httpx.AsyncClient() as client:
+            r = await client.get(f"{self.base_url}/api/stock/{product_id}")
+            return r.json()["stock"]
+
+    async def reserve(self, product_id: str, qty: int) -> bool:
+        async with httpx.AsyncClient() as client:
+            r = await client.post(f"{self.base_url}/api/stock/reserve",
+                json={"product_id": product_id, "quantity": qty})
+            return r.status_code == 200
+
+# Factory with Feature Flag
+def get_inventory_service(feature_flags) -> InventoryService:
+    if feature_flags.is_enabled("new_inventory_service"):
+        return MicroserviceInventory("http://inventory-service:8002")
+    return MonolithInventory(db)
+```
+
+## 結構圖
+
+<Diagram data='{"nodes":[{"id":"client","label":"Client","type":"muted"},{"id":"proxy","label":"Strangler Proxy","type":"highlight"},{"id":"monolith","label":"Monolith (shrinking)","type":"default"},{"id":"svc1","label":"Inventory Service (new)","type":"default"},{"id":"svc2","label":"Payment Service (new)","type":"default"},{"id":"ff","label":"Feature Flags","type":"muted"}],"edges":[{"from":"client","to":"proxy","label":"all requests"},{"from":"proxy","to":"monolith","label":"unmigrated routes"},{"from":"proxy","to":"svc1","label":"/api/inventory"},{"from":"proxy","to":"svc2","label":"/api/payments"},{"from":"ff","to":"proxy","label":"toggle routes"}]}' />
+
+圖中 Client 所有請求先到 Strangler Proxy。Proxy 根據路由規則（受 Feature Flags 控制）將請求分發到新服務或舊的 Monolith。隨著拆分進行，越來越多的路由指向新服務，Monolith 逐漸「縮小」。最終所有路由都指向新服務後，Monolith 就可以退役了。
+
+## 面試常見問題
+
+**Q: Strangler Fig 和 Big Bang Rewrite 各自的風險？**
+
+A: Big Bang Rewrite 要在新系統完成前維護兩套程式碼，期間無法交付新功能，且新系統可能遺漏舊系統的隱含邏輯，失敗率極高。Strangler Fig 漸進式遷移，每一步都可驗證，可以隨時暫停或回滾，風險可控。代價是遷移期間系統架構較複雜（新舊共存）。
+
+**Q: 拆分過程中如何處理共用資料庫？**
+
+A: 分四步：(1) 先在 Monolith 中用 Abstraction Layer 隔離資料存取；(2) 新服務使用自己的資料庫，透過 API 與 Monolith 同步資料；(3) 用 Change Data Capture（CDC）或 Event 保持資料一致；(4) 確認新服務穩定後，停止同步並移除 Monolith 對該 table 的存取。
+
+**Q: 如何決定拆分的順序？**
+
+A: 用四個維度評分：(1) 業務價值 — 獨立部署和擴展的收益有多大；(2) 拆分難度 — 耦合程度和依賴關係；(3) 風險 — 出錯的影響範圍；(4) 團隊準備度 — 是否有經驗維運微服務。建議從「高價值、低風險、低難度」的模組開始，累積經驗後再挑戰核心模組。
+
+## 理解測驗
+
+<Quiz data='{"question":"Strangler Fig Pattern 的名稱來自什麼？","options":["一種設計模式的發明者","一種植物逐漸包覆宿主樹的生長方式","一種軟體測試方法","一種資料庫遷移工具"],"answer":1,"explanation":"Strangler Fig（絞殺榕）是一種熱帶植物，它攀附在大樹上生長，最終包覆整棵樹取而代之。這個模式同樣是用新系統逐步取代舊系統。"}' />
+
+<Quiz data='{"question":"拆分 Monolith 時應該先拆哪個模組？","options":["最核心、最重要的模組","變更頻率高、邊界清楚、風險低的模組","最小的模組","最舊的模組"],"answer":1,"explanation":"先從邊界清楚、風險低的模組開始，累積拆分經驗和驗證基礎設施。核心模組風險最高，應該在團隊有足夠經驗後再處理。"}' />
+
+<Quiz data='{"question":"Branch by Abstraction 的核心步驟是什麼？","options":["直接刪除舊程式碼","先建立介面層，讓新舊實作都符合同一介面，再切換","把所有程式碼複製到新服務","用資料庫 trigger 同步資料"],"answer":1,"explanation":"Branch by Abstraction 先在 Monolith 中建立 Abstraction（介面），讓現有程式碼透過介面呼叫。然後實作新版本也符合同一介面，最後切換介面的實作指向新服務。"}' />
+
+## 重點整理
+
+<Callout type="tip" title="一句話記住">
+**Decomposition = 漸進式替換，不是一次重寫。** 口訣：「Strangler 逐步替，Branch 先抽介面，Parallel 比結果」
+</Callout>
+
+| 概念 | 說明 |
+|------|------|
+| **Strangler Fig** | 用路由層逐步將流量從 Monolith 切到新服務 |
+| **Branch by Abstraction** | 先抽介面再替換實作 |
+| **Parallel Run** | 新舊系統同時運行比對結果 |
+| **Feature Flag** | 控制流量切換和回滾 |
+| **核心原則** | 漸進遷移、持續驗證、隨時可回滾 |

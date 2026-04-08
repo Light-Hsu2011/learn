@@ -1,0 +1,288 @@
+---
+title: "Incident Response"
+order: 6
+description: "事故應變與 Postmortem：從偵測到復原的完整流程"
+difficulty: "medium"
+interviewImportance: 4
+related:
+  - "observability/metrics-and-alerting"
+  - "observability/dashboards"
+---
+
+# Incident Response（事故應變與 Postmortem）
+
+<ELI5>
+想像你家突然停電了：
+
+1. **發現** — 燈滅了（告警觸發）
+2. **評估** — 是整條街停電還是只有我家？（判斷影響範圍）
+3. **溝通** — 打電話給電力公司報修，跟家人說別開冰箱（通知利害關係人）
+4. **修復** — 電力公司來修復（緊急處理）
+5. **事後檢討** — 為什麼停電？怎麼避免下次再發生？（Postmortem）
+
+軟體系統的事故應變也是這個流程 — 重點不只是「修好它」，更是「避免下次再發生」。
+</ELI5>
+
+## 是什麼？
+
+Incident Response 是一套結構化的流程，用於偵測、回應、解決和學習系統事故。**Postmortem**（事後檢討）是事故解決後的分析報告，重點在於找出根因和預防措施，而非追究責任。
+
+<Callout type="info" title="Blameless Postmortem">
+Google SRE 的核心文化是 **Blameless Postmortem**（不追究責任的事後檢討）。目的是鼓勵團隊誠實回報問題，而非隱藏錯誤。人會犯錯是正常的，系統應該設計成能承受人的錯誤。
+</Callout>
+
+## 核心觀念
+
+### 事故嚴重度分級
+
+| 等級 | 影響 | 回應時間 | 範例 |
+|------|------|----------|------|
+| **SEV1** | 整個系統不可用 | 立即（15 分鐘內） | 主要服務全面停機 |
+| **SEV2** | 核心功能受損 | 30 分鐘內 | 支付功能異常 |
+| **SEV3** | 次要功能受損 | 4 小時內 | 通知服務延遲 |
+| **SEV4** | 微小影響 | 下個工作日 | Dashboard 顯示異常 |
+
+### 事故應變角色
+
+| 角色 | 職責 |
+|------|------|
+| **Incident Commander（IC）** | 決策者，協調所有行動，決定升級或降級 |
+| **Communications Lead** | 負責對外溝通（客戶、管理層、狀態頁面） |
+| **Operations Lead** | 執行技術操作（重啟、回滾、擴展） |
+| **Subject Matter Expert** | 對特定系統有深入知識的專家 |
+
+### Postmortem 的核心要素
+
+一份好的 Postmortem 必須包含：
+- **Timeline**：事件的完整時間線（分鐘級精度）
+- **Root Cause**：根因分析（不是「某人犯錯」，而是「系統為什麼允許這個錯誤發生」）
+- **Impact**：影響範圍（多少使用者、多長時間、財務損失）
+- **Action Items**：具體的改善措施（每項有 owner 和 deadline）
+- **Lessons Learned**：學到了什麼（做得好的和要改進的）
+
+## 常見誤區
+
+<Callout type="warning" title="常犯錯誤">
+- Postmortem 變成「找人背鍋」會議（團隊之後會隱藏問題，適得其反）
+- 只修復症狀不找根因（同樣的事故會反覆發生）
+- Action Items 沒有 owner 和 deadline（寫了等於沒寫）
+- 事故結束後不更新 Runbook（下次遇到同樣問題還是不知道怎麼處理）
+</Callout>
+
+## 執行流程
+
+<StepDiagram data='[{"title":"偵測（Detect）","description":"告警觸發或使用者回報，判斷嚴重度","icon":"1"},{"title":"回應（Respond）","description":"指派 IC，組建應變團隊，開啟 War Room","icon":"2"},{"title":"緩解（Mitigate）","description":"快速止血：回滾、擴展、切換備援","icon":"3"},{"title":"修復（Resolve）","description":"找出根因並修復，驗證系統恢復正常","icon":"4"},{"title":"學習（Learn）","description":"撰寫 Postmortem，追蹤 Action Items 完成","icon":"5"}]' />
+
+流程解讀：事故應變的黃金法則是「先止血，再治病」。偵測到問題後立即判斷嚴重度並組建團隊。緩解階段不求完美修復，只求快速恢復服務（回滾到上一個穩定版本通常是最快的方法）。修復階段才深入分析根因。學習階段是最容易被跳過但最有價值的 — Postmortem 的 Action Items 如果不追蹤完成，事故就白經歷了。
+
+## 程式碼範例
+
+### C# 版本
+
+```csharp
+// 健康檢查端點 — 事故偵測的基礎
+app.MapGet("/health/ready", async (AppDbContext db, HttpClient paymentClient) =>
+{
+    var checks = new Dictionary<string, string>();
+
+    // 檢查資料庫
+    try {
+        await db.Database.CanConnectAsync();
+        checks["database"] = "healthy";
+    } catch {
+        checks["database"] = "unhealthy";
+    }
+
+    // 檢查下游服務
+    try {
+        var response = await paymentClient.GetAsync("/health");
+        checks["payment-service"] = response.IsSuccessStatusCode
+            ? "healthy" : "degraded";
+    } catch {
+        checks["payment-service"] = "unhealthy";
+    }
+
+    var isHealthy = checks.Values.All(v => v == "healthy");
+    return Results.Json(checks, statusCode: isHealthy ? 200 : 503);
+});
+
+// 自動回滾 — 部署後的 Canary 檢查
+public class CanaryChecker
+{
+    public async Task<bool> IsCanaryHealthy(string version)
+    {
+        // 檢查新版本的錯誤率
+        var errorRate = await GetErrorRate(version, TimeSpan.FromMinutes(5));
+        if (errorRate > 0.05) // 5% 以上錯誤率
+        {
+            await RollbackDeployment(version);
+            await NotifyTeam($"Canary failed: {version}, error rate: {errorRate:P}");
+            return false;
+        }
+        return true;
+    }
+}
+```
+
+### TypeScript 版本
+
+```typescript
+// 事故通知自動化（Slack + PagerDuty）
+interface Incident {
+  id: string;
+  severity: "SEV1" | "SEV2" | "SEV3" | "SEV4";
+  title: string;
+  service: string;
+  detectedAt: Date;
+  status: "detected" | "investigating" | "mitigating" | "resolved";
+}
+
+async function createIncident(alert: AlertPayload): Promise<Incident> {
+  const incident: Incident = {
+    id: `INC-${Date.now()}`,
+    severity: classifySeverity(alert),
+    title: alert.summary,
+    service: alert.labels.service,
+    detectedAt: new Date(),
+    status: "detected",
+  };
+
+  // 根據嚴重度通知不同管道
+  if (incident.severity === "SEV1" || incident.severity === "SEV2") {
+    await pagerduty.triggerIncident(incident);
+    await slack.postToChannel("#incidents", formatIncident(incident));
+    await statusPage.createIncident(incident);
+  } else {
+    await slack.postToChannel("#alerts", formatIncident(incident));
+  }
+
+  return incident;
+}
+
+// Postmortem 模板
+const postmortemTemplate = `
+## Incident: {title}
+**Severity**: {severity} | **Duration**: {duration} | **Date**: {date}
+
+### Timeline
+| Time | Event |
+|------|-------|
+| HH:MM | Alert triggered |
+| HH:MM | IC assigned |
+| HH:MM | Root cause identified |
+| HH:MM | Fix deployed |
+| HH:MM | Incident resolved |
+
+### Root Cause
+{root_cause_analysis}
+
+### Impact
+- Users affected: {user_count}
+- Duration: {duration}
+- Revenue impact: {revenue}
+
+### Action Items
+| Action | Owner | Deadline | Status |
+|--------|-------|----------|--------|
+| {action} | {owner} | {date} | TODO |
+
+### Lessons Learned
+**What went well**: {good}
+**What could be improved**: {improve}
+`;
+```
+
+### Python 版本
+
+```python
+# Runbook 自動化 — 常見問題的自動處理
+from dataclasses import dataclass
+from datetime import datetime
+from enum import Enum
+
+class Severity(Enum):
+    SEV1 = 1
+    SEV2 = 2
+    SEV3 = 3
+    SEV4 = 4
+
+@dataclass
+class Incident:
+    id: str
+    severity: Severity
+    title: str
+    service: str
+    detected_at: datetime
+    timeline: list[dict]
+
+# 自動化 Runbook
+class RunbookExecutor:
+    async def handle_high_error_rate(self, service: str):
+        """當錯誤率過高時的自動應變"""
+        # Step 1: 收集資訊
+        recent_deploys = await self.get_recent_deploys(service)
+        error_logs = await self.get_error_logs(service, minutes=10)
+
+        # Step 2: 如果最近有部署，自動回滾
+        if recent_deploys and recent_deploys[0].age_minutes < 30:
+            await self.rollback(service, recent_deploys[0])
+            await self.notify(f"Auto-rollback: {service} to {recent_deploys[0].previous_version}")
+            return
+
+        # Step 3: 如果不是部署導致，通知 on-call
+        await self.page_oncall(
+            severity=Severity.SEV2,
+            message=f"High error rate on {service}, no recent deploy",
+            context={"error_logs": error_logs[:10]}
+        )
+
+    async def handle_high_latency(self, service: str):
+        """當延遲過高時的自動應變"""
+        # 檢查資源使用率
+        cpu = await self.get_cpu_usage(service)
+        if cpu > 80:
+            await self.scale_up(service, replicas=2)
+            await self.notify(f"Auto-scale: {service} +2 replicas (CPU: {cpu}%)")
+```
+
+## 結構圖
+
+<Diagram data='{"nodes":[{"id":"detect","label":"Detection (Alert)","type":"default"},{"id":"triage","label":"Triage (Severity)","type":"default"},{"id":"ic","label":"Incident Commander","type":"highlight"},{"id":"ops","label":"Operations Lead","type":"default"},{"id":"comms","label":"Communications Lead","type":"default"},{"id":"resolve","label":"Resolution","type":"default"},{"id":"postmortem","label":"Postmortem","type":"default"}],"edges":[{"from":"detect","to":"triage","label":"alert fires"},{"from":"triage","to":"ic","label":"assign IC"},{"from":"ic","to":"ops","label":"coordinate fix"},{"from":"ic","to":"comms","label":"coordinate comms"},{"from":"ops","to":"resolve","label":"mitigate & fix"},{"from":"resolve","to":"postmortem","label":"within 48h"}]}' />
+
+圖中 Detection 觸發後進入 Triage 判斷嚴重度。Incident Commander 被指派後同時協調 Operations Lead（負責技術修復）和 Communications Lead（負責對外溝通）。修復完成後 48 小時內撰寫 Postmortem。整個流程強調平行處理 — 修復和溝通同時進行。
+
+## 面試常見問題
+
+**Q: 什麼是 Blameless Postmortem？為什麼重要？**
+
+A: Blameless Postmortem 的原則是不追究個人責任，而是分析系統和流程的缺陷。如果某人的操作導致了事故，問題是「系統為什麼允許這個操作造成如此大的影響」而非「這個人為什麼犯錯」。這鼓勵誠實回報，否則團隊會隱藏問題，導致更大的風險。
+
+**Q: 事故發生時，第一步該做什麼？**
+
+A: 第一步是判斷嚴重度並指派 Incident Commander。不是立刻動手修，而是先組建團隊、分配角色。IC 的職責是協調，不是自己修。常見錯誤是所有人都衝進去修，沒有人負責溝通和全局協調，反而拖慢了修復速度。
+
+**Q: 如何避免同樣的事故重複發生？**
+
+A: Postmortem 的 Action Items 是關鍵。每個 Action Item 必須有明確的 owner、deadline、和追蹤機制。常見的預防措施包括：加入自動化檢查（pre-deploy validation）、改善監控和告警、更新 Runbook、加入 Circuit Breaker、改善測試覆蓋率。最重要的是追蹤完成率。
+
+## 理解測驗
+
+<Quiz data='{"question":"Blameless Postmortem 的核心原則是什麼？","options":["找出犯錯的人並懲處","分析系統和流程的缺陷，不追究個人責任","不寫任何報告","只有管理層參加"],"answer":1,"explanation":"Blameless Postmortem 聚焦於系統和流程的改善，而非個人責任。這鼓勵團隊誠實回報問題，從錯誤中學習而非隱藏錯誤。"}' />
+
+<Quiz data='{"question":"事故發生時，Incident Commander 的主要職責是什麼？","options":["自己修復問題","協調團隊、決策、管理溝通","通知客戶","撰寫 Postmortem"],"answer":1,"explanation":"IC 的職責是協調而非執行。指派合適的人處理技術問題和溝通，做出升級/降級的決策，確保應變流程有序進行。"}' />
+
+<Quiz data='{"question":"Postmortem 的 Action Items 最重要的屬性是什麼？","options":["寫得越多越好","每項都有明確的 owner 和 deadline","全部標記為最高優先","只記錄技術改善"],"answer":1,"explanation":"沒有 owner 和 deadline 的 Action Item 等於沒寫。每項必須有明確的負責人和完成期限，並透過追蹤機制確保執行。"}' />
+
+## 重點整理
+
+<Callout type="tip" title="一句話記住">
+**Incident Response = 先止血 → 再治病 → 最後學習。** 口訣：「快速緩解最優先，根因分析不追人，Action Items 要追蹤」
+</Callout>
+
+| 概念 | 說明 |
+|------|------|
+| **嚴重度分級** | SEV1-4，決定回應速度和資源 |
+| **Incident Commander** | 協調者，不是執行者 |
+| **Blameless Postmortem** | 分析系統缺陷，不追究個人 |
+| **Action Items** | 有 owner、deadline、追蹤機制 |
+| **核心原則** | 每次事故都是學習機會 |

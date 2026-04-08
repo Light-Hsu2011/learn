@@ -1,0 +1,245 @@
+---
+title: "Prompt Engineering"
+order: 2
+description: "Prompt Engineering：System/User/Few-shot/Chain-of-Thought 技巧"
+difficulty: "medium"
+interviewImportance: 4
+related:
+  - "ai-for-developers/ai-fundamentals"
+  - "ai-for-developers/ai-agents"
+---
+
+# Prompt Engineering
+
+<ELI5>
+想像你請一個超級厲害但非常「照字面意思做事」的助手幫你做事。如果你說「幫我寫封信」，他不知道寫給誰、寫什麼、語氣要怎樣。但如果你說：
+
+「你是一位專業的客服主管。請幫我寫一封道歉信給客戶 A，因為出貨延遲了 3 天。語氣要誠懇但專業，長度在 100 字以內。」
+
+他就能寫出完全符合你需求的信。**Prompt Engineering** 就是「學會怎麼跟 AI 說話，讓它給出你要的結果」。
+</ELI5>
+
+## 是什麼？
+
+Prompt Engineering 是設計和優化 LLM 輸入指令（Prompt）的技術，目標是讓模型產生準確、一致、高品質的輸出。它是 AI 應用開發中最重要的技能之一。
+
+<Callout type="info" title="不只是「會問問題」">
+Prompt Engineering 在產品中是一門工程實踐：需要版本控制、A/B 測試、效能量測。好的 prompt 可以讓便宜的模型達到昂貴模型的效果，直接影響成本和品質。
+</Callout>
+
+## 核心觀念
+
+### Prompt 的基本結構
+
+| 元素 | 說明 | 範例 |
+|------|------|------|
+| **System Prompt** | 定義模型的角色和行為規範 | 「你是一個資深 C# 開發者」 |
+| **User Prompt** | 具體的任務指令 | 「請 review 這段程式碼」 |
+| **Context** | 背景資訊和參考資料 | 程式碼片段、錯誤訊息 |
+| **Output Format** | 期望的輸出格式 | 「以 JSON 格式回傳」 |
+| **Constraints** | 限制條件 | 「不超過 200 字」 |
+
+### 核心技巧
+
+| 技巧 | 說明 | 適用場景 |
+|------|------|----------|
+| **Zero-shot** | 直接給指令，不給範例 | 簡單明確的任務 |
+| **Few-shot** | 給 2-5 個輸入/輸出範例 | 需要特定格式或風格 |
+| **Chain of Thought（CoT）** | 要求模型「一步步思考」 | 推理、數學、複雜分析 |
+| **Role Playing** | 指定模型扮演特定角色 | 程式碼 review、翻譯 |
+| **Self-Consistency** | 多次生成取多數決 | 需要高準確度的任務 |
+
+### Chain of Thought（CoT）
+
+讓模型在回答前「展示推理過程」，顯著提升複雜推理任務的準確度。
+
+關鍵方法：
+- 「請一步步分析...」
+- 「在回答之前，先列出你考慮的因素...」
+- 「Think step by step」
+
+## 常見誤區
+
+<Callout type="warning" title="常犯錯誤">
+- Prompt 太模糊（「寫好一點」→ 應該指定「語氣專業、無冗詞、每段不超過 3 句」）
+- 一次塞太多指令（拆成多個步驟效果更好）
+- 不給範例就期望特定格式（Few-shot 範例是最有效的格式控制方式）
+- 不做 prompt 版本控制（改了 prompt 卻不知道哪個版本效果最好）
+</Callout>
+
+## 執行流程
+
+<StepDiagram data='[{"title":"定義任務","description":"明確描述要模型做什麼，用什麼格式輸出","icon":"1"},{"title":"設計 System Prompt","description":"定義角色、行為規範、限制條件","icon":"2"},{"title":"加入 Few-shot 範例","description":"提供 2-3 個高品質的輸入/輸出範例","icon":"3"},{"title":"測試與評估","description":"用測試集量測品質，計算準確率和一致性","icon":"4"},{"title":"迭代優化","description":"根據失敗案例調整 prompt，版本控制每次變更","icon":"5"}]' />
+
+流程解讀：Prompt Engineering 是一個迭代過程。從最簡單的 prompt 開始，逐步加入 context、few-shot 範例、CoT 指令來提升品質。每次修改都要在測試集上驗證效果。版本控制 prompt 的每個版本，記錄什麼修改帶來了什麼效果。這跟軟體開發的 TDD 精神一致 — 先定義期望輸出，再調整到達成。
+
+## 程式碼範例
+
+### C# 版本
+
+```csharp
+// System Prompt 設計 — 程式碼 Review Bot
+var systemPrompt = @"
+你是一位資深 C# 程式碼審查員。
+你的任務是審查使用者提交的程式碼，提供具體的改善建議。
+
+規則：
+1. 每個問題用 [嚴重/中等/輕微] 標記嚴重度
+2. 每個問題必須附上修改後的程式碼範例
+3. 最後給出整體評分 (1-10)
+4. 用繁體中文回答
+
+輸出格式：
+## 問題清單
+1. [嚴重度] 問題描述
+   修改建議：...
+
+## 整體評分：N/10
+## 總結：一段話總結
+";
+
+// Few-shot 範例
+var fewShotExample = new UserChatMessage(@"
+請審查這段程式碼：
+```csharp
+public string GetName(int id) {
+    var user = db.Users.Where(u => u.Id == id).ToList().FirstOrDefault();
+    return user.Name;
+}
+```");
+
+var fewShotResponse = new AssistantChatMessage(@"
+## 問題清單
+1. [中等] 不必要的 ToList() — 會載入所有符合條件的記錄到記憶體
+   修改建議：`db.Users.FirstOrDefault(u => u.Id == id)`
+2. [嚴重] 可能的 NullReferenceException — user 可能為 null
+   修改建議：`return user?.Name ?? throw new NotFoundException(id);`
+
+## 整體評分：4/10
+## 總結：有效能和安全性問題，建議修復後再合併。");
+```
+
+### TypeScript 版本
+
+```typescript
+// Structured Output — 讓 LLM 回傳 JSON
+const classifyEmail = async (email: string) => {
+  const response = await client.messages.create({
+    model: "claude-sonnet-4-20250514",
+    max_tokens: 500,
+    system: `你是一個郵件分類系統。將郵件分類為以下類別之一：
+- spam: 垃圾郵件
+- support: 客服請求
+- billing: 帳務問題
+- feature: 功能建議
+- bug: 錯誤回報
+
+以 JSON 格式回傳：
+{"category": "...", "confidence": 0.0-1.0, "summary": "一句話摘要"}`,
+    messages: [{ role: "user", content: email }],
+  });
+
+  return JSON.parse(response.content[0].text);
+};
+
+// Chain of Thought — 複雜推理
+const analyzeArchitecture = async (description: string) => {
+  const response = await client.messages.create({
+    model: "claude-sonnet-4-20250514",
+    max_tokens: 2000,
+    system: `你是一位系統架構師。分析使用者描述的系統架構。
+
+請按照以下步驟思考：
+1. 先列出系統的主要元件
+2. 分析元件之間的依賴關係
+3. 識別潛在的瓶頸和單點故障
+4. 提出具體的改善建議
+
+每一步都要明確寫出你的推理過程。`,
+    messages: [{ role: "user", content: description }],
+  });
+
+  return response.content[0].text;
+};
+```
+
+### Python 版本
+
+```python
+import anthropic
+
+client = anthropic.Anthropic()
+
+# Few-shot Prompt — 程式碼翻譯
+def translate_code(code: str, from_lang: str, to_lang: str) -> str:
+    response = client.messages.create(
+        model="claude-sonnet-4-20250514",
+        max_tokens=2000,
+        system=f"""你是一個程式碼翻譯專家。
+將 {from_lang} 程式碼翻譯為等價的 {to_lang} 程式碼。
+
+規則：
+1. 保持相同的邏輯和功能
+2. 使用目標語言的慣用寫法（idiomatic）
+3. 保留註解並翻譯為繁體中文
+4. 只回傳程式碼，不要額外解釋""",
+        messages=[
+            # Few-shot example 1
+            {"role": "user", "content": "```python\ndef greet(name: str) -> str:\n    return f'Hello, {name}!'\n```"},
+            {"role": "assistant", "content": "```csharp\npublic string Greet(string name)\n{\n    return $\"Hello, {name}!\";\n}\n```"},
+            # 實際任務
+            {"role": "user", "content": f"```{from_lang}\n{code}\n```"},
+        ],
+    )
+    return response.content[0].text
+
+# Prompt 版本控制
+PROMPT_VERSIONS = {
+    "v1": "請摘要這段文字。",
+    "v2": "請用 3 個重點摘要這段文字，每個重點不超過 20 字。",
+    "v3": "請用 3 個重點摘要這段文字。格式：\n1. [重點]\n2. [重點]\n3. [重點]\n每個重點不超過 20 字，聚焦於可操作的資訊。",
+}
+# v3 的準確率從 v1 的 60% 提升到 90%
+```
+
+## 結構圖
+
+<Diagram data='{"nodes":[{"id":"system","label":"System Prompt (Role + Rules)","type":"highlight"},{"id":"fewshot","label":"Few-shot Examples","type":"default"},{"id":"context","label":"Context (Data)","type":"default"},{"id":"user","label":"User Prompt (Task)","type":"default"},{"id":"llm","label":"LLM","type":"highlight"},{"id":"output","label":"Structured Output","type":"default"}],"edges":[{"from":"system","to":"llm","label":"define behavior"},{"from":"fewshot","to":"llm","label":"show format"},{"from":"context","to":"llm","label":"provide data"},{"from":"user","to":"llm","label":"specify task"},{"from":"llm","to":"output","label":"generate"}]}' />
+
+圖中展示了完整的 Prompt 結構。System Prompt 定義了模型的行為規範，Few-shot Examples 展示了期望的輸出格式，Context 提供了任務需要的資料，User Prompt 指定了具體任務。四者組合送入 LLM，產生 Structured Output。
+
+## 面試常見問題
+
+**Q: 如何讓 LLM 穩定輸出 JSON？**
+
+A: 三個層次的保證：(1) 在 System Prompt 明確要求 JSON 格式並提供 schema；(2) 提供 Few-shot 範例展示正確的 JSON 輸出；(3) 使用 API 的 structured output 功能（如 OpenAI 的 response_format: json_object）。即使如此，仍要在程式碼中做 JSON parse 的 error handling。
+
+**Q: Few-shot 範例要幾個最有效？**
+
+A: 通常 2-5 個範例最有效。太少可能無法充分展示模式，太多會佔用 context window 且增加成本。範例的品質比數量重要 — 選擇能覆蓋邊界案例（edge case）的範例。如果任務簡單明確，zero-shot 就夠了。
+
+**Q: Prompt Engineering 和 Fine-tuning 的差異？何時用哪個？**
+
+A: Prompt Engineering 在推理時提供指令，不修改模型。Fine-tuning 用特定資料重新訓練模型權重。Prompt Engineering 適合快速迭代、資料量少的場景；Fine-tuning 適合有大量標註資料、需要穩定品質、或需要學習特殊格式/知識的場景。優先嘗試 Prompt Engineering，不夠好再考慮 Fine-tuning。
+
+## 理解測驗
+
+<Quiz data='{"question":"Chain of Thought (CoT) prompting 的核心概念是什麼？","options":["讓模型用更多 token 回答","要求模型展示推理過程，一步步思考","限制模型的輸出長度","讓模型用不同語言回答"],"answer":1,"explanation":"CoT 要求模型在回答前展示推理過程（如「請一步步分析」），這顯著提升了模型在複雜推理任務上的準確度，因為中間步驟幫助模型「整理思路」。"}' />
+
+<Quiz data='{"question":"以下哪個是好的 System Prompt？","options":["寫好一點","你是一位 C# 專家。回答時使用繁體中文，每個建議附上程式碼範例，不超過 200 字","請幫忙","隨便回答"],"answer":1,"explanation":"好的 System Prompt 要明確定義角色、語言、格式和限制。「你是 C# 專家」定義角色，「繁體中文」定義語言，「附程式碼範例」定義格式，「不超過 200 字」定義限制。"}' />
+
+<Quiz data='{"question":"Few-shot prompting 最重要的是什麼？","options":["範例越多越好","範例的品質和邊界案例覆蓋","範例越短越好","只用英文範例"],"answer":1,"explanation":"Few-shot 範例的品質比數量重要。選擇能覆蓋不同情境和邊界案例的範例，讓模型理解期望的行為模式。2-5 個高品質範例通常就夠了。"}' />
+
+## 重點整理
+
+<Callout type="tip" title="一句話記住">
+**Prompt Engineering = 明確角色 + 具體指令 + 格式範例。** 口訣：「System 定角色，Few-shot 定格式，CoT 定推理」
+</Callout>
+
+| 概念 | 說明 |
+|------|------|
+| **System Prompt** | 定義模型的角色和行為規範 |
+| **Few-shot** | 用範例展示期望的輸入/輸出格式 |
+| **Chain of Thought** | 要求模型展示推理過程，提升準確度 |
+| **Temperature** | 0 確定性、0.7 平衡、1.0 高創意 |
+| **核心原則** | 明確、具體、有範例、可量測 |

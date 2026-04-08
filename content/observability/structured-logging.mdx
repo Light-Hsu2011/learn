@@ -1,0 +1,246 @@
+---
+title: "Structured Logging"
+order: 2
+description: "結構化日誌：Serilog、Winston、structlog 的實踐與最佳規範"
+difficulty: "easy"
+interviewImportance: 4
+related:
+  - "observability/observability-fundamentals"
+  - "api-design/error-handling"
+---
+
+# Structured Logging（結構化日誌）
+
+<ELI5>
+想像你在圖書館找書。如果書都隨便堆在地上（純文字 log），你要找一本書就得一本本翻。但如果書按照「分類、作者、出版年份」整齊排在書架上（結構化 log），你很快就能找到要的書。
+
+**結構化日誌**就是把 log 從「隨便寫一段話」變成「有欄位、有格式的資料」，讓機器可以快速搜尋、篩選、分析。
+</ELI5>
+
+## 是什麼？
+
+Structured Logging 是以結構化資料格式（通常是 JSON）記錄日誌的實踐。每筆日誌不再是一行純文字，而是包含明確欄位（timestamp、level、message、context）的資料物件。
+
+<Callout type="info" title="非結構化 vs 結構化">
+**非結構化**：`2024-01-15 10:30:00 ERROR Failed to process order 12345 for customer C001`。**結構化**：`{"timestamp":"2024-01-15T10:30:00Z","level":"error","message":"Failed to process order","orderId":"12345","customerId":"C001"}`。結構化的每個欄位都可以獨立查詢和聚合。
+</Callout>
+
+## 核心觀念
+
+### 結構化日誌的關鍵欄位
+
+| 欄位 | 說明 | 範例 |
+|------|------|------|
+| `timestamp` | 事件發生時間（ISO 8601） | `2024-01-15T10:30:00.123Z` |
+| `level` | 日誌等級 | `info`、`warn`、`error` |
+| `message` | 人類可讀的描述 | `Order placed successfully` |
+| `service` | 服務名稱 | `order-service` |
+| `traceId` | 分散式追蹤 ID | `abc123def456` |
+| `userId` / `customerId` | 業務上下文 | `C001` |
+| `duration` | 操作耗時（毫秒） | `150` |
+| `error` | 錯誤資訊（stack trace） | `NullReferenceException...` |
+
+### 日誌等級使用原則
+
+| 等級 | 使用時機 | 生產環境 |
+|------|----------|---------|
+| **DEBUG** | 開發時的詳細資訊 | 關閉（按需開啟） |
+| **INFO** | 重要業務事件（訂單建立、使用者登入） | 開啟 |
+| **WARN** | 非預期但可處理的狀況（重試成功、快取 miss） | 開啟 |
+| **ERROR** | 操作失敗且影響使用者 | 開啟 + 告警 |
+| **FATAL** | 系統無法繼續運行 | 開啟 + 立即告警 |
+
+### Correlation ID 的重要性
+
+在微服務中，一個使用者請求可能經過 5-10 個服務。每個服務都產生自己的 log，如何將它們串連起來？答案是 **Correlation ID**（或 Trace ID）— 在請求進入系統時產生一個唯一 ID，所有服務的 log 都帶上這個 ID。
+
+## 常見誤區
+
+<Callout type="warning" title="常犯錯誤">
+- 在 log 中記錄敏感資訊（密碼、信用卡號、個資）
+- 所有 log 都用 INFO 等級（失去了分級篩選的意義）
+- log message 中用字串拼接而非結構化欄位（無法針對欄位查詢）
+- 在高頻路徑（每次迴圈迭代）記錄 log（嚴重影響效能）
+</Callout>
+
+## 執行流程
+
+<StepDiagram data='[{"title":"選擇日誌框架","description":"C# 用 Serilog、Node.js 用 Pino/Winston、Python 用 structlog","icon":"1"},{"title":"定義日誌規範","description":"統一欄位命名、等級使用原則、敏感資訊遮蔽規則","icon":"2"},{"title":"加入 Enrichment","description":"自動加入 traceId、serviceName、environment 等上下文","icon":"3"},{"title":"設定 Sink/Transport","description":"設定日誌輸出目標（Console、File、Elasticsearch）","icon":"4"},{"title":"查詢與分析","description":"用 Kibana/Grafana Loki 查詢和建立 Dashboard","icon":"5"}]' />
+
+流程解讀：結構化日誌的建立從選擇框架開始。不同語言有不同的最佳選擇。定義團隊統一的日誌規範確保所有服務的 log 格式一致，方便跨服務查詢。Enrichment 自動為每筆 log 加入上下文資訊，減少開發者的重複工作。Sink 設定決定 log 要送到哪裡。最終透過查詢工具進行分析和除錯。
+
+## 程式碼範例
+
+### C# 版本
+
+```csharp
+// Serilog 設定
+using Serilog;
+using Serilog.Formatting.Json;
+
+Log.Logger = new LoggerConfiguration()
+    .MinimumLevel.Information()
+    .Enrich.WithProperty("Service", "order-service")
+    .Enrich.WithProperty("Environment", "production")
+    .Enrich.FromLogContext()
+    .WriteTo.Console(new JsonFormatter())
+    .WriteTo.Seq("http://seq:5341")  // 結構化日誌伺服器
+    .CreateLogger();
+
+// 使用（Message Template 語法）
+Log.Information("Order {OrderId} placed by {CustomerId}, total: {Total}",
+    order.Id, order.CustomerId, order.Total);
+
+// 輸出 JSON：
+// {"Timestamp":"2024-01-15T10:30:00Z","Level":"Information",
+//  "Message":"Order ORD-001 placed by C001, total: 1500",
+//  "Properties":{"OrderId":"ORD-001","CustomerId":"C001","Total":1500,
+//                "Service":"order-service","Environment":"production"}}
+
+// 敏感資訊遮蔽
+Log.Information("User {UserId} logged in from {IpAddress}",
+    userId, MaskIp(ipAddress));
+
+// Middleware 自動加入 Correlation ID
+app.Use(async (context, next) =>
+{
+    var correlationId = context.Request.Headers["X-Correlation-ID"]
+        .FirstOrDefault() ?? Guid.NewGuid().ToString();
+    using (LogContext.PushProperty("CorrelationId", correlationId))
+    {
+        context.Response.Headers["X-Correlation-ID"] = correlationId;
+        await next();
+    }
+});
+```
+
+### TypeScript 版本
+
+```typescript
+// Pino — 高效能結構化日誌
+import pino from "pino";
+
+const logger = pino({
+  level: "info",
+  base: {
+    service: "order-service",
+    environment: process.env.NODE_ENV,
+  },
+  redact: ["req.headers.authorization", "user.password", "creditCard"],
+  timestamp: pino.stdTimeFunctions.isoTime,
+});
+
+// 使用
+logger.info(
+  { orderId: "ORD-001", customerId: "C001", total: 1500 },
+  "Order placed successfully"
+);
+
+// 輸出：
+// {"level":"info","time":"2024-01-15T10:30:00.123Z",
+//  "service":"order-service","orderId":"ORD-001",
+//  "customerId":"C001","total":1500,
+//  "msg":"Order placed successfully"}
+
+// 子 logger（自動帶上 context）
+const requestLogger = logger.child({ correlationId: req.headers["x-correlation-id"] });
+requestLogger.info({ userId: "U001" }, "User authenticated");
+
+// Express middleware
+import { randomUUID } from "crypto";
+
+app.use((req, res, next) => {
+  const correlationId = req.headers["x-correlation-id"] as string || randomUUID();
+  req.log = logger.child({ correlationId });
+  res.setHeader("x-correlation-id", correlationId);
+  next();
+});
+```
+
+### Python 版本
+
+```python
+import structlog
+
+# structlog 設定
+structlog.configure(
+    processors=[
+        structlog.processors.TimeStamper(fmt="iso"),
+        structlog.processors.add_log_level,
+        structlog.processors.StackInfoRenderer(),
+        structlog.processors.JSONRenderer(),
+    ],
+    context_class=dict,
+    logger_factory=structlog.PrintLoggerFactory(),
+)
+
+logger = structlog.get_logger(service="order-service")
+
+# 使用
+logger.info("order_placed",
+    order_id="ORD-001",
+    customer_id="C001",
+    total=1500)
+
+# 輸出：
+# {"event":"order_placed","timestamp":"2024-01-15T10:30:00Z",
+#  "level":"info","service":"order-service",
+#  "order_id":"ORD-001","customer_id":"C001","total":1500}
+
+# 帶上下文的 logger
+log = logger.bind(correlation_id=request.headers.get("X-Correlation-ID"))
+log.info("user_authenticated", user_id="U001")
+
+# 敏感資訊遮蔽
+def mask_pii(_, __, event_dict):
+    if "email" in event_dict:
+        email = event_dict["email"]
+        event_dict["email"] = email[0] + "***@" + email.split("@")[1]
+    return event_dict
+
+structlog.configure(
+    processors=[mask_pii, structlog.processors.JSONRenderer()]
+)
+```
+
+## 結構圖
+
+<Diagram data='{"nodes":[{"id":"app","label":"Application Code","type":"default"},{"id":"logger","label":"Logger (Serilog/Pino/structlog)","type":"highlight"},{"id":"enricher","label":"Enricher (traceId, service)","type":"default"},{"id":"console","label":"Console (Dev)","type":"muted"},{"id":"elk","label":"ELK / Loki","type":"default"},{"id":"dashboard","label":"Kibana / Grafana","type":"default"}],"edges":[{"from":"app","to":"logger","label":"log event"},{"from":"logger","to":"enricher","label":"add context"},{"from":"enricher","to":"console","label":"dev output"},{"from":"enricher","to":"elk","label":"production output"},{"from":"elk","to":"dashboard","label":"query & visualize"}]}' />
+
+圖中 Application Code 透過 Logger 記錄事件。Logger 經過 Enricher 自動加入 traceId、service name 等上下文。開發環境輸出到 Console，生產環境送到 ELK 或 Loki。最終透過 Kibana 或 Grafana 進行查詢、視覺化和告警。
+
+## 面試常見問題
+
+**Q: 結構化日誌比非結構化日誌好在哪裡？**
+
+A: 結構化日誌的每個欄位都是獨立的 key-value，可以精確查詢（如 `orderId: ORD-001`）、聚合統計（如「過去一小時有多少 ERROR 來自 order-service」）、建立 Dashboard。非結構化日誌只能用 regex 或全文搜尋，效率低且容易漏掉。
+
+**Q: 如何處理日誌中的敏感資訊？**
+
+A: 在 Logger 層面設定 redaction（遮蔽）規則，自動將敏感欄位替換為 `[REDACTED]` 或部分遮蔽。常見需要遮蔽的欄位：密碼、token、信用卡號、身分證號、email（部分遮蔽）。在日誌框架中設定 redact 比在業務程式碼中手動處理更可靠。
+
+**Q: 高流量系統如何控制日誌的量和成本？**
+
+A: 設定合理的日誌等級（production 只記錄 INFO 以上）。對高頻事件使用 sampling（每 100 次記錄 1 次）。按保留期限分級（ERROR 保留 90 天、INFO 保留 30 天、DEBUG 保留 7 天）。使用高壓縮比的儲存（Loki 比 Elasticsearch 便宜很多）。
+
+## 理解測驗
+
+<Quiz data='{"question":"結構化日誌的核心優勢是什麼？","options":["減少日誌的儲存空間","讓日誌可以精確查詢和程式化分析","讓日誌看起來更美觀","減少程式碼的行數"],"answer":1,"explanation":"結構化日誌將每筆 log 變成有明確欄位的資料物件（如 JSON），每個欄位都可以獨立查詢、篩選、聚合，讓機器能夠高效分析大量日誌。"}' />
+
+<Quiz data='{"question":"Correlation ID 的作用是什麼？","options":["加密日誌內容","將跨服務的日誌串連起來","壓縮日誌大小","自動修復錯誤"],"answer":1,"explanation":"Correlation ID（或 Trace ID）是一個唯一識別碼，在請求進入系統時產生，所有服務的 log 都帶上這個 ID，讓你能追蹤一個請求在所有服務中的完整日誌。"}' />
+
+<Quiz data='{"question":"以下哪個日誌等級的使用方式是正確的？","options":["所有日誌都用 ERROR","使用者成功登入用 INFO，登入失敗用 WARN，系統崩潰用 FATAL","DEBUG 日誌在生產環境永遠開啟","WARN 用於正常的業務操作"],"answer":1,"explanation":"INFO 記錄重要的正常業務事件，WARN 記錄非預期但可處理的狀況，FATAL 記錄系統無法繼續運行的嚴重問題。每個等級有明確的使用情境。"}' />
+
+## 重點整理
+
+<Callout type="tip" title="一句話記住">
+**Structured Logging = JSON 格式 + 明確欄位 + 自動上下文。** 口訣：「格式要 JSON，欄位要統一，敏感要遮蔽」
+</Callout>
+
+| 概念 | 說明 |
+|------|------|
+| **結構化日誌** | 以 JSON 等格式記錄，每個欄位可獨立查詢 |
+| **Correlation ID** | 跨服務串連同一請求的日誌 |
+| **Enrichment** | 自動加入 traceId、service 等上下文 |
+| **Redaction** | 遮蔽密碼、信用卡等敏感資訊 |
+| **核心原則** | 統一格式、分級記錄、保護隱私 |

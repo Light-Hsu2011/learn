@@ -1,0 +1,207 @@
+---
+title: "Security in SDLC"
+order: 8
+description: "DevSecOps：將 SAST、DAST、SCA 整合進開發流程"
+difficulty: "medium"
+interviewImportance: 4
+related:
+  - "ci-cd/testing-in-pipeline"
+  - "security/owasp-top-10"
+---
+
+# Security in SDLC（DevSecOps）
+
+<ELI5>
+蓋房子的時候，你不會等到整棟蓋好才去檢查地基穩不穩 — 那時候發現問題就要拆掉重來了。你會在每個階段都檢查：打地基時測地質、砌牆時測強度、裝水電時測管線。
+
+軟體開發也一樣：**DevSecOps** 就是在開發的每個階段都做安全檢查，而不是等到上線前才做一次大規模安全測試。越早發現問題，修復成本越低。
+</ELI5>
+
+## 是什麼？
+
+DevSecOps 是將安全實踐（Security）融入 DevOps 的每個階段：從需求分析、設計、開發、測試、部署到營運，形成「安全左移（Shift Left Security）」的文化。
+
+<Callout type="info" title="修復成本差異">
+根據 IBM System Sciences Institute 研究：在設計階段發現的漏洞修復成本為 1x，在測試階段為 15x，在生產環境為 **100x**。安全左移的投資報酬率極高。
+</Callout>
+
+## 核心觀念
+
+### 三大自動化掃描工具
+
+| 工具類型 | 全稱 | 掃描對象 | 時機 |
+|----------|------|----------|------|
+| **SAST** | Static Application Security Testing | 原始碼 | 開發時 / PR Review |
+| **DAST** | Dynamic Application Security Testing | 執行中的應用 | Staging 環境 |
+| **SCA** | Software Composition Analysis | 第三方依賴 | CI Pipeline |
+
+### SAST vs DAST 比較
+
+| 面向 | SAST | DAST |
+|------|------|------|
+| 掃描方式 | 白盒（看得到原始碼） | 黑盒（只看外部行為） |
+| 發現的問題 | SQL Injection、硬編碼密碼、不安全的加密 | XSS、認證繞過、配置錯誤 |
+| 誤報率 | 較高 | 較低 |
+| 語言相依 | 是（需要對應語言的分析器） | 否（只測 HTTP 端點） |
+| 常見工具 | SonarQube、Semgrep、CodeQL | OWASP ZAP、Burp Suite |
+
+### DevSecOps Pipeline
+
+每個階段的安全檢查點：
+
+| 階段 | 安全活動 |
+|------|----------|
+| 需求 | 威脅建模（Threat Modeling） |
+| 設計 | 安全架構審查 |
+| 開發 | SAST + IDE 安全外掛 |
+| Build | SCA + Container Image Scan |
+| 測試 | DAST + Penetration Testing |
+| 部署 | Infrastructure as Code 掃描 |
+| 營運 | Runtime Protection + 漏洞監控 |
+
+## 常見誤區
+
+<Callout type="warning" title="常犯錯誤">
+- 只在上線前做一次安全測試（太晚了，修復成本極高）
+- SAST 工具報了 500 個 issue 就忽略（要設定 baseline + 嚴重度過濾）
+- 以為有了自動掃描就不需要人工 code review（工具抓不到邏輯漏洞）
+- 安全只是安全團隊的事（DevSecOps 是每個開發者的責任）
+</Callout>
+
+## 執行流程
+
+<StepDiagram data='[{"title":"威脅建模","description":"在設計階段識別潛在威脅和攻擊面","icon":"1"},{"title":"安全編碼","description":"開發時用 SAST + IDE Plugin 即時掃描","icon":"2"},{"title":"PR 安全檢查","description":"CI 自動執行 SAST + SCA，阻擋有漏洞的 PR","icon":"3"},{"title":"DAST 掃描","description":"在 Staging 環境對執行中的應用做動態測試","icon":"4"},{"title":"持續監控","description":"上線後持續監控 CVE 資料庫和 runtime 行為","icon":"5"}]' />
+
+流程解讀：DevSecOps 的核心是「每個階段都有安全門檻」。威脅建模在最早期就識別風險，避免架構層級的安全缺陷。開發階段的 SAST 像是即時拼字檢查，寫的時候就告訴你哪裡有問題。PR 階段的自動掃描是強制門檻，不通過就不能合併。DAST 在接近真實的環境中測試實際的攻擊場景。上線後的持續監控確保新發現的漏洞能被及時處理。
+
+## 程式碼範例
+
+### C# 版本
+
+```csharp
+// GitHub Actions — .NET DevSecOps Pipeline
+// .github/workflows/devsecops.yml
+
+// SAST: 使用 dotnet format 和 Roslyn Analyzers
+// <PackageReference Include="Microsoft.CodeAnalysis.NetAnalyzers"
+//                   Version="8.0.0" />
+// <PackageReference Include="SecurityCodeScan.VS2019"
+//                   Version="5.6.7" />
+
+// 在 .editorconfig 中設定安全規則
+// [*.cs]
+// dotnet_diagnostic.SCS0001.severity = error  # SQL Injection
+// dotnet_diagnostic.SCS0005.severity = error  # Weak Random
+// dotnet_diagnostic.SCS0018.severity = error  # Path Traversal
+
+// SCA: NuGet Audit
+// dotnet list package --vulnerable --include-transitive
+
+// Container Scan: Trivy
+// trivy image myapp:latest --severity HIGH,CRITICAL
+```
+
+### TypeScript 版本
+
+```typescript
+// GitHub Actions — Node.js DevSecOps Pipeline
+// .github/workflows/devsecops.yml
+
+// SAST: ESLint Security Plugin
+// .eslintrc.js
+module.exports = {
+  plugins: ["security"],
+  extends: ["plugin:security/recommended"],
+  rules: {
+    "security/detect-object-injection": "error",
+    "security/detect-non-literal-regexp": "error",
+    "security/detect-eval-with-expression": "error",
+    "security/detect-no-csrf-before-method-override": "error",
+  },
+};
+
+// Semgrep 自訂規則範例
+// semgrep --config "p/javascript" --config "p/owasp-top-ten" src/
+
+// SCA: npm audit in CI
+// npm ci
+// npm audit --audit-level=high
+// 如果發現 high/critical 漏洞就讓 CI 失敗
+```
+
+### Python 版本
+
+```python
+# GitHub Actions — Python DevSecOps Pipeline
+
+# SAST: Bandit（Python 安全掃描器）
+# bandit -r src/ -f json -o bandit-report.json
+# 常見規則：
+#   B101: assert 用於非 debug 用途
+#   B105: 硬編碼密碼
+#   B301: pickle 反序列化風險
+
+# Semgrep 整合
+# semgrep --config "p/python" --config "p/flask" src/
+
+# SCA: pip-audit + Safety
+# pip-audit --strict
+# safety check --full-report --output json
+
+# DAST: OWASP ZAP（在 CI 中執行）
+# docker run -t owasp/zap2docker-stable zap-baseline.py \
+#   -t https://staging.myapp.com -J zap-report.json
+
+# 完整 CI 腳本
+# steps:
+#   - name: SAST
+#     run: bandit -r src/ --severity-level medium
+#   - name: SCA
+#     run: pip-audit --strict
+#   - name: DAST
+#     run: |
+#       docker run owasp/zap2docker-stable \
+#         zap-baseline.py -t $STAGING_URL
+```
+
+## 結構圖
+
+<Diagram data='{"nodes":[{"id":"code","label":"Source Code","type":"muted"},{"id":"sast","label":"SAST (SonarQube/Semgrep)","type":"default"},{"id":"sca","label":"SCA (npm audit/Snyk)","type":"default"},{"id":"ci","label":"CI Pipeline","type":"highlight"},{"id":"staging","label":"Staging Environment","type":"default"},{"id":"dast","label":"DAST (OWASP ZAP)","type":"default"},{"id":"prod","label":"Production","type":"muted"}],"edges":[{"from":"code","to":"sast","label":"scan source"},{"from":"code","to":"sca","label":"scan dependencies"},{"from":"sast","to":"ci","label":"report"},{"from":"sca","to":"ci","label":"report"},{"from":"ci","to":"staging","label":"deploy"},{"from":"staging","to":"dast","label":"scan running app"},{"from":"dast","to":"prod","label":"pass gate"}]}' />
+
+圖中 Source Code 同時經過 SAST（掃原始碼）和 SCA（掃依賴），結果匯入 CI Pipeline。通過靜態檢查後部署到 Staging Environment，DAST 對執行中的應用做動態掃描。所有安全門檻都通過後才能進入 Production。這形成了一個多層防禦的安全網。
+
+## 面試常見問題
+
+**Q: SAST 和 DAST 的適用場景分別是什麼？何時該用哪個？**
+
+A: SAST 適合在開發早期使用，能找到原始碼層級的漏洞（SQL Injection、硬編碼密碼），但誤報率較高且無法發現配置問題。DAST 適合在 Staging 環境使用，能找到運行時的漏洞（認證繞過、CORS 配置錯誤），但無法指出漏洞在程式碼中的確切位置。最佳實踐是兩者搭配使用。
+
+**Q: 如何處理 SAST 工具大量的 false positive？**
+
+A: 設定 baseline（先標記現有 issue，只阻擋新增 issue）。按嚴重度分級處理，只讓 Critical/High block PR。建立 suppress 清單記錄已確認的 false positive 和原因。定期回顧 suppress 清單避免遺漏。選擇精確度較高的工具（如 Semgrep 的 taint tracking 模式）。
+
+**Q: 什麼是 Threat Modeling？常見的方法有哪些？**
+
+A: Threat Modeling 是系統化識別和評估安全威脅的過程。常見方法包括 STRIDE（Spoofing、Tampering、Repudiation、Information Disclosure、DoS、Elevation of Privilege）和 DREAD（Damage、Reproducibility、Exploitability、Affected Users、Discoverability）。在設計階段執行，產出威脅清單和對應的緩解措施。
+
+## 理解測驗
+
+<Quiz data='{"question":"安全左移（Shift Left）的核心概念是什麼？","options":["把安全測試放在 CI/CD 的最後一步","在開發生命週期的越早階段就進行安全檢查","只用自動化工具取代人工安全測試","把安全責任完全交給安全團隊"],"answer":1,"explanation":"Shift Left 指的是將安全活動往開發流程的左邊（早期）移動，越早發現漏洞，修復成本越低。"}' />
+
+<Quiz data='{"question":"SAST 和 DAST 的主要差異是什麼？","options":["SAST 比 DAST 更快","SAST 掃描原始碼（白盒），DAST 掃描執行中的應用（黑盒）","SAST 只能掃 Java，DAST 支援所有語言","SAST 不會有 false positive"],"answer":1,"explanation":"SAST 是靜態分析，直接檢查原始碼。DAST 是動態分析，對執行中的應用發送請求來測試。兩者互補，建議搭配使用。"}' />
+
+<Quiz data='{"question":"SCA 工具的主要功能是什麼？","options":["檢查程式碼的效能問題","掃描第三方依賴的已知漏洞","測試 API 端點的安全性","監控生產環境的異常行為"],"answer":1,"explanation":"SCA（Software Composition Analysis）專門分析第三方依賴的安全性，檢查是否有已知的 CVE 漏洞。"}' />
+
+## 重點整理
+
+<Callout type="tip" title="一句話記住">
+**DevSecOps = 安全左移 + 自動化門檻 + 持續監控。** 口訣：「SAST 掃程式碼，DAST 掃應用，SCA 掃依賴」
+</Callout>
+
+| 概念 | 說明 |
+|------|------|
+| **SAST** | 靜態掃描原始碼，開發時就能用 |
+| **DAST** | 動態掃描執行中的應用，測試真實攻擊場景 |
+| **SCA** | 掃描第三方依賴的已知漏洞 |
+| **Shift Left** | 越早做安全檢查，修復成本越低 |
+| **核心原則** | 安全是每個人的責任，不只是安全團隊 |

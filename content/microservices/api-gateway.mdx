@@ -1,0 +1,253 @@
+---
+title: "API Gateway"
+order: 3
+description: "API Gateway 模式：統一入口、路由、認證與限流"
+difficulty: "medium"
+interviewImportance: 4
+related:
+  - "system-design/rate-limiter"
+  - "api-design/api-rate-limiting"
+---
+
+# API Gateway 模式
+
+<ELI5>
+想像你去一個大型百貨公司。你不需要知道每個品牌的倉庫在哪裡，只要走進百貨公司的**大門**，服務台就會告訴你要去幾樓、幾號櫃位。大門口的保全會檢查你的會員卡（認證），服務台會引導你到對的樓層（路由），人太多時還會限制入場人數（限流）。
+
+**API Gateway** 就是微服務的「百貨公司大門」— 所有請求的統一入口。
+</ELI5>
+
+## 是什麼？
+
+API Gateway 是微服務架構中的反向代理（Reverse Proxy），作為所有 Client 請求的單一入口點，負責將請求路由到對應的後端服務，同時處理橫切關注點（Cross-Cutting Concerns）。
+
+<Callout type="info" title="常見 API Gateway 產品">
+**雲端**：AWS API Gateway、Azure API Management、GCP API Gateway。**開源**：Kong、APISIX、Envoy。**框架內建**：Ocelot（.NET）、Spring Cloud Gateway（Java）。
+</Callout>
+
+## 核心觀念
+
+### API Gateway 的核心職責
+
+| 職責 | 說明 |
+|------|------|
+| **路由（Routing）** | 將請求轉發到對應的微服務 |
+| **認證與授權** | 統一驗證 JWT/API Key，避免每個服務重複實作 |
+| **限流（Rate Limiting）** | 防止單一 client 過度使用資源 |
+| **負載均衡** | 在同一服務的多個 instance 間分配請求 |
+| **回應聚合** | 將多個微服務的回應組合成一個回傳給 client |
+| **協定轉換** | 對外 REST、對內 gRPC |
+| **快取** | 快取頻繁請求的回應，降低後端壓力 |
+| **日誌與監控** | 集中記錄請求日誌和 metrics |
+
+### BFF（Backend for Frontend）模式
+
+不同的 client（Web、Mobile、IoT）需要不同的資料格式和欄位。BFF 模式為每種 client 建立專用的 API Gateway：
+
+- `web-bff` — 回傳完整資料，支援 pagination
+- `mobile-bff` — 回傳精簡資料，最佳化頻寬
+- `iot-bff` — 回傳最小必要資料
+
+### 單點故障風險
+
+API Gateway 是所有請求的必經之路，一旦它掛掉，整個系統都不可用。必須做到：高可用部署（至少 2 個 instance）、健康檢查、自動擴展、graceful degradation。
+
+## 常見誤區
+
+<Callout type="warning" title="常犯錯誤">
+- 把業務邏輯放進 API Gateway（它只該處理橫切關注點）
+- API Gateway 成為「上帝服務」（所有邏輯都塞在裡面）
+- 沒有做限流和熔斷（一個服務 timeout 拖垮整個 gateway）
+- 所有微服務共用一個 Gateway 規則（不同服務的認證和限流策略不同）
+</Callout>
+
+## 執行流程
+
+<StepDiagram data='[{"title":"Client 發送請求","description":"請求送到 API Gateway 的統一端點","icon":"1"},{"title":"認證與授權","description":"驗證 JWT/API Key，檢查權限","icon":"2"},{"title":"限流檢查","description":"確認請求沒有超過 rate limit","icon":"3"},{"title":"路由轉發","description":"根據 URL path 或 header 轉發到對應的微服務","icon":"4"},{"title":"回應處理","description":"聚合、快取、轉換格式後回傳給 client","icon":"5"}]' />
+
+流程解讀：API Gateway 是一條嚴格的處理管線。每個請求先經過認證（誰在請求？）、授權（有沒有權限？）、限流（有沒有超量？），全部通過後才路由到後端服務。回應回來後可能需要聚合多個服務的資料、轉換格式、設定快取 header。這個管線的順序很重要 — 認證失敗就不需要浪費後端資源。
+
+## 程式碼範例
+
+### C# 版本
+
+```csharp
+// Ocelot Gateway 設定（ocelot.json）
+{
+  "Routes": [
+    {
+      "DownstreamPathTemplate": "/api/orders/{everything}",
+      "DownstreamScheme": "http",
+      "DownstreamHostAndPorts": [
+        { "Host": "order-service", "Port": 80 }
+      ],
+      "UpstreamPathTemplate": "/api/orders/{everything}",
+      "UpstreamHttpMethod": [ "GET", "POST" ],
+      "AuthenticationOptions": {
+        "AuthenticationProviderKey": "Bearer"
+      },
+      "RateLimitOptions": {
+        "ClientWhitelist": [],
+        "EnableRateLimiting": true,
+        "Period": "1m",
+        "Limit": 100
+      }
+    }
+  ]
+}
+
+// Program.cs
+var builder = WebApplication.CreateBuilder(args);
+builder.Services.AddOcelot();
+builder.Services.AddAuthentication("Bearer")
+    .AddJwtBearer("Bearer", options =>
+    {
+        options.Authority = "https://auth.myapp.com";
+        options.Audience = "api";
+    });
+
+var app = builder.Build();
+await app.UseOcelot();
+app.Run();
+```
+
+### TypeScript 版本
+
+```typescript
+// Express Gateway with custom middleware
+import express from "express";
+import { createProxyMiddleware } from "http-proxy-middleware";
+import rateLimit from "express-rate-limit";
+
+const app = express();
+
+// Rate Limiting
+const limiter = rateLimit({
+  windowMs: 60 * 1000, // 1 分鐘
+  max: 100,
+  standardHeaders: true,
+});
+app.use(limiter);
+
+// JWT 認證 middleware
+app.use(async (req, res, next) => {
+  const token = req.headers.authorization?.split(" ")[1];
+  if (!token) return res.status(401).json({ error: "Unauthorized" });
+  try {
+    req.user = await verifyJwt(token);
+    next();
+  } catch {
+    res.status(401).json({ error: "Invalid token" });
+  }
+});
+
+// 路由到微服務
+app.use("/api/orders", createProxyMiddleware({
+  target: "http://order-service:3001",
+  changeOrigin: true,
+}));
+
+app.use("/api/payments", createProxyMiddleware({
+  target: "http://payment-service:3002",
+  changeOrigin: true,
+}));
+
+// 回應聚合（BFF 模式）
+app.get("/api/dashboard", async (req, res) => {
+  const [orders, stats] = await Promise.all([
+    fetch("http://order-service:3001/api/orders/recent").then(r => r.json()),
+    fetch("http://analytics-service:3003/api/stats").then(r => r.json()),
+  ]);
+  res.json({ orders, stats });
+});
+
+app.listen(3000);
+```
+
+### Python 版本
+
+```python
+# FastAPI Gateway
+from fastapi import FastAPI, Request, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+import httpx
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+
+app = FastAPI()
+limiter = Limiter(key_func=get_remote_address)
+
+# CORS
+app.add_middleware(CORSMiddleware,
+    allow_origins=["https://myapp.com"],
+    allow_methods=["*"], allow_headers=["*"])
+
+# 路由表
+SERVICE_MAP = {
+    "/api/orders": "http://order-service:8001",
+    "/api/payments": "http://payment-service:8002",
+    "/api/inventory": "http://inventory-service:8003",
+}
+
+@app.api_route("/api/{service}/{path:path}", methods=["GET", "POST", "PUT", "DELETE"])
+@limiter.limit("100/minute")
+async def gateway(request: Request, service: str, path: str):
+    target = SERVICE_MAP.get(f"/api/{service}")
+    if not target:
+        raise HTTPException(status_code=404, detail="Service not found")
+
+    # 轉發請求
+    async with httpx.AsyncClient() as client:
+        response = await client.request(
+            method=request.method,
+            url=f"{target}/api/{service}/{path}",
+            headers=dict(request.headers),
+            content=await request.body(),
+            timeout=5.0,
+        )
+    return Response(content=response.content,
+                    status_code=response.status_code,
+                    headers=dict(response.headers))
+```
+
+## 結構圖
+
+<Diagram data='{"nodes":[{"id":"web","label":"Web Client","type":"muted"},{"id":"mobile","label":"Mobile Client","type":"muted"},{"id":"gateway","label":"API Gateway","type":"highlight"},{"id":"auth","label":"Auth Middleware","type":"default"},{"id":"rate","label":"Rate Limiter","type":"default"},{"id":"order","label":"Order Service","type":"default"},{"id":"payment","label":"Payment Service","type":"default"},{"id":"user","label":"User Service","type":"default"}],"edges":[{"from":"web","to":"gateway","label":"HTTPS"},{"from":"mobile","to":"gateway","label":"HTTPS"},{"from":"gateway","to":"auth","label":"verify token"},{"from":"gateway","to":"rate","label":"check limit"},{"from":"gateway","to":"order","label":"route"},{"from":"gateway","to":"payment","label":"route"},{"from":"gateway","to":"user","label":"route"}]}' />
+
+圖中 Web 和 Mobile Client 都透過 API Gateway 這個統一入口存取服務。Gateway 內部先經過 Auth Middleware 驗證身份，再由 Rate Limiter 檢查限流，最後根據 URL 路由到對應的微服務。Client 完全不需要知道後端有幾個服務、在哪裡執行。
+
+## 面試常見問題
+
+**Q: API Gateway 和 Load Balancer 有什麼差別？**
+
+A: Load Balancer 工作在 L4/L7 層，只負責分配流量到多個 server instance。API Gateway 工作在 L7 層，除了路由外還處理認證、限流、回應聚合、協定轉換等應用層邏輯。API Gateway 可以搭配 Load Balancer 使用（Gateway 自身也需要多 instance 和負載均衡）。
+
+**Q: 什麼是 BFF 模式？什麼時候需要？**
+
+A: BFF（Backend for Frontend）為不同的 client 類型建立專用的 API 層。當 Web 需要完整資料而 Mobile 只需要精簡版，或者不同 client 需要不同的認證方式時，BFF 避免了「一個 API 要滿足所有 client」的困境。缺點是維護多個 BFF 的成本。
+
+**Q: 如何避免 API Gateway 成為效能瓶頸？**
+
+A: 水平擴展（多個 Gateway instance + Load Balancer）、非同步非阻塞 I/O（如 Envoy、Kong 使用非同步架構）、回應快取（減少後端呼叫）、Connection Pooling（重用與後端的連線）、避免在 Gateway 做複雜的業務邏輯。
+
+## 理解測驗
+
+<Quiz data='{"question":"以下哪個不是 API Gateway 的職責？","options":["路由轉發","JWT 驗證","訂單業務邏輯處理","限流"],"answer":2,"explanation":"API Gateway 只處理橫切關注點（路由、認證、限流），業務邏輯應該在各個微服務中實作，不應該放在 Gateway。"}' />
+
+<Quiz data='{"question":"BFF 模式要解決的問題是什麼？","options":["提升資料庫效能","讓不同 client 取得最適合的 API 回應格式","減少微服務數量","統一所有 client 的認證方式"],"answer":1,"explanation":"BFF 為不同 client（Web/Mobile/IoT）各自建立專用的 API 層，每個 BFF 回傳該 client 最適合的資料格式和欄位。"}' />
+
+<Quiz data='{"question":"API Gateway 的最大風險是什麼？","options":["佔用太多記憶體","成為單點故障","無法支援 gRPC","不能做快取"],"answer":1,"explanation":"API Gateway 是所有請求的必經之路，一旦掛掉整個系統都不可用。必須用高可用部署（多 instance + 健康檢查）來降低風險。"}' />
+
+## 重點整理
+
+<Callout type="tip" title="一句話記住">
+**API Gateway = 微服務的大門 + 保全 + 服務台。** 口訣：「一個入口管路由，認證限流全在此」
+</Callout>
+
+| 概念 | 說明 |
+|------|------|
+| **API Gateway** | 所有請求的統一入口和反向代理 |
+| **路由** | 根據 URL/Header 轉發到對應服務 |
+| **BFF** | 為不同 client 建立專用的 API 層 |
+| **橫切關注點** | 認證、限流、日誌等所有服務共需的功能 |
+| **核心風險** | 單點故障，必須高可用部署 |

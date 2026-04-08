@@ -1,0 +1,257 @@
+---
+title: "Distributed Tracing"
+order: 4
+description: "分散式追蹤：OpenTelemetry、Jaeger 與跨服務效能分析"
+difficulty: "hard"
+interviewImportance: 3
+related:
+  - "microservices/service-communication"
+  - "observability/observability-fundamentals"
+---
+
+# Distributed Tracing（分散式追蹤）
+
+<ELI5>
+你在網路上訂了一個包裹。你想知道包裹現在在哪裡，於是你用**追蹤號碼**查看：「已攬收 → 到達分揀中心 → 運送中 → 到達配送站 → 派送中 → 已送達」。每一站花了多少時間、在哪裡卡住了，一目了然。
+
+分散式追蹤就是給每個 HTTP 請求一個「追蹤號碼」（**Trace ID**），追蹤它從進入系統到完成回應，經過了哪些服務、每個服務花了多少時間、在哪裡出了問題。
+</ELI5>
+
+## 是什麼？
+
+Distributed Tracing 是在微服務架構中追蹤一個請求跨越多個服務的完整路徑的技術。它將每個服務的處理過程記錄為 **Span**，所有 Span 透過共同的 **Trace ID** 串連成一個完整的 **Trace**。
+
+<Callout type="info" title="核心術語">
+**Trace**：一個完整請求的追蹤記錄。**Span**：Trace 中的一個操作單位（如一次 HTTP 呼叫、一次 DB 查詢）。**Parent-Child**：Span 之間有父子關係，形成樹狀結構。**Context Propagation**：將 Trace ID 和 Span ID 傳遞到下游服務。
+</Callout>
+
+## 核心觀念
+
+### Trace 的組成結構
+
+一個 Trace 包含多個 Span，形成樹狀結構：
+
+```
+Trace ID: abc-123
+├── Span: API Gateway (100ms)
+│   ├── Span: Order Service (80ms)
+│   │   ├── Span: DB Query (10ms)
+│   │   └── Span: Payment Service Call (50ms)
+│   │       └── Span: Stripe API (40ms)
+│   └── Span: Notification Service (15ms)
+```
+
+### Context Propagation
+
+Trace context 透過 HTTP Header 在服務間傳遞：
+
+| Header | 標準 | 說明 |
+|--------|------|------|
+| `traceparent` | W3C Trace Context | `00-traceId-spanId-flags` |
+| `tracestate` | W3C Trace Context | vendor-specific 額外資訊 |
+| `uber-trace-id` | Jaeger (Legacy) | Jaeger 原生格式 |
+| `X-B3-TraceId` | Zipkin B3 | Zipkin 格式 |
+
+W3C Trace Context 是現在的標準，OpenTelemetry 預設使用。
+
+### 取樣策略
+
+| 策略 | 說明 | 適用場景 |
+|------|------|----------|
+| Always On | 追蹤 100% 的請求 | 低流量、開發環境 |
+| Probabilistic | 隨機取樣（如 10%） | 高流量生產環境 |
+| Rate Limiting | 每秒最多追蹤 N 個 | 控制成本 |
+| Tail-based | 先收集所有 Span，根據結果決定是否保留 | 只保留有問題的 Trace |
+
+## 常見誤區
+
+<Callout type="warning" title="常犯錯誤">
+- 取樣率設 100% 在高流量系統中（產生巨大的儲存和網路成本）
+- 只追蹤 HTTP 呼叫，不追蹤 DB 查詢和 Message Queue（看不到完整的慢點）
+- 不同服務用不同的 Trace header 格式（無法串連完整的 Trace）
+- 追蹤系統本身沒有設定資源限制（追蹤系統拖慢了被追蹤的服務）
+</Callout>
+
+## 執行流程
+
+<StepDiagram data='[{"title":"請求進入","description":"API Gateway 產生 Trace ID 和 Root Span","icon":"1"},{"title":"Context Propagation","description":"透過 HTTP Header 將 Trace context 傳遞給下游服務","icon":"2"},{"title":"建立子 Span","description":"每個服務為自己的操作建立 Child Span","icon":"3"},{"title":"收集與傳送","description":"Span 資料透過 OTel Collector 送到 Trace Backend","icon":"4"},{"title":"分析與視覺化","description":"在 Jaeger/Tempo 中檢視 Trace 的完整路徑和延遲","icon":"5"}]' />
+
+流程解讀：分散式追蹤的起點是在請求進入系統時建立 Trace ID。這個 ID 透過 HTTP Header 傳遞到每一個下游服務。每個服務自動建立 Span 記錄操作的開始和結束時間、錯誤資訊等。Span 資料透過 OpenTelemetry Collector 送到 Trace Backend（Jaeger 或 Tempo）。工程師在分析工具中搜尋特定 Trace，以瀑布圖的方式檢視完整的請求路徑和延遲分布。
+
+## 程式碼範例
+
+### C# 版本
+
+```csharp
+// OpenTelemetry Tracing 設定
+using OpenTelemetry.Trace;
+using System.Diagnostics;
+
+var builder = WebApplication.CreateBuilder(args);
+
+builder.Services.AddOpenTelemetry()
+    .WithTracing(tracing => tracing
+        .SetResourceBuilder(ResourceBuilder.CreateDefault()
+            .AddService("order-service"))
+        .AddAspNetCoreInstrumentation()  // 自動追蹤 HTTP 請求
+        .AddHttpClientInstrumentation()   // 自動追蹤 HTTP Client
+        .AddSqlClientInstrumentation()    // 自動追蹤 SQL 查詢
+        .AddOtlpExporter(opts =>
+            opts.Endpoint = new Uri("http://otel-collector:4317")));
+
+// 自訂 Span
+private static readonly ActivitySource Source = new("OrderService");
+
+app.MapPost("/api/orders", async (OrderRequest req) =>
+{
+    using var activity = Source.StartActivity("ProcessOrder");
+    activity?.SetTag("order.customer_id", req.CustomerId);
+    activity?.SetTag("order.item_count", req.Items.Count);
+
+    // 子 Span：驗證庫存
+    using (var checkStock = Source.StartActivity("CheckInventory"))
+    {
+        var stock = await inventoryClient.GetStockAsync(req.Items);
+        checkStock?.SetTag("inventory.available", stock.IsAvailable);
+    }
+
+    // 子 Span：建立訂單
+    using (var createOrder = Source.StartActivity("CreateOrder"))
+    {
+        var order = await db.Orders.AddAsync(new Order(req));
+        await db.SaveChangesAsync();
+        createOrder?.SetTag("order.id", order.Entity.Id);
+    }
+
+    activity?.SetStatus(ActivityStatusCode.Ok);
+    return Results.Ok();
+});
+```
+
+### TypeScript 版本
+
+```typescript
+import { trace, SpanStatusCode } from "@opentelemetry/api";
+import { NodeSDK } from "@opentelemetry/sdk-node";
+import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-grpc";
+
+// 初始化
+const sdk = new NodeSDK({
+  serviceName: "order-service",
+  traceExporter: new OTLPTraceExporter({
+    url: "http://otel-collector:4317",
+  }),
+});
+sdk.start();
+
+const tracer = trace.getTracer("order-service");
+
+// 手動建立 Span
+app.post("/api/orders", async (req, res) => {
+  const span = tracer.startSpan("ProcessOrder", {
+    attributes: {
+      "order.customer_id": req.body.customerId,
+      "order.item_count": req.body.items.length,
+    },
+  });
+
+  try {
+    // 子 Span：呼叫支付服務
+    const paymentSpan = tracer.startSpan("CallPaymentService");
+    const payment = await paymentService.charge(req.body);
+    paymentSpan.setAttribute("payment.id", payment.id);
+    paymentSpan.end();
+
+    span.setStatus({ code: SpanStatusCode.OK });
+    res.json({ orderId: payment.orderId });
+  } catch (error) {
+    span.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
+    span.recordException(error);
+    res.status(500).json({ error: "Order failed" });
+  } finally {
+    span.end();
+  }
+});
+```
+
+### Python 版本
+
+```python
+from opentelemetry import trace
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
+from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
+
+# 初始化
+provider = TracerProvider()
+provider.add_span_processor(
+    BatchSpanProcessor(OTLPSpanExporter(endpoint="http://otel-collector:4317"))
+)
+trace.set_tracer_provider(provider)
+tracer = trace.get_tracer("order-service")
+
+# 自動 Instrumentation
+FastAPIInstrumentor.instrument_app(app)
+HTTPXClientInstrumentor().instrument()
+
+@app.post("/api/orders")
+async def place_order(request: OrderRequest):
+    with tracer.start_as_current_span("process_order") as span:
+        span.set_attribute("order.customer_id", request.customer_id)
+
+        # 子 Span
+        with tracer.start_as_current_span("check_inventory") as inv_span:
+            stock = await inventory_client.get_stock(request.items)
+            inv_span.set_attribute("inventory.available", stock.available)
+
+        with tracer.start_as_current_span("save_to_db") as db_span:
+            order = await save_order(request)
+            db_span.set_attribute("order.id", order.id)
+
+        span.set_status(trace.StatusCode.OK)
+        return {"order_id": order.id}
+```
+
+## 結構圖
+
+<Diagram data='{"nodes":[{"id":"client","label":"Client","type":"muted"},{"id":"gateway","label":"API Gateway (Root Span)","type":"default"},{"id":"order","label":"Order Service (Child Span)","type":"default"},{"id":"payment","label":"Payment Service (Child Span)","type":"default"},{"id":"otel","label":"OTel Collector","type":"highlight"},{"id":"jaeger","label":"Jaeger / Tempo","type":"default"}],"edges":[{"from":"client","to":"gateway","label":"traceparent header"},{"from":"gateway","to":"order","label":"propagate context"},{"from":"order","to":"payment","label":"propagate context"},{"from":"gateway","to":"otel","label":"export spans"},{"from":"order","to":"otel","label":"export spans"},{"from":"payment","to":"otel","label":"export spans"},{"from":"otel","to":"jaeger","label":"store traces"}]}' />
+
+圖中 Client 的請求進入 API Gateway 時建立 Root Span，Trace context 透過 traceparent header 傳遞到 Order Service 和 Payment Service。每個服務各自將 Span 資料 export 到 OTel Collector，Collector 再統一送到 Jaeger 或 Tempo 儲存。所有 Span 透過 Trace ID 串連成完整的 Trace。
+
+## 面試常見問題
+
+**Q: 什麼是 Context Propagation？為什麼重要？**
+
+A: Context Propagation 是將 Trace ID 和 Span ID 從一個服務傳遞到下一個服務的機制。通常透過 HTTP Header（W3C traceparent）或 Message Queue 的 metadata 傳遞。沒有 Context Propagation，每個服務的 Span 就是獨立的，無法串連成完整的 Trace。
+
+**Q: Head-based Sampling 和 Tail-based Sampling 的差異？**
+
+A: Head-based 在請求進入時就決定是否取樣（簡單但可能錯過有問題的 Trace）。Tail-based 先收集所有 Span，請求完成後根據結果（如延遲超過 1 秒、有 error）決定是否保留。Tail-based 更精準但需要更多記憶體和運算資源。
+
+**Q: 如何控制 Tracing 的成本？**
+
+A: 三個維度：取樣率（高流量服務降到 1-10%）、Span 數量（只追蹤關鍵操作，不是每一行程式碼）、保留期限（Trace 資料保留 7-14 天，不需要像 log 一樣長期保留）。Tail-based sampling 能在控制成本的同時確保有問題的 Trace 被保留。
+
+## 理解測驗
+
+<Quiz data='{"question":"一個 Trace 由什麼組成？","options":["多個 Log","多個 Span","多個 Metrics","多個 Counter"],"answer":1,"explanation":"一個 Trace 由多個 Span 組成。每個 Span 代表一個操作（如一次 HTTP 呼叫、一次 DB 查詢），Span 之間有父子關係形成樹狀結構。"}' />
+
+<Quiz data='{"question":"W3C traceparent header 的作用是什麼？","options":["加密請求內容","在服務間傳遞 Trace ID 和 Span ID","壓縮 HTTP 回應","驗證使用者身份"],"answer":1,"explanation":"traceparent header 包含 Trace ID、Span ID 和取樣標記，讓下游服務能將自己的 Span 關聯到同一個 Trace，實現跨服務的追蹤串連。"}' />
+
+<Quiz data='{"question":"Tail-based Sampling 的優勢是什麼？","options":["實作最簡單","不需要任何額外資源","能根據請求結果（如錯誤、高延遲）決定是否保留 Trace","取樣率固定為 100%"],"answer":2,"explanation":"Tail-based Sampling 在請求完成後根據結果決定是否保留，能確保有問題的 Trace（錯誤、高延遲）一定被保留，同時降低正常 Trace 的儲存成本。"}' />
+
+## 重點整理
+
+<Callout type="tip" title="一句話記住">
+**Distributed Tracing = 追蹤號碼 + 每站打卡 + 全程可視。** 口訣：「Trace ID 串全程，Span 記每一站，Propagation 傳下去」
+</Callout>
+
+| 概念 | 說明 |
+|------|------|
+| **Trace** | 一個請求的完整追蹤記錄 |
+| **Span** | Trace 中的一個操作單位 |
+| **Context Propagation** | 透過 HTTP Header 在服務間傳遞追蹤上下文 |
+| **Sampling** | 取樣策略控制追蹤的覆蓋率和成本 |
+| **核心工具** | OpenTelemetry + Jaeger/Tempo |

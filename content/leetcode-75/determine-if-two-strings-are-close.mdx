@@ -2,6 +2,11 @@
 title: "1657. Determine if Two Strings Are Close"
 order: 22
 description: "比較兩字串的字元集合相同且頻率排序後相同來判斷是否 close"
+difficulty: "medium"
+interviewImportance: 2
+related:
+  - "leetcode-75/unique-number-of-occurrences"
+  - "leetcode-75/find-the-difference-of-two-arrays"
 ---
 
 # Determine if Two Strings Are Close
@@ -110,7 +115,7 @@ def closeStrings(word1: str, word2: str) -> bool:
 <Callout type="tip" title="面試追問">
 - **為什麼字元集合必須相同？** 操作 2 只能在「已存在的字元」之間交換頻率，不能憑空產生新字元。
 - **為什麼頻率排序相同就夠了？** 操作 2 允許任意兩種字元交換頻率，所以頻率值可以任意分配給不同字元。
-- **word1 = "aab", word2 = "aac" 為什麼是 false？** 字元集合 {a,b} 不等於 {a,c}。
+- **word1 = "aab", word2 = "aac" 為什麼是 false？** 字元集合 `{a,b}` 不等於 `{a,c}`。
 </Callout>
 
 ## 理解測驗

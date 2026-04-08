@@ -1,0 +1,210 @@
+---
+title: "Serverless 架構"
+order: 6
+description: "Azure Functions / AWS Lambda 的設計模式與實務限制"
+difficulty: "medium"
+interviewImportance: 4
+related:
+  - "cloud-architecture/compute-services"
+  - "cloud-architecture/cost-optimization"
+---
+
+# Serverless 架構
+
+<ELI5>
+想像你家的電燈：
+
+- **傳統伺服器（VM）**= 電燈 24 小時開著，不管有沒有人在房間，電費照付
+- **Serverless** = 感應燈，有人進房間才亮，人走了就熄。只在亮的時候付電費
+
+Serverless 不是「沒有伺服器」，而是**你不用管伺服器** — 雲端自動幫你開機、跑程式、關機，你只需要寫「燈亮後要幹嘛」的邏輯。
+</ELI5>
+
+## 是什麼？
+
+Serverless 是一種雲端執行模型，開發者只寫函式（Function），雲端平台自動管理伺服器的配置、擴縮、維護。按實際執行次數和時間計費，閒置時不花錢。
+
+<Callout type="info" title="FaaS vs BaaS">
+Serverless 包含兩種形式：**FaaS（Function as a Service）**如 Azure Functions、AWS Lambda — 你寫函式，雲端跑函式。**BaaS（Backend as a Service）**如 Firebase、Supabase — 雲端提供現成的後端功能（Auth、Database、Storage）。
+</Callout>
+
+## 核心觀念
+
+- **事件驅動（Event-Driven）**：Serverless 函式由事件觸發 — HTTP 請求、Queue 訊息、Timer、檔案上傳、資料庫變更等
+- **自動擴縮（Auto-Scaling）**：根據請求量自動增減執行實例，從 0 到數千個實例，無需手動設定
+- **Cold Start（冷啟動）**：函式閒置後首次觸發需要載入執行環境，延遲可能數百毫秒到數秒。是 Serverless 的主要效能限制
+- **Execution Timeout**：每次執行有時間上限（Azure Functions 消耗方案預設 5 分鐘，AWS Lambda 上限 15 分鐘）。長時間任務不適合
+- **Stateless（無狀態）**：每次執行之間不共享狀態。需要狀態的話用外部儲存（Redis、Database）
+
+## 常見誤區
+
+<Callout type="warning" title="常見誤區">
+- **Serverless 適合所有工作**：長時間運行、需要穩定低延遲、高持續流量的工作不適合 Serverless。它最適合事件驅動、間歇性的工作
+- **不考慮 Cold Start 影響**：面向使用者的 API 如果有 2 秒的 Cold Start，使用者體驗很差。用 Provisioned Concurrency 或改用 Container
+- **忽略執行時間上限**：影片轉碼、大量資料處理等長時間任務會在 Timeout 時被強制中斷。拆分成小任務或用 Durable Functions
+</Callout>
+
+## 流程/步驟
+
+<StepDiagram data='[{"title":"辨識適合的工作","description":"事件驅動、間歇性、短執行時間的任務","icon":"1"},{"title":"選擇觸發器","description":"HTTP、Queue、Timer、Blob、Event Grid 等","icon":"2"},{"title":"撰寫函式","description":"專注業務邏輯，輸入輸出由 Binding 處理","icon":"3"},{"title":"設定 Binding","description":"Input/Output Binding 自動連接外部服務","icon":"4"},{"title":"測試和部署","description":"本機測試後部署到雲端，CI/CD 自動化","icon":"5"},{"title":"監控和調優","description":"追蹤執行時間、Cold Start、錯誤率","icon":"6"}]' />
+
+流程解讀：先確認工作適合 Serverless（事件驅動 + 短執行時間），選擇適當的觸發器。函式只寫業務邏輯，Binding 自動處理和外部服務的連接。部署後持續監控效能指標。
+
+## 程式碼範例
+
+### C# 版本
+
+```csharp
+// Azure Functions — 多種觸發器範例
+public class Functions
+{
+    private readonly IOrderService _orderService;
+
+    public Functions(IOrderService orderService)
+    {
+        _orderService = orderService; // 支援 DI
+    }
+
+    // HTTP 觸發 + Queue Output Binding
+    [Function("CreateOrder")]
+    public async Task<HttpResponseData> CreateOrder(
+        [HttpTrigger(AuthorizationLevel.Function, "post")] HttpRequestData req,
+        [QueueOutput("order-notifications")] OutputBinding<string> queueOutput)
+    {
+        var order = await req.ReadFromJsonAsync<CreateOrderDto>();
+        var result = await _orderService.CreateAsync(order!);
+
+        // Output Binding 自動將訊息送到 Queue
+        queueOutput.SetValue(JsonSerializer.Serialize(new { result.Id, result.Email }));
+
+        var response = req.CreateResponse(HttpStatusCode.Created);
+        await response.WriteAsJsonAsync(result);
+        return response;
+    }
+
+    // Queue 觸發 — 自動處理 Queue 中的訊息
+    [Function("SendNotification")]
+    public async Task SendNotification(
+        [QueueTrigger("order-notifications")] string message)
+    {
+        var data = JsonSerializer.Deserialize<NotificationMessage>(message);
+        await _emailService.SendAsync(data!.Email, $"Order {data.Id} confirmed!");
+    }
+
+    // Timer 觸發 — 排程任務
+    [Function("CleanupExpiredTokens")]
+    public async Task Cleanup(
+        [TimerTrigger("0 0 */6 * * *")] TimerInfo timer) // 每 6 小時
+    {
+        var count = await _tokenService.CleanupExpiredAsync();
+        _logger.LogInformation("Cleaned up {Count} expired tokens", count);
+    }
+}
+```
+
+### TypeScript 版本
+
+```typescript
+// AWS Lambda — 多種觸發器
+import { APIGatewayProxyHandler, S3Handler, ScheduledHandler } from "aws-lambda";
+
+// HTTP 觸發（API Gateway）
+export const createOrder: APIGatewayProxyHandler = async (event) => {
+  const body = JSON.parse(event.body || "{}");
+  const order = await orderService.create(body);
+
+  // 送訊息到 SQS
+  await sqs.send(new SendMessageCommand({
+    QueueUrl: process.env.NOTIFICATION_QUEUE_URL,
+    MessageBody: JSON.stringify({ orderId: order.id, email: order.email }),
+  }));
+
+  return { statusCode: 201, body: JSON.stringify(order) };
+};
+
+// S3 觸發 — 有檔案上傳就處理
+export const processImage: S3Handler = async (event) => {
+  for (const record of event.Records) {
+    const bucket = record.s3.bucket.name;
+    const key = record.s3.object.key;
+    await imageService.generateThumbnail(bucket, key);
+  }
+};
+
+// EventBridge 觸發 — 排程
+export const dailyReport: ScheduledHandler = async () => {
+  await reportService.generateDaily();
+};
+```
+
+### Python 版本
+
+```python
+# Azure Functions (Python v2 model)
+import azure.functions as func
+
+app = func.FunctionApp()
+
+# HTTP 觸發
+@app.function_name("CreateOrder")
+@app.route(route="orders", methods=["POST"])
+@app.queue_output(arg_name="msg", queue_name="notifications", connection="StorageConn")
+async def create_order(req: func.HttpRequest, msg: func.Out[str]) -> func.HttpResponse:
+    order = req.get_json()
+    result = await order_service.create(order)
+
+    # Output Binding — 自動送到 Queue
+    msg.set(json.dumps({"order_id": result["id"], "email": result["email"]}))
+
+    return func.HttpResponse(json.dumps(result), status_code=201)
+
+# Blob 觸發 — 有圖片上傳就產生縮圖
+@app.function_name("GenerateThumbnail")
+@app.blob_trigger(arg_name="blob", path="uploads/{name}", connection="StorageConn")
+async def generate_thumbnail(blob: func.InputStream):
+    image_data = blob.read()
+    thumbnail = await image_service.resize(image_data, width=200)
+    await storage_service.upload(f"thumbnails/{blob.name}", thumbnail)
+```
+
+## 架構圖/概念圖
+
+<Diagram data='{"nodes":[{"id":"events","label":"Event Sources","type":"muted"},{"id":"http","label":"HTTP Request","type":"default"},{"id":"queue","label":"Queue Message","type":"default"},{"id":"timer","label":"Timer / Cron","type":"default"},{"id":"function","label":"Serverless Function","type":"highlight"},{"id":"output","label":"Output (DB / Queue / Email)","type":"muted"}],"edges":[{"from":"http","to":"function","label":"triggers"},{"from":"queue","to":"function","label":"triggers"},{"from":"timer","to":"function","label":"triggers"},{"from":"function","to":"output","label":"writes to"}]}' />
+
+多種事件來源觸發 Serverless Function。函式處理業務邏輯後，透過 Output Binding 將結果寫入資料庫、Queue 或其他服務。整個流程是事件驅動的，沒有事件就不執行。
+
+## 實戰補充
+
+**Q: Cold Start 怎麼優化？**
+
+A: (1) 減少依賴套件大小。(2) 用 Provisioned Concurrency 預熱（增加成本但消除冷啟動）。(3) 選擇輕量 Runtime（Node.js、Python 冷啟動比 .NET、Java 快）。(4) 對延遲敏感的 API 不要用 Serverless。
+
+**Q: Serverless 怎麼處理長時間任務？**
+
+A: 用 **Durable Functions**（Azure）或 **Step Functions**（AWS）。把長任務拆成多個短步驟，每個步驟是一個函式，框架負責協調執行順序和狀態保存。
+
+**Q: Serverless 的測試策略？**
+
+A: (1) 業務邏輯和觸發器解耦 — 核心邏輯寫成純函式，可以用 Unit Test 覆蓋。(2) 用 Azure Functions Core Tools 或 SAM CLI 在本機模擬觸發器。(3) Integration Test 部署到測試環境驗證。
+
+## 理解測驗
+
+<Quiz data='{"question":"以下哪種場景最不適合 Serverless？","options":["每天凌晨產生報表","使用者上傳圖片時產生縮圖","24/7 運行的高流量即時通訊 WebSocket 服務","電商結帳後寄送確認信"],"answer":2,"explanation":"WebSocket 長連接需要持續佔用資源，且即時通訊要求穩定低延遲。Serverless 有 Cold Start 和執行時間限制，不適合這種場景。"}' />
+
+<Quiz data='{"question":"Serverless 函式的 Stateless 特性意味著什麼？","options":["函式不能存取資料庫","每次執行之間不共享記憶體狀態，需要狀態的話用外部儲存","函式不能有回傳值","函式不能接收參數"],"answer":1,"explanation":"每次函式執行都是獨立的實例，前一次的記憶體變數不會保留到下一次。需要狀態（如購物車、Session）必須存在 Redis 或 Database 中。"}' />
+
+<Quiz data='{"question":"Azure Functions 的 Output Binding 有什麼好處？","options":["讓函式跑得更快","自動處理和外部服務的連接，減少 Boilerplate 程式碼","增加安全性","支援更多語言"],"answer":1,"explanation":"Output Binding 讓你用宣告式的方式連接外部服務（Queue、Blob、Cosmos DB），不需要自己寫連接、認證、錯誤處理的程式碼。"}' />
+
+## 重點整理
+
+<Callout type="tip" title="一句話記住">
+**Serverless = 只寫邏輯、不管伺服器、用多少付多少。** 口訣：「事件觸發、自動擴縮、閒置免費」
+</Callout>
+
+| 概念 | 說明 |
+|------|------|
+| **FaaS** | 寫函式、雲端跑函式 |
+| **Event-Driven** | 由事件觸發（HTTP、Queue、Timer） |
+| **Cold Start** | 閒置後首次觸發的額外延遲 |
+| **Auto-Scaling** | 自動擴縮，從 0 到數千實例 |
+| **Binding** | 宣告式連接外部服務 |

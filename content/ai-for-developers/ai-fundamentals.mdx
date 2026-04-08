@@ -1,0 +1,249 @@
+---
+title: "AI Fundamentals"
+order: 1
+description: "AI/ML 基礎：LLM、Embedding、Token 的核心概念"
+difficulty: "easy"
+interviewImportance: 3
+related:
+  - "ai-for-developers/prompt-engineering"
+  - "ai-for-developers/rag"
+---
+
+# AI Fundamentals（AI/ML 基礎）
+
+<ELI5>
+想像你有一個超級會模仿的朋友。他讀了全世界的書、文章、程式碼，讀到可以「猜出下一個字」：
+
+你說：「今天天氣真___」他猜：「好」。
+你說：「`function add(a, b) { return ___`」他猜：「`a + b; }`」。
+
+這就是 **LLM（大型語言模型）** 的本質 — 它不是真的「理解」語言，而是透過統計模式**預測下一個 Token**，但因為讀過的資料夠多，這種預測的結果看起來就像「理解」一樣。
+
+而 **Embedding** 就像把文字變成座標：「狗」和「貓」的座標很近（都是寵物），「狗」和「飛機」的座標很遠。電腦不懂文字，但懂數字和距離。
+</ELI5>
+
+## 是什麼？
+
+AI for Developers 系列的第一課，涵蓋開發者需要了解的 AI/ML 核心概念：
+
+- **LLM（Large Language Model）**：用大量文本訓練的神經網路，擅長生成和理解自然語言
+- **Token**：LLM 處理文字的最小單位（不是字元也不是詞，而是介於兩者之間的片段）
+- **Embedding**：將文字轉換為高維度向量（數字陣列），用數學距離表達語意相似度
+
+<Callout type="info" title="開發者的角度">
+你不需要理解 Transformer 的數學細節，但必須理解 Token 計費、Context Window 限制、Embedding 的相似度搜尋 — 這些直接影響你的架構決策和成本控制。
+</Callout>
+
+## 核心觀念
+
+### Token — LLM 的計費單位
+
+| 語言 | 1 Token 約等於 | 「Hello, world!」的 Token 數 |
+|------|----------------|---------------------------|
+| 英文 | 4 個字元 / 0.75 個詞 | 4 tokens |
+| 中文 | 1-2 個字元 | 每個字 1-2 tokens |
+| 程式碼 | 因語言而異 | 函數名、符號各算 token |
+
+為什麼重要：API 按 Token 計費（input + output），Context Window 限制了單次能處理的 Token 數量。GPT-4 約 128K tokens，Claude 約 200K tokens。
+
+### Embedding — 語意的數學表達
+
+- 文字 → 向量（如 1536 維的數字陣列）
+- 語意相近的文字 → 向量距離近（cosine similarity 高）
+- 用途：語意搜尋、推薦系統、分類、RAG 中的檢索
+
+### Temperature — 控制隨機性
+
+| Temperature | 行為 | 適用場景 |
+|-------------|------|----------|
+| 0 | 幾乎確定性輸出 | 程式碼生成、JSON 格式化 |
+| 0.3-0.7 | 適度創意 | 一般對話、摘要 |
+| 0.8-1.0 | 高創意 | 創意寫作、腦力激盪 |
+
+### 主要 LLM 供應商
+
+| 供應商 | 模型 | 特點 |
+|--------|------|------|
+| OpenAI | GPT-4o、o1/o3 | 生態系最完整 |
+| Anthropic | Claude 4 | 長上下文、安全性 |
+| Google | Gemini 2.5 | 多模態、長上下文 |
+| Meta | Llama 4 | 開源可自建 |
+
+## 常見誤區
+
+<Callout type="warning" title="常犯錯誤">
+- 以為 LLM 真的「理解」語言（它是統計模式匹配，會自信地生成錯誤答案 — Hallucination）
+- 忽略 Token 成本（一個簡單的 feature 如果每次呼叫花 10 萬 token，月費可能嚇人）
+- 以為 Embedding 維度越高越好（更高維度需要更多儲存和計算，不一定帶來更好的效果）
+- 把所有問題都用 LLM 解決（很多問題用傳統程式邏輯更快、更便宜、更可靠）
+</Callout>
+
+## 執行流程
+
+<StepDiagram data='[{"title":"理解問題","description":"判斷是否真的需要 AI，還是傳統方法更適合","icon":"1"},{"title":"選擇模型","description":"根據任務複雜度、延遲需求、成本選擇合適的模型","icon":"2"},{"title":"設計 Prompt","description":"用 System/User prompt 引導模型產生預期的輸出","icon":"3"},{"title":"處理回應","description":"解析模型輸出，處理 hallucination 和格式錯誤","icon":"4"},{"title":"評估與優化","description":"量測品質和成本，持續調整 prompt 和模型選擇","icon":"5"}]' />
+
+流程解讀：使用 AI 的第一步是判斷「這個問題是否適合用 AI 解決」。很多問題用 regex、規則引擎或傳統 ML 就能搞定，不需要 LLM。選擇模型時考慮三個維度：任務複雜度（簡單分類用小模型就好）、延遲需求（即時回應用更快的模型）、成本（高頻呼叫選便宜的模型）。
+
+## 程式碼範例
+
+### C# 版本
+
+```csharp
+// OpenAI API 呼叫
+using OpenAI.Chat;
+
+var client = new ChatClient("gpt-4o", apiKey);
+
+// 基本 Chat Completion
+var messages = new List<ChatMessage>
+{
+    new SystemChatMessage("你是一個 C# 專家，回答簡潔精確。"),
+    new UserChatMessage("什麼是 LINQ？一句話解釋。")
+};
+
+var response = await client.CompleteChatAsync(messages, new ChatCompletionOptions
+{
+    Temperature = 0.3f,
+    MaxOutputTokenCount = 200
+});
+
+Console.WriteLine(response.Value.Content[0].Text);
+// Token 用量
+Console.WriteLine($"Input: {response.Value.Usage.InputTokenCount}");
+Console.WriteLine($"Output: {response.Value.Usage.OutputTokenCount}");
+
+// Embedding 產生
+using OpenAI.Embeddings;
+
+var embeddingClient = new EmbeddingClient("text-embedding-3-small", apiKey);
+var embedding = await embeddingClient.GenerateEmbeddingAsync("什麼是微服務？");
+float[] vector = embedding.Value.Vector.ToArray(); // 1536 維向量
+```
+
+### TypeScript 版本
+
+```typescript
+import Anthropic from "@anthropic-ai/sdk";
+
+const client = new Anthropic();
+
+// Chat Completion
+const message = await client.messages.create({
+  model: "claude-sonnet-4-20250514",
+  max_tokens: 200,
+  system: "你是一個 TypeScript 專家，回答簡潔精確。",
+  messages: [
+    { role: "user", content: "什麼是 generic type？一句話解釋。" },
+  ],
+});
+
+console.log(message.content[0].text);
+console.log(`Input tokens: ${message.usage.input_tokens}`);
+console.log(`Output tokens: ${message.usage.output_tokens}`);
+
+// Embedding（使用 OpenAI）
+import OpenAI from "openai";
+const openai = new OpenAI();
+
+const embedding = await openai.embeddings.create({
+  model: "text-embedding-3-small",
+  input: "什麼是微服務？",
+});
+
+const vector = embedding.data[0].embedding; // number[] (1536 維)
+
+// Cosine Similarity 計算
+function cosineSimilarity(a: number[], b: number[]): number {
+  const dot = a.reduce((sum, ai, i) => sum + ai * b[i], 0);
+  const magA = Math.sqrt(a.reduce((sum, ai) => sum + ai * ai, 0));
+  const magB = Math.sqrt(b.reduce((sum, bi) => sum + bi * bi, 0));
+  return dot / (magA * magB);
+}
+```
+
+### Python 版本
+
+```python
+import anthropic
+import openai
+import numpy as np
+
+# Anthropic Claude
+client = anthropic.Anthropic()
+
+message = client.messages.create(
+    model="claude-sonnet-4-20250514",
+    max_tokens=200,
+    system="你是一個 Python 專家，回答簡潔精確。",
+    messages=[
+        {"role": "user", "content": "什麼是 list comprehension？一句話解釋。"}
+    ]
+)
+
+print(message.content[0].text)
+print(f"Input tokens: {message.usage.input_tokens}")
+print(f"Output tokens: {message.usage.output_tokens}")
+
+# Embedding
+openai_client = openai.OpenAI()
+response = openai_client.embeddings.create(
+    model="text-embedding-3-small",
+    input="什麼是微服務？"
+)
+vector = response.data[0].embedding  # list[float], 1536 維
+
+# Cosine Similarity
+def cosine_similarity(a: list[float], b: list[float]) -> float:
+    a, b = np.array(a), np.array(b)
+    return np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b))
+
+# 比較語意相似度
+emb1 = get_embedding("微服務架構")
+emb2 = get_embedding("Microservices Architecture")
+emb3 = get_embedding("巧克力蛋糕食譜")
+
+print(cosine_similarity(emb1, emb2))  # ~0.92 (語意相近)
+print(cosine_similarity(emb1, emb3))  # ~0.15 (語意不相關)
+```
+
+## 結構圖
+
+<Diagram data='{"nodes":[{"id":"input","label":"User Input (Text)","type":"muted"},{"id":"tokenizer","label":"Tokenizer","type":"default"},{"id":"llm","label":"LLM (Transformer)","type":"highlight"},{"id":"output","label":"Generated Output","type":"default"},{"id":"embed","label":"Embedding Model","type":"default"},{"id":"vector","label":"Vector (1536-dim)","type":"muted"}],"edges":[{"from":"input","to":"tokenizer","label":"text to tokens"},{"from":"tokenizer","to":"llm","label":"token IDs"},{"from":"llm","to":"output","label":"next token prediction"},{"from":"input","to":"embed","label":"encode meaning"},{"from":"embed","to":"vector","label":"semantic vector"}]}' />
+
+圖中展示了兩條路徑。**生成路徑**：User Input 經過 Tokenizer 切成 Token，送入 LLM（Transformer），模型逐個預測 next token 產生 Output。**Embedding 路徑**：User Input 送入 Embedding Model，產生一個高維度的 Vector，這個 Vector 代表了文字的語意。兩條路徑用途不同：生成路徑用於對話和內容產生，Embedding 路徑用於搜尋和比較。
+
+## 面試常見問題
+
+**Q: LLM 的 Hallucination 是什麼？如何緩解？**
+
+A: Hallucination 是模型生成看起來合理但實際上錯誤的內容。LLM 不會「不知道」— 它總是會生成答案，即使答案是編造的。緩解方式：使用 RAG 提供真實的參考資料、要求模型引用來源、降低 temperature、設計 prompt 讓模型表達不確定性、在關鍵場景加入人工審查。
+
+**Q: 什麼時候該用 LLM，什麼時候不該用？**
+
+A: 適合：自然語言理解/生成、程式碼輔助、摘要和翻譯、複雜的非結構化資料處理。不適合：精確的數學計算、需要即時資料（LLM 有知識截止日）、高頻低延遲的場景、有明確規則的邏輯（用程式碼寫更可靠）。判斷標準：如果能用 50 行程式碼準確解決，就不要用 LLM。
+
+**Q: Token 數量如何影響成本和效能？**
+
+A: API 按 input + output tokens 計費。更多 token 意味著更高的延遲（LLM 是逐 token 生成的）。Context Window 限制了單次能處理的資訊量。優化策略：精簡 prompt、只傳必要的上下文、用更便宜的模型處理簡單任務、快取常見回應。
+
+## 理解測驗
+
+<Quiz data='{"question":"LLM 生成文字的基本原理是什麼？","options":["查詢知識庫找答案","根據前面的 token 預測下一個最可能的 token","隨機組合文字","用模板填空"],"answer":1,"explanation":"LLM 的核心機制是 next token prediction — 根據前面所有的 token，計算下一個 token 的機率分布，選擇最可能的 token 作為輸出。"}' />
+
+<Quiz data='{"question":"Embedding 的主要用途是什麼？","options":["加密文字","將文字轉為向量，用數學距離表達語意相似度","壓縮文字大小","翻譯語言"],"answer":1,"explanation":"Embedding 將文字轉為高維度向量。語意相近的文字（如「狗」和「貓」）向量距離近，語意不相關的（如「狗」和「飛機」）向量距離遠。這讓電腦能「理解」語意相似性。"}' />
+
+<Quiz data='{"question":"Temperature 設為 0 時，LLM 的行為是？","options":["不會回答任何問題","輸出幾乎確定性，適合需要精確結果的場景","輸出最有創意","處理速度最快"],"answer":1,"explanation":"Temperature 0 讓模型總是選擇機率最高的 token，產生幾乎確定性的輸出。適合程式碼生成、JSON 格式化等需要一致性和精確性的場景。"}' />
+
+## 重點整理
+
+<Callout type="tip" title="一句話記住">
+**AI Fundamentals = LLM 預測 Token + Embedding 量化語意。** 口訣：「LLM 猜下一個字，Embedding 算距離，Token 是計費單位」
+</Callout>
+
+| 概念 | 說明 |
+|------|------|
+| **LLM** | 預測 next token 的大型語言模型 |
+| **Token** | LLM 處理和計費的最小單位 |
+| **Embedding** | 文字的語意向量表達 |
+| **Temperature** | 控制生成的隨機性（0 確定，1 創意） |
+| **Hallucination** | 模型自信地生成錯誤內容 |

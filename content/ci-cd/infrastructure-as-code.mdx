@@ -1,0 +1,223 @@
+---
+title: "Infrastructure as Code"
+order: 6
+description: "IaC 基礎概念，Terraform 與 Bicep 的實務入門"
+difficulty: "hard"
+interviewImportance: 3
+related:
+  - "cloud-architecture/cloud-fundamentals"
+  - "ci-cd/github-actions"
+---
+
+# Infrastructure as Code（IaC）
+
+<ELI5>
+想像你要蓋一棟大樓：
+
+- **沒有 IaC**：你每次都口頭跟工人說「牆壁要白色、窗戶要大的」，每棟樓蓋出來都不太一樣
+- **有 IaC**：你有一份**詳細的藍圖**，工人按圖施工，每棟樓都一模一樣。要改設計就改藍圖，重新蓋就好
+
+IaC 就是用**程式碼取代手動操作**來管理伺服器、資料庫、網路等基礎設施。基礎設施可以像程式碼一樣版控、review、自動化部署。
+</ELI5>
+
+## 是什麼？
+
+Infrastructure as Code（IaC）是用**宣告式或程序式的程式碼**定義和管理雲端基礎設施。透過 Terraform、Bicep、Pulumi 等工具，把「點按 Azure Portal」變成「寫程式碼 + git push」。
+
+<Callout type="info" title="宣告式 vs 程序式">
+**宣告式（Declarative）**：你描述「想要什麼」，工具負責達到目標狀態（Terraform、Bicep）。**程序式（Imperative）**：你描述「怎麼做」，一步步執行命令（Pulumi、AWS CDK）。大多數 IaC 工具採用宣告式。
+</Callout>
+
+## 核心觀念
+
+- **State（狀態）**：IaC 工具維護一份 State 檔案，記錄當前基礎設施的狀態。每次執行時比較 State 和程式碼的差異，只做必要的變更
+- **Plan → Apply**：先 Plan 預覽變更（什麼會新增、修改、刪除），確認後 Apply 執行。避免意外破壞
+- **Module（模組）**：可重用的基礎設施元件封裝，類似程式中的函式。例如一個「Web App + Database」模組可以重複使用
+- **Drift Detection**：偵測有人手動改了基礎設施（繞過 IaC），導致實際狀態和程式碼不同步
+- **Idempotent（冪等性）**：同一份 IaC 程式碼執行多次，結果都相同。不會重複建立資源
+
+## 常見誤區
+
+<Callout type="warning" title="常見誤區">
+- **State 檔案存在 Git 裡**：State 可能包含密碼等敏感資訊，必須存在 Remote Backend（如 Azure Storage、S3、Terraform Cloud）
+- **不做 Plan 直接 Apply**：跳過 Plan 可能意外刪除生產環境的資源。永遠先 Plan 再 Apply
+- **一個大檔案管所有資源**：應該按環境（dev/staging/prod）和服務拆分，避免一次變更影響所有環境
+</Callout>
+
+## 流程/步驟
+
+<StepDiagram data='[{"title":"撰寫 IaC 程式碼","description":"用 Terraform HCL 或 Bicep 定義基礎設施","icon":"1"},{"title":"Init（初始化）","description":"下載 Provider Plugin、設定 Remote Backend","icon":"2"},{"title":"Plan（預覽）","description":"比較程式碼和現狀，列出新增/修改/刪除的資源","icon":"3"},{"title":"Review（審查）","description":"團隊 Review Plan 結果，確認變更合理","icon":"4"},{"title":"Apply（執行）","description":"向雲端 API 發送請求，建立/更新/刪除資源","icon":"5"},{"title":"版控 + CI/CD","description":"IaC 程式碼提 PR，Pipeline 自動 Plan，Merge 後 Apply","icon":"6"}]' />
+
+流程解讀：IaC 的工作流程和寫程式碼相同 — 寫 code、commit、PR、review、merge。Init 設定環境，Plan 預覽變更避免意外，Apply 才真正執行。CI/CD Pipeline 自動化整個流程。
+
+## 程式碼範例
+
+### C# 版本
+
+```csharp
+// Bicep — Azure 原生 IaC（適合 .NET 團隊）
+// main.bicep
+```
+
+```bicep
+// main.bicep — 定義 Azure Web App + SQL Database
+param location string = resourceGroup().location
+param appName string = 'myapp-prod'
+
+// App Service Plan
+resource appServicePlan 'Microsoft.Web/serverfarms@2023-01-01' = {
+  name: '${appName}-plan'
+  location: location
+  sku: {
+    name: 'B1'
+    tier: 'Basic'
+  }
+}
+
+// Web App
+resource webApp 'Microsoft.Web/sites@2023-01-01' = {
+  name: appName
+  location: location
+  properties: {
+    serverFarmId: appServicePlan.id
+    siteConfig: {
+      netFrameworkVersion: 'v8.0'
+      alwaysOn: true
+    }
+  }
+}
+
+// SQL Server + Database
+resource sqlServer 'Microsoft.Sql/servers@2023-05-01-preview' = {
+  name: '${appName}-sql'
+  location: location
+  properties: {
+    administratorLogin: 'sqladmin'
+    administratorLoginPassword: sqlPassword // 從 Key Vault 取得
+  }
+}
+```
+
+### TypeScript 版本
+
+```hcl
+# Terraform — 跨雲 IaC
+# main.tf — AWS 版本
+
+terraform {
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 5.0"
+    }
+  }
+
+  # Remote Backend — State 存在 S3
+  backend "s3" {
+    bucket = "my-terraform-state"
+    key    = "prod/terraform.tfstate"
+    region = "us-east-1"
+  }
+}
+
+# VPC
+resource "aws_vpc" "main" {
+  cidr_block = "10.0.0.0/16"
+  tags = { Name = "main-vpc" }
+}
+
+# EC2 Instance
+resource "aws_instance" "web" {
+  ami           = "ami-0c55b159cbfafe1f0"
+  instance_type = "t3.micro"
+  subnet_id     = aws_subnet.public.id
+
+  tags = { Name = "web-server" }
+}
+
+# RDS Database
+resource "aws_db_instance" "main" {
+  engine         = "postgres"
+  engine_version = "16"
+  instance_class = "db.t3.micro"
+  db_name        = "myapp"
+  username       = "admin"
+  password       = var.db_password  # 從變數或 Secret Manager 取得
+}
+```
+
+### Python 版本
+
+```python
+# Pulumi — 用真正的程式語言寫 IaC
+import pulumi
+import pulumi_azure_native as azure
+
+# Resource Group
+resource_group = azure.resources.ResourceGroup("myapp-rg")
+
+# App Service Plan
+plan = azure.web.AppServicePlan(
+    "myapp-plan",
+    resource_group_name=resource_group.name,
+    kind="Linux",
+    reserved=True,
+    sku=azure.web.SkuDescriptionArgs(name="B1", tier="Basic"),
+)
+
+# Web App
+app = azure.web.WebApp(
+    "myapp",
+    resource_group_name=resource_group.name,
+    server_farm_id=plan.id,
+    site_config=azure.web.SiteConfigArgs(
+        linux_fx_version="PYTHON|3.12",
+        always_on=True,
+    ),
+)
+
+# 輸出 URL
+pulumi.export("url", app.default_host_name.apply(lambda h: f"https://{h}"))
+```
+
+## 架構圖/概念圖
+
+<Diagram data='{"nodes":[{"id":"code","label":"IaC Code (Git)","type":"muted"},{"id":"pipeline","label":"CI/CD Pipeline","type":"highlight"},{"id":"plan","label":"Plan (Preview)","type":"default"},{"id":"apply","label":"Apply (Execute)","type":"default"},{"id":"state","label":"Remote State","type":"default"},{"id":"cloud","label":"Cloud Resources","type":"muted"}],"edges":[{"from":"code","to":"pipeline","label":"PR triggers"},{"from":"pipeline","to":"plan","label":"terraform plan"},{"from":"plan","to":"apply","label":"approved"},{"from":"apply","to":"cloud","label":"create/update"},{"from":"apply","to":"state","label":"updates"},{"from":"state","to":"plan","label":"compares"}]}' />
+
+IaC 程式碼提交後觸發 Pipeline。Pipeline 執行 Plan 比較程式碼和 Remote State 的差異，產出變更預覽。經人工審核後執行 Apply，向雲端 API 發送請求建立或更新資源，同時更新 State。
+
+## 實戰補充
+
+**Q: Terraform 和 Bicep 怎麼選？**
+
+A: **Terraform**：跨雲（AWS + Azure + GCP）、社群生態最大、HCL 語法。**Bicep**：Azure 專用、和 ARM 深度整合、VS Code 支援好。純 Azure 環境推薦 Bicep，多雲環境用 Terraform。
+
+**Q: State 檔案丟了怎麼辦？**
+
+A: State 丟了 IaC 工具就「不知道」現有資源的存在。解法：(1) 用 `terraform import` 逐一匯入現有資源。(2) 永遠把 State 存在 Remote Backend 並定期備份。(3) 開啟 State Locking 防止並行操作衝突。
+
+**Q: 如何防止有人手動改雲端資源？**
+
+A: (1) 開啟 Drift Detection 定期檢查。(2) 限制生產環境的手動操作權限（只有 IaC Pipeline 有 Apply 權限）。(3) 用 Azure Policy / AWS Config 偵測違規資源。
+
+## 理解測驗
+
+<Quiz data='{"question":"為什麼 IaC 的 State 檔案不應該存在 Git 中？","options":["Git 不支援大檔案","State 可能包含密碼等敏感資訊，且多人並行修改會衝突","State 檔案太大","IaC 工具不支援"],"answer":1,"explanation":"State 檔案可能包含資料庫密碼、API Key 等敏感資訊。且多人同時操作需要 State Locking，Local 檔案無法做到。"}' />
+
+<Quiz data='{"question":"terraform plan 的作用是什麼？","options":["直接建立資源","預覽將要新增、修改、刪除的資源，不實際執行","刪除所有資源","下載 Provider Plugin"],"answer":1,"explanation":"Plan 比較程式碼和現有 State，列出所有將要發生的變更。讓你在 Apply 前確認變更合理，避免意外刪除資源。"}' />
+
+<Quiz data='{"question":"IaC 的冪等性（Idempotent）是什麼意思？","options":["執行速度恆定","同一份程式碼執行多次結果相同，不會重複建立資源","只能執行一次","需要手動確認"],"answer":1,"explanation":"宣告式 IaC 描述目標狀態，工具比較現狀和目標的差異只做必要變更。如果現狀已經符合目標，什麼都不做。"}' />
+
+## 重點整理
+
+<Callout type="tip" title="一句話記住">
+**IaC = 用程式碼管理基礎設施，像管程式碼一樣版控、Review、自動部署。** 口訣：「Plan 先看、Apply 再做、State 別丟」
+</Callout>
+
+| 概念 | 說明 |
+|------|------|
+| **State** | 記錄當前基礎設施狀態，存在 Remote Backend |
+| **Plan** | 預覽變更，不實際執行 |
+| **Apply** | 執行變更，建立/更新/刪除資源 |
+| **Module** | 可重用的基礎設施元件 |
+| **Drift** | 手動改動導致實際狀態和程式碼不同步 |

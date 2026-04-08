@@ -1,0 +1,203 @@
+---
+title: "部署策略"
+order: 5
+description: "Blue-Green、Canary、Rolling 三大部署策略的原理與選擇"
+difficulty: "hard"
+interviewImportance: 4
+related:
+  - "ci-cd/containerization"
+  - "microservices/circuit-breaker"
+---
+
+# 部署策略（Deployment Strategies）
+
+<ELI5>
+想像你經營一間 24 小時營業的餐廳，要換新菜單：
+
+- **Blue-Green**：你在隔壁開一間一模一樣的餐廳（Green），新菜單準備好後，把招牌指向新餐廳。出問題就把招牌指回舊餐廳
+- **Canary**：你先讓 10% 的客人試吃新菜，沒問題再讓所有客人都吃新菜
+- **Rolling**：你一次換一張桌子的菜單，慢慢把所有桌子都換成新菜單
+
+三種策略都是為了**不停機**更新服務，差別在風險控制和資源需求。
+</ELI5>
+
+## 是什麼？
+
+部署策略定義如何將新版本的應用程式發佈到生產環境，同時最小化停機時間和風險。核心目標是**零停機（Zero Downtime）**和**快速回滾（Rollback）**。
+
+<Callout type="info" title="為什麼需要部署策略">
+最原始的部署方式是「停機 → 換版本 → 重啟」。但現代系統要求 24/7 可用，任何停機都可能造成營收損失和使用者流失。部署策略讓你在不停機的情況下安全更新。
+</Callout>
+
+## 核心觀念
+
+- **Blue-Green Deployment**：同時維護兩套完整環境（Blue = 當前版本、Green = 新版本）。切換 Load Balancer 指向完成部署。回滾只需切回 Blue
+- **Canary Deployment**：先將新版本部署到小部分流量（如 5%），觀察指標正常後逐步擴大到 100%。名稱源自礦坑中的金絲雀
+- **Rolling Deployment**：逐批更新實例（如每次更新 25% 的 Pod），直到所有實例都是新版本。Kubernetes 的預設策略
+- **回滾（Rollback）**：部署失敗時回復到前一個穩定版本。Blue-Green 回滾最快（切換流量），Rolling 回滾最慢（要逐批退回）
+- **健康檢查（Health Check）**：部署後自動檢查新版本是否正常，不正常就自動回滾
+
+## 常見誤區
+
+<Callout type="warning" title="常見誤區">
+- **Blue-Green 不需要額外資源**：Blue-Green 需要雙倍的基礎設施（兩套完整環境同時運行），成本最高
+- **Canary 只看錯誤率**：除了 Error Rate，還要監控延遲（Latency）、CPU/Memory、業務指標（如轉換率）。單看錯誤率可能漏掉效能退化
+- **Rolling 不會有版本不一致問題**：Rolling 過程中新舊版本同時在線，API 必須向後相容（Backward Compatible）
+</Callout>
+
+## 流程/步驟
+
+<StepDiagram data='[{"title":"準備新版本","description":"Build 並測試新版本的 Artifact / Image","icon":"1"},{"title":"部署到目標環境","description":"Blue-Green: 部署到 Green；Canary: 部署到 Canary 群組","icon":"2"},{"title":"健康檢查","description":"確認新版本的 Health Endpoint 回傳 200","icon":"3"},{"title":"切換流量","description":"Blue-Green: 切 LB；Canary: 逐步增加流量比例","icon":"4"},{"title":"監控指標","description":"觀察 Error Rate、Latency、業務指標","icon":"5"},{"title":"確認或回滾","description":"指標正常則完成部署，異常則自動回滾","icon":"6"}]' />
+
+流程解讀：新版本 Build 後部署到隔離環境。健康檢查確認基本功能正常後開始切換流量。持續監控關鍵指標，異常時自動觸發回滾。整個流程自動化後，部署從「緊張事件」變成「日常操作」。
+
+## 程式碼範例
+
+### C# 版本
+
+```csharp
+// ASP.NET Core — Health Check 端點（部署策略的基礎）
+builder.Services.AddHealthChecks()
+    .AddDbContextCheck<AppDbContext>()        // 檢查資料庫連線
+    .AddRedis(config["Redis:Connection"]!)    // 檢查 Redis
+    .AddCheck("startup", () =>
+    {
+        // 應用程式初始化完成才回傳 Healthy
+        return _isReady
+            ? HealthCheckResult.Healthy()
+            : HealthCheckResult.Unhealthy("Still warming up");
+    });
+
+app.MapHealthChecks("/health/live", new HealthCheckOptions
+{
+    Predicate = _ => false  // Liveness: 只檢查程序存活
+});
+
+app.MapHealthChecks("/health/ready", new HealthCheckOptions
+{
+    Predicate = _ => true   // Readiness: 檢查所有依賴
+});
+```
+
+### TypeScript 版本
+
+```typescript
+// Kubernetes Deployment — Rolling Update
+// deployment.yaml
+```
+
+```yaml
+# Kubernetes Rolling Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: myapp
+spec:
+  replicas: 4
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1    # 最多 1 個 Pod 不可用
+      maxSurge: 1           # 最多多出 1 個 Pod
+  template:
+    spec:
+      containers:
+        - name: myapp
+          image: myapp:v2
+          ports:
+            - containerPort: 3000
+          # 健康檢查
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: 3000
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: 3000
+            initialDelaySeconds: 5
+            periodSeconds: 3
+```
+
+### Python 版本
+
+```python
+# FastAPI — Health Check 端點
+from fastapi import FastAPI
+import asyncpg
+
+app = FastAPI()
+db_pool = None
+
+@app.get("/health/live")
+async def liveness():
+    """程序存活檢查"""
+    return {"status": "alive"}
+
+@app.get("/health/ready")
+async def readiness():
+    """就緒檢查 — 所有依賴都正常才回傳 200"""
+    checks = {}
+
+    # 檢查資料庫
+    try:
+        async with db_pool.acquire() as conn:
+            await conn.fetchval("SELECT 1")
+        checks["database"] = "healthy"
+    except Exception:
+        checks["database"] = "unhealthy"
+        return JSONResponse(status_code=503, content={"status": "not ready", "checks": checks})
+
+    return {"status": "ready", "checks": checks}
+
+# Canary 部署的 Feature Flag 搭配
+@app.get("/api/feature")
+async def feature(request: Request):
+    """用 Feature Flag 控制新功能的曝光比例"""
+    user_id = get_user_id(request)
+    if feature_flag.is_enabled("new-feature", user_id, percentage=10):
+        return new_feature_response()
+    return old_feature_response()
+```
+
+## 架構圖/概念圖
+
+<Diagram data='{"nodes":[{"id":"lb","label":"Load Balancer","type":"highlight"},{"id":"blue","label":"Blue (v1 - Current)","type":"default"},{"id":"green","label":"Green (v2 - New)","type":"default"},{"id":"canary","label":"Canary (5% traffic)","type":"muted"},{"id":"monitor","label":"Monitoring","type":"muted"}],"edges":[{"from":"lb","to":"blue","label":"95% traffic"},{"from":"lb","to":"green","label":"switch all (Blue-Green)"},{"from":"lb","to":"canary","label":"5% traffic (Canary)"},{"from":"canary","to":"monitor","label":"metrics"},{"from":"green","to":"monitor","label":"metrics"}]}' />
+
+Load Balancer 是流量切換的樞紐。Blue-Green 策略在 Blue 和 Green 之間一次切換所有流量。Canary 策略先導入少量流量到新版本，搭配 Monitoring 觀察指標後再逐步擴大。
+
+## 實戰補充
+
+**Q: 三種策略怎麼選？**
+
+A: **Blue-Green**：需要最快回滾速度、可以承擔雙倍資源成本。**Canary**：想要最低風險、有良好的監控基礎設施。**Rolling**：資源有限、願意接受短暫的新舊版本共存。大多數 Kubernetes 環境預設用 Rolling。
+
+**Q: 資料庫 Schema 變更怎麼配合部署？**
+
+A: 資料庫變更必須**向後相容**。先加新欄位（不刪舊的），部署新版本確認穩定後，再用另一次部署刪除舊欄位。這叫 **Expand and Contract** 模式。
+
+**Q: 如何實現自動回滾？**
+
+A: 在 Canary 或 Rolling 部署中，設定自動化的指標檢查（Error Rate 超過 1%、P99 延遲超過 500ms）。一旦觸發閾值，自動執行回滾腳本。Kubernetes 的 `kubectl rollout undo` 可以一鍵回滾。
+
+## 理解測驗
+
+<Quiz data='{"question":"Blue-Green 部署的最大優點和最大缺點分別是什麼？","options":["優點：省資源；缺點：回滾慢","優點：回滾極快（切換流量即可）；缺點：需要雙倍基礎設施","優點：風險最低；缺點：部署最慢","優點：不需要 Load Balancer；缺點：不支援回滾"],"answer":1,"explanation":"Blue-Green 的回滾只需把 Load Balancer 切回舊環境，幾乎零延遲。但需要同時維護兩套完整環境，成本最高。"}' />
+
+<Quiz data='{"question":"Canary 部署為什麼叫 Canary（金絲雀）？","options":["發明者叫 Canary","像金絲雀一樣快","源自礦工帶金絲雀進礦坑偵測毒氣，先讓少量流量試探新版本","因為部署時會發出聲音"],"answer":2,"explanation":"礦工帶金絲雀進礦坑，如果金絲雀倒下代表有毒氣。同理，先讓少量流量試探新版本，有問題就回滾，不影響大多數使用者。"}' />
+
+<Quiz data='{"question":"Rolling 部署過程中為什麼 API 必須向後相容？","options":["Kubernetes 強制要求","Rolling 過程中新舊版本同時在線，客戶端可能存取到任一版本","為了讓測試更容易","節省資源"],"answer":1,"explanation":"Rolling 逐批更新，過程中部分實例是 v1、部分是 v2。如果 v2 的 API 不相容 v1，客戶端存取到不同版本會出錯。"}' />
+
+## 重點整理
+
+<Callout type="tip" title="一句話記住">
+**部署策略 = 不停機換版本的藝術，核心是流量控制和快速回滾。** 口訣：「Blue-Green 切、Canary 試、Rolling 滾」
+</Callout>
+
+| 策略 | 回滾速度 | 資源需求 | 風險 | 適用場景 |
+|------|---------|---------|------|---------|
+| **Blue-Green** | 極快 | 雙倍 | 低 | 關鍵服務 |
+| **Canary** | 快 | 少量額外 | 最低 | 大流量服務 |
+| **Rolling** | 慢 | 最少 | 中 | K8s 預設 |

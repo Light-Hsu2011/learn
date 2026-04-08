@@ -1,0 +1,212 @@
+---
+title: "分頁、過濾與排序"
+order: 4
+description: "Cursor vs Offset 分頁策略、過濾與排序的 API 設計實務"
+difficulty: "medium"
+interviewImportance: 4
+related:
+  - "api-design/rest-fundamentals"
+  - "system-design/news-feed"
+---
+
+# 分頁、過濾與排序（Pagination & Filtering）
+
+<ELI5>
+想像你在 Netflix 上找電影：
+
+- **分頁**：Netflix 不會一次把 10,000 部電影全塞給你，而是每次載入一排（一頁）
+- **過濾**：你選「動作片」「2024年」來縮小範圍
+- **排序**：你按「最新上架」或「評分最高」排列
+
+API 也一樣 — 資料太多就分批給，讓使用者選條件和順序。
+</ELI5>
+
+## 是什麼？
+
+分頁（Pagination）是將大量資料分批回傳的技術。過濾（Filtering）是讓客戶端指定篩選條件。排序（Sorting）是讓客戶端決定資料順序。三者搭配使用，確保 API 在大數據量下依然高效。
+
+<Callout type="info" title="為什麼不能一次全給？">
+一個有百萬筆資料的 API 如果不分頁：回應時間從毫秒變成分鐘、記憶體用量暴增、網路頻寬浪費、前端渲染卡死。分頁是 API 設計的**必備項目**。
+</Callout>
+
+## 核心觀念
+
+- **Offset 分頁**：用 `page` + `pageSize` 或 `offset` + `limit`，如 `?page=3&pageSize=20`。簡單直覺，但資料異動時可能漏資料或重複
+- **Cursor 分頁**：用上一頁最後一筆的標識（cursor）當起點，如 `?cursor=abc123&limit=20`。效能好、不漏資料，但不能跳頁
+- **過濾**：用查詢參數表示條件，如 `?status=active&role=admin`。複雜過濾可用 `filter[field]=value` 格式
+- **排序**：用 `sort` 參數，如 `?sort=createdAt` 升序、`?sort=-createdAt` 降序（減號代表降序）
+- **回應 Metadata**：分頁回應必須包含 `totalCount`、`hasNextPage`、`nextCursor` 等資訊
+
+## 常見誤區
+
+<Callout type="warning" title="常見誤區">
+- **深層 Offset 效能差**：`OFFSET 1000000` 在資料庫中仍需掃描前 100 萬筆，Cursor 分頁沒有這個問題
+- **不回傳分頁 Metadata**：前端不知道總共幾頁、有沒有下一頁，無法正確顯示分頁 UI
+- **用 Cursor 分頁但需要跳頁**：Cursor 不支援「跳到第 50 頁」，如果業務需求要跳頁就得用 Offset
+</Callout>
+
+## 流程/步驟
+
+<StepDiagram data='[{"title":"決定分頁策略","description":"資料頻繁異動用 Cursor，需要跳頁用 Offset","icon":"1"},{"title":"設計查詢參數","description":"定義 page/limit/cursor/sort/filter 參數格式","icon":"2"},{"title":"實作資料庫查詢","description":"將查詢參數轉換為 SQL/ORM 條件","icon":"3"},{"title":"組裝回應 Metadata","description":"計算 totalCount、hasNextPage、nextCursor","icon":"4"},{"title":"加入效能防護","description":"限制 pageSize 上限（如 100），防止客戶端請求過多資料","icon":"5"}]' />
+
+流程解讀：先根據業務場景選定分頁策略，設計統一的查詢參數格式。資料庫查詢時注意索引優化，回應中包含足夠的 Metadata 讓前端渲染分頁元件。務必限制 pageSize 上限防止濫用。
+
+## 程式碼範例
+
+### C# 版本
+
+```csharp
+// Cursor 分頁實作
+public record PagedResponse<T>(
+    IEnumerable<T> Data,
+    string? NextCursor,
+    bool HasNextPage,
+    int TotalCount
+);
+
+[HttpGet]
+public async Task<ActionResult<PagedResponse<UserDto>>> GetUsers(
+    [FromQuery] string? cursor,
+    [FromQuery] int limit = 20,
+    [FromQuery] string? sort = "createdAt",
+    [FromQuery] string? status = null)
+{
+    limit = Math.Min(limit, 100); // 防護：上限 100
+
+    var query = _dbContext.Users.AsQueryable();
+
+    // 過濾
+    if (!string.IsNullOrEmpty(status))
+        query = query.Where(u => u.Status == status);
+
+    // Cursor 分頁
+    if (!string.IsNullOrEmpty(cursor))
+    {
+        var cursorDate = DecodeCursor(cursor);
+        query = query.Where(u => u.CreatedAt > cursorDate);
+    }
+
+    // 排序
+    query = sort.StartsWith("-")
+        ? query.OrderByDescending(u => EF.Property<object>(u, sort[1..]))
+        : query.OrderBy(u => EF.Property<object>(u, sort));
+
+    var totalCount = await query.CountAsync();
+    var users = await query.Take(limit + 1).ToListAsync();
+    var hasNext = users.Count > limit;
+
+    return Ok(new PagedResponse<UserDto>(
+        Data: users.Take(limit).Select(u => u.ToDto()),
+        NextCursor: hasNext ? EncodeCursor(users[limit - 1].CreatedAt) : null,
+        HasNextPage: hasNext,
+        TotalCount: totalCount
+    ));
+}
+```
+
+### TypeScript 版本
+
+```typescript
+// Cursor 分頁 + 過濾 + 排序
+router.get("/api/users", async (req, res) => {
+  const limit = Math.min(parseInt(req.query.limit as string) || 20, 100);
+  const cursor = req.query.cursor as string | undefined;
+  const sort = (req.query.sort as string) || "createdAt";
+  const status = req.query.status as string | undefined;
+
+  let query: any = {};
+  if (status) query.status = status;
+  if (cursor) query.createdAt = { $gt: decodeCursor(cursor) };
+
+  const sortDir = sort.startsWith("-") ? -1 : 1;
+  const sortField = sort.replace(/^-/, "");
+
+  const users = await User.find(query)
+    .sort({ [sortField]: sortDir })
+    .limit(limit + 1);
+
+  const hasNext = users.length > limit;
+  const data = users.slice(0, limit);
+
+  res.json({
+    data,
+    nextCursor: hasNext ? encodeCursor(data[data.length - 1].createdAt) : null,
+    hasNextPage: hasNext,
+  });
+});
+```
+
+### Python 版本
+
+```python
+# FastAPI — Offset 分頁 + 過濾
+from fastapi import FastAPI, Query
+
+@app.get("/api/users")
+async def get_users(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    status: str | None = None,
+    sort: str = "created_at",
+):
+    query = db.query(User)
+
+    if status:
+        query = query.filter(User.status == status)
+
+    # 排序
+    if sort.startswith("-"):
+        query = query.order_by(getattr(User, sort[1:]).desc())
+    else:
+        query = query.order_by(getattr(User, sort))
+
+    total = query.count()
+    offset = (page - 1) * page_size
+    users = query.offset(offset).limit(page_size).all()
+
+    return {
+        "data": users,
+        "page": page,
+        "page_size": page_size,
+        "total_count": total,
+        "has_next_page": offset + page_size < total,
+    }
+```
+
+## 架構圖/概念圖
+
+<Diagram data='{"nodes":[{"id":"client","label":"Client","type":"muted"},{"id":"params","label":"Query Params (cursor/sort/filter)","type":"highlight"},{"id":"api","label":"API Handler","type":"default"},{"id":"db","label":"Database (indexed query)","type":"default"},{"id":"response","label":"Paged Response + Metadata","type":"muted"}],"edges":[{"from":"client","to":"params","label":"sends"},{"from":"params","to":"api","label":"parsed by"},{"from":"api","to":"db","label":"optimized query"},{"from":"db","to":"response","label":"returns page"}]}' />
+
+Client 將分頁、排序、過濾條件以 Query Params 傳入。API Handler 解析參數後組成優化的資料庫查詢。回應包含該頁資料和 Metadata，讓 Client 知道如何取得下一頁。
+
+## 實戰補充
+
+**Q: 什麼時候用 Cursor、什麼時候用 Offset？**
+
+A: **Cursor**：社群動態、聊天紀錄、即時更新的資料列表 — 資料頻繁新增刪除，不需要跳頁。**Offset**：後台管理介面、搜尋結果 — 使用者需要「跳到第 N 頁」的功能，資料異動頻率低。
+
+**Q: Cursor 要用什麼值？**
+
+A: 常見選擇：自增 ID、時間戳、或兩者組合。用 Base64 編碼讓 cursor 變成不透明的字串（opaque token），客戶端不需要理解其內部結構。
+
+## 理解測驗
+
+<Quiz data='{"question":"Offset 分頁在深層頁面（如第 10,000 頁）有什麼問題？","options":["回傳的資料格式會變","資料庫需要掃描前面所有筆數，效能極差","會自動切換成 Cursor 分頁","沒有任何問題"],"answer":1,"explanation":"OFFSET N 在資料庫中仍需掃描並跳過前 N 筆資料，N 越大效能越差。Cursor 分頁用 WHERE 條件直接定位，不受此限制。"}' />
+
+<Quiz data='{"question":"API 回應的分頁 Metadata 為什麼重要？","options":["只是裝飾，前端不需要","讓前端知道總數、是否有下一頁，正確渲染分頁元件","資料庫需要這些資訊","法律規定必須提供"],"answer":1,"explanation":"前端需要 totalCount 顯示總筆數、hasNextPage 決定是否顯示下一頁按鈕、nextCursor 知道如何請求下一頁。"}' />
+
+<Quiz data='{"question":"為什麼要限制 pageSize 的上限？","options":["節省硬碟空間","防止客戶端一次請求過多資料，導致伺服器記憶體和頻寬耗盡","HTTP 規範要求","讓分頁 UI 好看"],"answer":1,"explanation":"不限制 pageSize 的話，客戶端可以傳 pageSize=1000000 一次撈全部資料，造成伺服器資源耗盡。常見上限為 100。"}' />
+
+## 重點整理
+
+<Callout type="tip" title="一句話記住">
+**分頁 = 把大資料切小塊，Cursor 效能好、Offset 能跳頁。** 口訣：「即時用 Cursor，跳頁用 Offset」
+</Callout>
+
+| 概念 | 說明 |
+|------|------|
+| **Offset 分頁** | `page` + `pageSize`，簡單但深層效能差 |
+| **Cursor 分頁** | 用上一筆的標識定位，效能穩定但不能跳頁 |
+| **過濾** | 查詢參數篩選，如 `?status=active` |
+| **排序** | `?sort=field` 升序、`?sort=-field` 降序 |
+| **防護** | 限制 pageSize 上限，必須回傳 Metadata |

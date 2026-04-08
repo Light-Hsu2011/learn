@@ -1,0 +1,258 @@
+---
+title: "Observability Fundamentals"
+order: 1
+description: "可觀測性三支柱：Logs、Metrics、Traces 的核心概念"
+difficulty: "easy"
+interviewImportance: 4
+related:
+  - "observability/structured-logging"
+  - "observability/distributed-tracing"
+---
+
+# Observability Fundamentals（可觀測性基礎）
+
+<ELI5>
+你帶小孩去醫院看病，醫生有三種工具來了解身體狀況：
+
+- **日誌（Logs）**：像「病歷紀錄」— 記錄每次發生了什麼事（「3 月 5 日發燒 38.5 度」）
+- **指標（Metrics）**：像「體溫計和血壓計」— 持續量測數字，看趨勢和警戒值（「體溫從 37 升到 39」）
+- **追蹤（Traces）**：像「做全身健檢」— 追蹤一個症狀經過了哪些器官，找出問題在哪一環（「肚子痛 → 胃 → 腸 → 原來是闌尾」）
+
+可觀測性就是讓你的系統像透明人一樣，隨時知道內部發生了什麼。
+</ELI5>
+
+## 是什麼？
+
+**Observability（可觀測性）** 是指從系統的外部輸出（Logs、Metrics、Traces）來理解系統內部狀態的能力。它不只是「監控」，而是能回答**你事先沒有預想到的問題**。
+
+<Callout type="info" title="Monitoring vs Observability">
+**Monitoring**（監控）回答「系統是否正常」— 預先定義好的指標和告警。**Observability**（可觀測性）回答「系統為什麼不正常」— 能夠根據輸出追溯任何問題的根因。Observability 包含 Monitoring，但範圍更廣。
+</Callout>
+
+## 核心觀念
+
+### 三支柱比較
+
+| 支柱 | 資料型態 | 問什麼問題 | 典型工具 |
+|------|----------|-----------|---------|
+| **Logs** | 離散事件文字 | 「發生了什麼？」 | ELK、Loki、CloudWatch |
+| **Metrics** | 時間序列數值 | 「趨勢如何？有沒有異常？」 | Prometheus、Datadog、CloudWatch |
+| **Traces** | 請求的完整路徑 | 「這個請求經過了哪些服務？慢在哪裡？」 | Jaeger、Zipkin、Tempo |
+
+### Logs — 事件紀錄
+
+- **用途**：記錄離散事件的詳細資訊
+- **格式**：結構化 JSON 優於純文字（方便查詢和分析）
+- **等級**：DEBUG、INFO、WARN、ERROR、FATAL
+- **挑戰**：量大、儲存成本高、需要有效的查詢機制
+
+### Metrics — 數值指標
+
+- **用途**：量化系統行為的趨勢和分布
+- **類型**：Counter（累計值）、Gauge（瞬時值）、Histogram（分布）
+- **優勢**：儲存效率高（壓縮後的時間序列）、適合告警和 Dashboard
+- **挑戰**：只有聚合數據，看不到個別事件的細節
+
+### Traces — 分散式追蹤
+
+- **用途**：追蹤一個請求在多個服務間的完整路徑
+- **組成**：一個 Trace 包含多個 Span，每個 Span 代表一個操作
+- **核心**：Trace ID 在所有服務間傳遞，串連整條鏈路
+- **挑戰**：實作成本高、取樣策略影響可見性
+
+## 常見誤區
+
+<Callout type="warning" title="常犯錯誤">
+- 只有 Logs 沒有 Metrics（無法快速發現趨勢和異常）
+- 只有 Metrics 沒有 Logs（知道有問題但找不到根因）
+- Log 等級全用 INFO（失去了等級區分的意義，無法過濾重要資訊）
+- Trace 取樣率設為 100%（在高流量系統中會產生巨大的儲存和效能負擔）
+</Callout>
+
+## 執行流程
+
+<StepDiagram data='[{"title":"定義 SLI/SLO","description":"先定義什麼是「正常」— 延遲、錯誤率、可用性的目標值","icon":"1"},{"title":"埋設 Instrumentation","description":"在程式碼中加入 Log、Metrics、Tracing 的埋點","icon":"2"},{"title":"收集與儲存","description":"用 Agent/Collector 收集資料，送到對應的儲存後端","icon":"3"},{"title":"視覺化","description":"建立 Dashboard 展示關鍵指標和趨勢","icon":"4"},{"title":"告警與回應","description":"設定告警規則，異常時自動通知 on-call 人員","icon":"5"}]' />
+
+流程解讀：可觀測性的建立從定義「正常」開始。SLI（Service Level Indicator）定義量測什麼，SLO（Service Level Objective）定義目標值。有了標準才知道什麼時候該告警。Instrumentation 是在程式碼中埋入「感測器」，收集三種信號。資料經過 Collector 送到各自的儲存後端，透過 Dashboard 視覺化，最終設定告警在異常時通知團隊。
+
+## 程式碼範例
+
+### C# 版本
+
+```csharp
+// OpenTelemetry — 統一的 Instrumentation 框架
+using OpenTelemetry.Trace;
+using OpenTelemetry.Metrics;
+using OpenTelemetry.Logs;
+
+var builder = WebApplication.CreateBuilder(args);
+
+// Tracing
+builder.Services.AddOpenTelemetry()
+    .WithTracing(tracing => tracing
+        .AddAspNetCoreInstrumentation()
+        .AddHttpClientInstrumentation()
+        .AddOtlpExporter())
+    .WithMetrics(metrics => metrics
+        .AddAspNetCoreInstrumentation()
+        .AddRuntimeInstrumentation()
+        .AddOtlpExporter());
+
+// Logging（Serilog 結構化日誌）
+builder.Host.UseSerilog((ctx, config) => config
+    .WriteTo.Console(new JsonFormatter())
+    .Enrich.FromLogContext()
+    .Enrich.WithProperty("ServiceName", "order-service"));
+
+// 自訂 Metrics
+var orderCounter = Meter.CreateCounter<int>("orders.placed.total");
+var orderDuration = Meter.CreateHistogram<double>("orders.processing.duration.ms");
+
+app.MapPost("/api/orders", async (OrderRequest req) =>
+{
+    using var activity = ActivitySource.StartActivity("PlaceOrder");
+    activity?.SetTag("customer.id", req.CustomerId);
+
+    var sw = Stopwatch.StartNew();
+    var order = await ProcessOrder(req);
+    sw.Stop();
+
+    orderCounter.Add(1, new("status", "success"));
+    orderDuration.Record(sw.ElapsedMilliseconds);
+    logger.LogInformation("Order {OrderId} placed for {CustomerId}",
+        order.Id, req.CustomerId);
+
+    return Results.Ok(order);
+});
+```
+
+### TypeScript 版本
+
+```typescript
+import { NodeSDK } from "@opentelemetry/sdk-node";
+import { getNodeAutoInstrumentations } from "@opentelemetry/auto-instrumentations-node";
+import pino from "pino";
+
+// OpenTelemetry 初始化
+const sdk = new NodeSDK({
+  serviceName: "order-service",
+  instrumentations: [getNodeAutoInstrumentations()],
+});
+sdk.start();
+
+// 結構化日誌
+const logger = pino({
+  level: "info",
+  formatters: {
+    level: (label) => ({ level: label }),
+  },
+});
+
+// 自訂 Metrics
+import { metrics } from "@opentelemetry/api";
+const meter = metrics.getMeter("order-service");
+const orderCounter = meter.createCounter("orders.placed.total");
+const orderDuration = meter.createHistogram("orders.processing.duration.ms");
+
+app.post("/api/orders", async (req, res) => {
+  const start = Date.now();
+  try {
+    const order = await processOrder(req.body);
+    orderCounter.add(1, { status: "success" });
+    logger.info({ orderId: order.id, customerId: req.body.customerId },
+      "Order placed successfully");
+    res.json(order);
+  } catch (error) {
+    orderCounter.add(1, { status: "error" });
+    logger.error({ error: error.message }, "Order placement failed");
+    res.status(500).json({ error: "Failed to place order" });
+  } finally {
+    orderDuration.record(Date.now() - start);
+  }
+});
+```
+
+### Python 版本
+
+```python
+import structlog
+from opentelemetry import trace, metrics
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.metrics import MeterProvider
+import time
+
+# 結構化日誌
+logger = structlog.get_logger()
+
+# Tracing
+tracer = trace.get_tracer("order-service")
+
+# Metrics
+meter = metrics.get_meter("order-service")
+order_counter = meter.create_counter("orders.placed.total")
+order_duration = meter.create_histogram("orders.processing.duration.ms")
+
+@app.post("/api/orders")
+async def place_order(request: OrderRequest):
+    with tracer.start_as_current_span("place_order") as span:
+        span.set_attribute("customer.id", request.customer_id)
+        start = time.time()
+
+        try:
+            order = await process_order(request)
+            order_counter.add(1, {"status": "success"})
+            logger.info("order_placed",
+                order_id=order.id,
+                customer_id=request.customer_id)
+            return order
+        except Exception as e:
+            order_counter.add(1, {"status": "error"})
+            span.record_exception(e)
+            logger.error("order_failed", error=str(e))
+            raise
+        finally:
+            duration = (time.time() - start) * 1000
+            order_duration.record(duration)
+```
+
+## 結構圖
+
+<Diagram data='{"nodes":[{"id":"app","label":"Application","type":"default"},{"id":"otel","label":"OpenTelemetry Collector","type":"highlight"},{"id":"logs","label":"Log Storage (Loki/ELK)","type":"default"},{"id":"metrics","label":"Metrics Storage (Prometheus)","type":"default"},{"id":"traces","label":"Trace Storage (Jaeger)","type":"default"},{"id":"grafana","label":"Grafana Dashboard","type":"default"},{"id":"alert","label":"Alertmanager","type":"muted"}],"edges":[{"from":"app","to":"otel","label":"OTLP"},{"from":"otel","to":"logs","label":"logs"},{"from":"otel","to":"metrics","label":"metrics"},{"from":"otel","to":"traces","label":"traces"},{"from":"logs","to":"grafana","label":"visualize"},{"from":"metrics","to":"grafana","label":"visualize"},{"from":"traces","to":"grafana","label":"visualize"},{"from":"metrics","to":"alert","label":"alert rules"}]}' />
+
+圖中 Application 透過 OTLP 協定將三種信號送到 OpenTelemetry Collector。Collector 將資料分發到各自的儲存後端：Loki 存 Logs、Prometheus 存 Metrics、Jaeger 存 Traces。Grafana 作為統一的 Dashboard 從三個後端讀取資料進行視覺化。Alertmanager 根據 Metrics 的告警規則觸發通知。
+
+## 面試常見問題
+
+**Q: Logs、Metrics、Traces 各自最適合回答什麼問題？**
+
+A: Logs 回答「發生了什麼」— 具體的事件細節和上下文。Metrics 回答「趨勢如何」— 錯誤率是否上升、延遲分布是否異常。Traces 回答「問題在哪裡」— 一個慢請求到底卡在哪個服務的哪個操作。三者結合才能完整回答「為什麼系統不正常」。
+
+**Q: 什麼是 OpenTelemetry？為什麼它重要？**
+
+A: OpenTelemetry（OTel）是 CNCF 的開源 observability 框架，提供統一的 API 和 SDK 來產生 Logs、Metrics、Traces。它是 vendor-neutral 的，程式碼中只用 OTel API，底層可以切換任何 backend（Jaeger、Datadog、New Relic）。避免了 vendor lock-in。
+
+**Q: SLI、SLO、SLA 的差別？**
+
+A: SLI（Service Level Indicator）是量測指標本身，例如「P99 延遲」。SLO（Service Level Objective）是內部的目標，例如「P99 延遲小於 200ms」。SLA（Service Level Agreement）是和客戶的合約承諾，例如「月可用性 99.9%，未達到退費 10%」。SLI 量測 → SLO 設目標 → SLA 簽合約。
+
+## 理解測驗
+
+<Quiz data='{"question":"以下哪個最適合用來追蹤一個請求在多個微服務間的完整路徑？","options":["Logs","Metrics","Traces","Error Tracking"],"answer":2,"explanation":"Traces 專門用來追蹤一個請求跨越多個服務的完整路徑。透過 Trace ID 將所有服務的 Span 串連起來，找出延遲瓶頸和錯誤發生點。"}' />
+
+<Quiz data='{"question":"Metrics 的三種主要類型是什麼？","options":["INFO、WARN、ERROR","Counter、Gauge、Histogram","CPU、Memory、Disk","Request、Response、Error"],"answer":1,"explanation":"Counter 是只增不減的累計值（如請求總數），Gauge 是可增可減的瞬時值（如記憶體使用量），Histogram 記錄數值的分布（如延遲的百分位數）。"}' />
+
+<Quiz data='{"question":"Monitoring 和 Observability 的核心差異是什麼？","options":["Monitoring 比較貴","Observability 只用 Traces","Monitoring 回答已知問題，Observability 能探索未知問題","兩者沒有差別"],"answer":2,"explanation":"Monitoring 是預先定義好的指標和告警，回答「系統是否正常」。Observability 能從系統的輸出（Logs/Metrics/Traces）探索任何問題的根因，包括你事先沒預想到的問題。"}' />
+
+## 重點整理
+
+<Callout type="tip" title="一句話記住">
+**Observability = Logs + Metrics + Traces，讓系統變透明。** 口訣：「Log 記事件，Metrics 看趨勢，Trace 追鏈路」
+</Callout>
+
+| 概念 | 說明 |
+|------|------|
+| **Logs** | 離散事件紀錄，回答「發生了什麼」 |
+| **Metrics** | 時間序列數值，回答「趨勢如何」 |
+| **Traces** | 請求路徑追蹤，回答「慢在哪裡」 |
+| **OpenTelemetry** | 統一的 observability 框架（vendor-neutral） |
+| **核心目的** | 能從外部輸出理解系統內部狀態 |

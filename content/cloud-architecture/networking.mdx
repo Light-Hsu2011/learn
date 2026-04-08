@@ -1,0 +1,248 @@
+---
+title: "雲端網路架構"
+order: 4
+description: "VNet、Subnet、NSG、Load Balancer 的核心概念與設計"
+difficulty: "hard"
+interviewImportance: 3
+related:
+  - "system-design/core-components"
+  - "security/csrf-and-cors"
+---
+
+# 雲端網路架構（Cloud Networking）
+
+<ELI5>
+想像你在蓋一個社區：
+
+- **VNet（虛擬網路）**= 整個社區的圍牆，把你的房子和外面隔開
+- **Subnet（子網路）**= 社區裡的不同區域 — 住宅區、商業區、倉庫區，各有不同的規則
+- **NSG（網路安全群組）**= 每個區域門口的保全，決定誰能進、誰不能進
+- **Load Balancer（負載均衡器）**= 社區大門口的接待員，把訪客平均分配到不同的接待室
+
+雲端網路就是用這些元件搭建你的應用程式的「私人社區」。
+</ELI5>
+
+## 是什麼？
+
+雲端網路架構定義了雲端資源之間以及和外部的通訊方式。VNet 提供隔離的網路環境、Subnet 劃分區域、NSG 控制流量、Load Balancer 分散請求。正確的網路設計是安全和效能的基礎。
+
+<Callout type="info" title="零信任架構">
+現代雲端網路設計遵循**零信任原則（Zero Trust）**— 不信任任何人（包括內網），每次存取都驗證身份和權限。不是「進了內網就安全」，而是「每一步都要驗證」。
+</Callout>
+
+## 核心觀念
+
+- **VNet（Virtual Network）**：雲端中的私有網路空間，類似企業的區域網路。資源放在 VNet 內才能互相通訊。不同 VNet 預設隔離
+- **Subnet（子網路）**：VNet 內的區域劃分。通常分 Public Subnet（可被外部存取）和 Private Subnet（只能內部存取）
+- **NSG（Network Security Group）**：附加在 Subnet 或 NIC 上的防火牆規則。定義 Inbound / Outbound 的允許和拒絕規則
+- **Load Balancer**：將流量分配到多個後端實例。L4（TCP/UDP 層級）和 L7（HTTP 層級 / Application Gateway）兩種
+- **Private Endpoint**：讓 PaaS 服務（如 SQL Database、Storage）透過私有 IP 存取，流量不經過公共網路
+
+## 常見誤區
+
+<Callout type="warning" title="常見誤區">
+- **把資料庫放在 Public Subnet**：資料庫必須放在 Private Subnet，只允許 App Subnet 存取。直接暴露在公網是重大安全漏洞
+- **NSG 設定太寬鬆**：`0.0.0.0/0` 允許所有 IP 存取是偷懶做法。Production 環境必須限制來源 IP 或 Subnet
+- **忽略 VNet Peering 的傳遞性**：VNet A 對 B 建立 Peering，B 對 C 建立 Peering，A 和 C 之間不會自動通。需要另外建立 A-C 的 Peering
+</Callout>
+
+## 流程/步驟
+
+<StepDiagram data='[{"title":"規劃 IP 位址空間","description":"為 VNet 和 Subnet 規劃不重疊的 CIDR 範圍","icon":"1"},{"title":"建立 VNet 和 Subnet","description":"依功能分區：Web Subnet、App Subnet、DB Subnet","icon":"2"},{"title":"設定 NSG 規則","description":"最小權限原則 — 只開放必要的 Port 和來源","icon":"3"},{"title":"設定 Load Balancer","description":"Web 層前面加 L7 LB，分散流量到多個實例","icon":"4"},{"title":"設定 Private Endpoint","description":"PaaS 服務（DB、Storage）走私有網路存取","icon":"5"},{"title":"設定監控和日誌","description":"開啟 NSG Flow Logs、Network Watcher 監控流量","icon":"6"}]' />
+
+流程解讀：從 IP 規劃開始，避免 Subnet 之間的 IP 衝突。依功能分區後，每個 Subnet 附加 NSG 控制存取權限。Web 層前加 Load Balancer 分散流量。PaaS 服務用 Private Endpoint 確保流量走私有網路。
+
+## 程式碼範例
+
+### C# 版本
+
+```csharp
+// Bicep — 定義 VNet + Subnet + NSG
+```
+
+```bicep
+// network.bicep
+param location string = resourceGroup().location
+
+// NSG — Web 層只開放 443
+resource webNsg 'Microsoft.Network/networkSecurityGroups@2023-05-01' = {
+  name: 'web-nsg'
+  location: location
+  properties: {
+    securityRules: [
+      {
+        name: 'AllowHTTPS'
+        properties: {
+          priority: 100
+          direction: 'Inbound'
+          access: 'Allow'
+          protocol: 'Tcp'
+          sourceAddressPrefix: '*'
+          destinationPortRange: '443'
+          sourcePortRange: '*'
+          destinationAddressPrefix: '*'
+        }
+      }
+      {
+        name: 'DenyAllInbound'
+        properties: {
+          priority: 4096
+          direction: 'Inbound'
+          access: 'Deny'
+          protocol: '*'
+          sourceAddressPrefix: '*'
+          destinationPortRange: '*'
+          sourcePortRange: '*'
+          destinationAddressPrefix: '*'
+        }
+      }
+    ]
+  }
+}
+
+// VNet + Subnets
+resource vnet 'Microsoft.Network/virtualNetworks@2023-05-01' = {
+  name: 'main-vnet'
+  location: location
+  properties: {
+    addressSpace: { addressPrefixes: ['10.0.0.0/16'] }
+    subnets: [
+      { name: 'web-subnet', properties: { addressPrefix: '10.0.1.0/24', networkSecurityGroup: { id: webNsg.id } } }
+      { name: 'app-subnet', properties: { addressPrefix: '10.0.2.0/24' } }
+      { name: 'db-subnet',  properties: { addressPrefix: '10.0.3.0/24' } }
+    ]
+  }
+}
+```
+
+### TypeScript 版本
+
+```hcl
+# Terraform — AWS VPC + Subnet + Security Group
+resource "aws_vpc" "main" {
+  cidr_block = "10.0.0.0/16"
+  tags       = { Name = "main-vpc" }
+}
+
+resource "aws_subnet" "public" {
+  vpc_id            = aws_vpc.main.id
+  cidr_block        = "10.0.1.0/24"
+  availability_zone = "us-east-1a"
+  tags              = { Name = "public-subnet" }
+}
+
+resource "aws_subnet" "private" {
+  vpc_id            = aws_vpc.main.id
+  cidr_block        = "10.0.2.0/24"
+  availability_zone = "us-east-1a"
+  tags              = { Name = "private-subnet" }
+}
+
+# Security Group — 只開放 443
+resource "aws_security_group" "web" {
+  vpc_id = aws_vpc.main.id
+
+  ingress {
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+}
+
+# ALB — Application Load Balancer
+resource "aws_lb" "web" {
+  name               = "web-alb"
+  load_balancer_type = "application"
+  subnets            = [aws_subnet.public.id]
+  security_groups    = [aws_security_group.web.id]
+}
+```
+
+### Python 版本
+
+```python
+# Pulumi — Azure VNet
+import pulumi_azure_native as azure
+
+# VNet
+vnet = azure.network.VirtualNetwork(
+    "main-vnet",
+    resource_group_name=rg.name,
+    address_space=azure.network.AddressSpaceArgs(
+        address_prefixes=["10.0.0.0/16"]
+    ),
+)
+
+# Web Subnet
+web_subnet = azure.network.Subnet(
+    "web-subnet",
+    resource_group_name=rg.name,
+    virtual_network_name=vnet.name,
+    address_prefix="10.0.1.0/24",
+    network_security_group=azure.network.NetworkSecurityGroupArgs(id=web_nsg.id),
+)
+
+# Private Endpoint for SQL Database
+private_endpoint = azure.network.PrivateEndpoint(
+    "sql-private-endpoint",
+    resource_group_name=rg.name,
+    subnet=azure.network.SubnetArgs(id=db_subnet.id),
+    private_link_service_connections=[
+        azure.network.PrivateLinkServiceConnectionArgs(
+            name="sql-connection",
+            private_link_service_id=sql_server.id,
+            group_ids=["sqlServer"],
+        )
+    ],
+)
+```
+
+## 架構圖/概念圖
+
+<Diagram data='{"nodes":[{"id":"internet","label":"Internet","type":"muted"},{"id":"lb","label":"Load Balancer","type":"highlight"},{"id":"web","label":"Web Subnet (10.0.1.0/24)","type":"default"},{"id":"app","label":"App Subnet (10.0.2.0/24)","type":"default"},{"id":"db","label":"DB Subnet (10.0.3.0/24)","type":"default"},{"id":"nsg","label":"NSG Rules","type":"muted"}],"edges":[{"from":"internet","to":"lb","label":"HTTPS only"},{"from":"lb","to":"web","label":"port 443"},{"from":"web","to":"app","label":"port 8080"},{"from":"app","to":"db","label":"port 5432"},{"from":"nsg","to":"web","label":"controls"},{"from":"nsg","to":"db","label":"controls"}]}' />
+
+流量從 Internet 經過 Load Balancer 進入 Web Subnet。Web 和 App 之間透過內部 Port 通訊。DB Subnet 只允許 App Subnet 存取。NSG 在每個 Subnet 層級控制流量進出規則。
+
+## 實戰補充
+
+**Q: IP 位址空間怎麼規劃？**
+
+A: VNet 用 `/16`（65,536 個 IP），每個 Subnet 用 `/24`（256 個 IP）。預留空間給未來擴展。避免用 `10.0.0.0/24`（太容易和其他 VNet 衝突）。多個 VNet 之間的 CIDR 不能重疊。
+
+**Q: L4 和 L7 Load Balancer 怎麼選？**
+
+A: **L4**：基於 TCP/UDP 轉發，不解析 HTTP 內容，效能最高。適合非 HTTP 服務。**L7**：解析 HTTP 內容，支援 Path-based Routing、SSL Termination、WAF。Web API 幾乎都用 L7。
+
+**Q: 什麼時候需要 Private Endpoint？**
+
+A: 所有 Production 環境的 PaaS 服務都建議用 Private Endpoint。讓 SQL Database、Storage、Key Vault 等服務只能從你的 VNet 內存取，流量不經過公共網路。
+
+## 理解測驗
+
+<Quiz data='{"question":"為什麼資料庫不應該放在 Public Subnet？","options":["Public Subnet 比較貴","Public Subnet 比較慢","資料庫直接暴露在公網是重大安全漏洞，應放在 Private Subnet 並限制存取來源","Public Subnet 容量不夠"],"answer":2,"explanation":"Public Subnet 的資源可被 Internet 直接存取。資料庫放在 Private Subnet，只允許 App Subnet 的特定 Port 存取，大幅降低被攻擊的風險。"}' />
+
+<Quiz data='{"question":"NSG 的 Deny All Inbound 規則的優先級應該設為多少？","options":["1（最高優先級）","100","4096（最低優先級）","沒有關係"],"answer":2,"explanation":"NSG 規則按優先級數字由小到大匹配。DenyAll 放在最低優先級（如 4096），確保前面的 Allow 規則先生效，沒有匹配到的流量才被拒絕。"}' />
+
+<Quiz data='{"question":"VNet Peering 有傳遞性嗎？","options":["有，A-B 通且 B-C 通則 A-C 自動通","沒有，A-C 之間需要另外建立 Peering","取決於設定","只有同 Region 才有"],"answer":1,"explanation":"VNet Peering 不具傳遞性。即使 A-B 和 B-C 都有 Peering，A 和 C 之間不會自動通訊，必須另外建立 A-C 的 Peering。"}' />
+
+## 重點整理
+
+<Callout type="tip" title="一句話記住">
+**VNet 隔離環境、Subnet 分區、NSG 管進出、LB 分流量。** 口訣：「Public 放前端、Private 藏後端、NSG 顧門口」
+</Callout>
+
+| 元件 | 功能 | 類比 |
+|------|------|------|
+| **VNet** | 私有網路空間 | 社區圍牆 |
+| **Subnet** | 網路區域劃分 | 社區分區 |
+| **NSG** | 流量進出控制 | 區域保全 |
+| **Load Balancer** | 流量分配 | 接待員 |
+| **Private Endpoint** | PaaS 私有存取 | 內部通道 |

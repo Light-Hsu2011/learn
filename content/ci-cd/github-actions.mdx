@@ -1,0 +1,237 @@
+---
+title: "GitHub Actions 實戰"
+order: 2
+description: "YAML 語法、常用 Action 與實務 Workflow 設計"
+difficulty: "medium"
+interviewImportance: 4
+related:
+  - "ci-cd/ci-cd-fundamentals"
+  - "ci-cd/testing-in-pipeline"
+---
+
+# GitHub Actions 實戰
+
+<ELI5>
+想像你有一個機器人管家：
+
+- 你跟他說：「每次我把衣服丟進洗衣籃（push code），你就**自動洗衣服（build）、烘乾（test）、摺好放進衣櫃（deploy）**」
+- 你還可以跟他說：「如果衣服有破洞（test failed），就別摺了，直接告訴我」
+
+GitHub Actions 就是 GitHub 內建的「機器人管家」，你用 YAML 檔告訴他什麼時候做什麼事。
+</ELI5>
+
+## 是什麼？
+
+GitHub Actions 是 GitHub 內建的 CI/CD 平台，透過 YAML 檔定義自動化工作流程（Workflow）。當特定事件（push、PR、排程等）發生時，自動執行定義好的步驟。
+
+<Callout type="info" title="免費額度">
+GitHub 公開 repo 免費無限使用。私有 repo 每月有 2,000 分鐘的免費額度（Free plan），Linux Runner 最便宜，Windows 和 macOS 耗用倍率較高。
+</Callout>
+
+## 核心觀念
+
+- **Workflow**：一個 YAML 檔定義一個自動化流程，放在 `.github/workflows/` 目錄下
+- **Trigger（on）**：觸發 Workflow 的事件 — `push`、`pull_request`、`schedule`、`workflow_dispatch`（手動觸發）
+- **Job**：Workflow 中的工作單元，預設並行執行。可用 `needs` 設定依賴順序
+- **Step**：Job 中的每個執行步驟，可以是 `run`（執行命令）或 `uses`（使用現成的 Action）
+- **Action**：可重用的步驟封裝，從 GitHub Marketplace 取得或自己寫。如 `actions/checkout@v4`、`actions/setup-node@v4`
+- **Runner**：執行 Job 的機器，GitHub 提供 hosted runner，也可以用 self-hosted runner
+
+## 常見誤區
+
+<Callout type="warning" title="常見誤區">
+- **不用 Cache**：每次 Pipeline 都重新下載 node_modules 或 NuGet packages，浪費 5-10 分鐘。用 `actions/cache` 快取依賴
+- **把 Secret 寫在 YAML 裡**：密碼、API Key 必須存在 GitHub Secrets 中，用 `secrets.MY_SECRET` 引用
+- **所有 Job 都串行**：互不依賴的 Job（如 lint、test、build）應該並行執行，減少總時間
+</Callout>
+
+## 流程/步驟
+
+<StepDiagram data='[{"title":"建立 Workflow 檔案","description":"在 .github/workflows/ 建立 YAML 檔","icon":"1"},{"title":"定義觸發條件","description":"設定 on: push/pull_request 等事件","icon":"2"},{"title":"設定 Runner","description":"選擇 ubuntu-latest / windows-latest 等環境","icon":"3"},{"title":"撰寫 Steps","description":"用 uses 引用 Action、用 run 執行命令","icon":"4"},{"title":"設定 Secrets 和 Cache","description":"敏感資訊用 Secrets、依賴用 Cache 加速","icon":"5"},{"title":"測試和除錯","description":"推送後在 Actions 頁面查看執行結果和 Log","icon":"6"}]' />
+
+流程解讀：建立 YAML 檔案定義 Workflow，設定觸發條件和執行環境。Steps 中混合使用現成 Action 和自訂命令。Secrets 保護敏感資訊，Cache 加速執行。推送後在 GitHub Actions 頁面即時查看結果。
+
+## 程式碼範例
+
+### C# 版本
+
+```csharp
+// .github/workflows/dotnet-ci.yml
+// 以下是 YAML 內容（用 C# 專案為例）
+```
+
+```yaml
+name: .NET CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ hashFiles('**/*.csproj') }}
+
+      - name: Restore
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build --no-restore
+
+      - name: Test
+        run: dotnet test --no-build --verbosity normal --collect:"XPlat Code Coverage"
+
+      - name: Publish
+        if: github.ref == 'refs/heads/main'
+        run: dotnet publish -c Release -o ./publish
+```
+
+### TypeScript 版本
+
+```yaml
+# .github/workflows/node-ci.yml
+name: Node.js CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - run: npm run lint
+
+  test:
+    runs-on: ubuntu-latest
+    needs: lint  # lint 通過才跑 test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - run: npm test -- --coverage
+      - name: Upload coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: coverage/
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: test
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+      - run: echo "Deploying to production..."
+```
+
+### Python 版本
+
+```yaml
+# .github/workflows/python-ci.yml
+name: Python CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.11', '3.12']
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Lint
+        run: ruff check .
+
+      - name: Test
+        run: pytest --cov=app --cov-report=xml
+
+      - name: Upload coverage
+        uses: codecov/codecov-action@v4
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+```
+
+## 架構圖/概念圖
+
+<Diagram data='{"nodes":[{"id":"event","label":"Event (push/PR)","type":"muted"},{"id":"workflow","label":"Workflow (YAML)","type":"highlight"},{"id":"job1","label":"Job: Lint","type":"default"},{"id":"job2","label":"Job: Test","type":"default"},{"id":"job3","label":"Job: Deploy","type":"default"},{"id":"runner","label":"GitHub Hosted Runner","type":"muted"}],"edges":[{"from":"event","to":"workflow","label":"triggers"},{"from":"workflow","to":"job1","label":"parallel"},{"from":"workflow","to":"job2","label":"parallel"},{"from":"job1","to":"job3","label":"needs"},{"from":"job2","to":"job3","label":"needs"},{"from":"job1","to":"runner","label":"runs on"},{"from":"job2","to":"runner","label":"runs on"}]}' />
+
+Event 觸發 Workflow，Workflow 啟動多個 Job。Lint 和 Test 可以並行跑在不同 Runner 上，Deploy 透過 `needs` 等待前兩個 Job 完成後才執行。
+
+## 實戰補充
+
+**Q: 如何加速 Pipeline？**
+
+A: (1) 用 `actions/cache` 快取 npm/NuGet/pip 依賴。(2) 用 `matrix` 並行跑多個版本。(3) 用 `paths` 過濾 — 只有相關檔案改動才觸發。(4) 用 `concurrency` 取消同一分支上前一次還在跑的 Workflow。
+
+**Q: GitHub Secrets 怎麼用？**
+
+A: 在 Repository Settings → Secrets and variables → Actions 中新增。YAML 中用 `${{ secrets.SECRET_NAME }}` 引用。Secrets 在 log 中會被自動遮罩。永遠不要在 YAML 中硬寫敏感資訊。
+
+**Q: self-hosted runner 什麼時候用？**
+
+A: 需要特殊硬體（GPU）、需要存取內網資源、Pipeline 分鐘數超過免費額度、或需要更大的 Runner 規格時使用。注意安全風險 — 公開 repo 不建議用 self-hosted runner。
+
+## 理解測驗
+
+<Quiz data='{"question":"GitHub Actions 的 Workflow 檔案應該放在哪個目錄？","options":["根目錄","src/workflows/",".github/workflows/",".ci/"],"answer":2,"explanation":"GitHub Actions 約定 Workflow YAML 檔放在 .github/workflows/ 目錄下，GitHub 會自動偵測並執行。"}' />
+
+<Quiz data='{"question":"兩個 Job 之間沒有設定 needs，它們會怎麼執行？","options":["按順序執行","並行執行","隨機選一個執行","報錯"],"answer":1,"explanation":"GitHub Actions 的 Job 預設並行執行。只有設定了 needs 的 Job 才會等待依賴的 Job 完成。"}' />
+
+<Quiz data='{"question":"為什麼不應該在 YAML 中直接寫 API Key？","options":["YAML 不支援","YAML 檔會進版控，任何有 repo 存取權的人都能看到","會讓 Pipeline 變慢","GitHub 不允許"],"answer":1,"explanation":"YAML 檔在 Git 歷史中永久保存，敏感資訊應存在 GitHub Secrets 中，用 secrets.NAME 引用。"}' />
+
+## 重點整理
+
+<Callout type="tip" title="一句話記住">
+**GitHub Actions = 用 YAML 告訴 GitHub 什麼時候自動做什麼事。** 口訣：「YAML 定義流程，Secrets 保護密鑰」
+</Callout>
+
+| 概念 | 說明 |
+|------|------|
+| **Workflow** | 一個 YAML 檔 = 一個自動化流程 |
+| **Trigger (on)** | push、PR、schedule、手動觸發 |
+| **Job** | 工作單元，預設並行，`needs` 串行 |
+| **Step** | `uses`（Action）或 `run`（命令） |
+| **Cache** | 快取依賴加速 Pipeline |
+| **Secrets** | 安全存儲敏感資訊 |

@@ -1,0 +1,272 @@
+---
+title: "AI in SDLC"
+order: 5
+description: "AI 輔助開發：Copilot、Code Review、Test Generation 實踐"
+difficulty: "easy"
+interviewImportance: 4
+related:
+  - "tdd/red-green-refactor"
+  - "ci-cd/testing-in-pipeline"
+---
+
+# AI in SDLC（AI 輔助開發）
+
+<ELI5>
+想像你是一個廚師，現在多了一個 AI 助手：
+
+- **做菜時**（寫程式）：你開始切菜，助手就猜到你要做什麼菜，提前幫你把調料備好（**Copilot 自動補全**）
+- **檢查品質時**（Code Review）：助手幫你試吃，告訴你「鹽太多」「火候不對」（**AI Code Review**）
+- **準備食材時**（寫測試）：助手根據食譜自動列出所有該準備的材料清單（**Test Generation**）
+
+AI 不會取代廚師，但能讓廚師更快、更少犯錯。
+</ELI5>
+
+## 是什麼？
+
+AI in SDLC 是將 AI 工具整合進軟體開發生命週期的每個階段：從需求分析、設計、編碼、測試到部署和維運，用 AI 加速開發效率並提升品質。
+
+<Callout type="info" title="生產力提升的數據">
+GitHub 的研究顯示，使用 Copilot 的開發者完成任務的速度**提升 55%**。但關鍵不是速度，而是 AI 讓開發者能專注在更有價值的思考（架構設計、業務邏輯），把重複性的工作交給 AI。
+</Callout>
+
+## 核心觀念
+
+### AI 在 SDLC 各階段的應用
+
+| 階段 | AI 應用 | 工具範例 |
+|------|---------|---------|
+| **需求分析** | 自然語言轉 User Story | ChatGPT、Claude |
+| **設計** | 架構建議、API 設計 | Claude、Cursor |
+| **編碼** | 自動補全、程式碼生成 | GitHub Copilot、Cursor、Claude Code |
+| **Code Review** | 自動化程式碼審查 | CodeRabbit、PR-Agent |
+| **測試** | 測試案例生成 | Copilot、Diffblue |
+| **文件** | 自動生成文件和註解 | Copilot、Mintlify |
+| **除錯** | 錯誤分析和修復建議 | Claude Code、Cursor |
+| **維運** | 日誌分析、事故摘要 | AI Ops tools |
+
+### AI Coding Assistant 的有效使用方式
+
+| 場景 | 適合 AI | 不適合 AI |
+|------|---------|-----------|
+| Boilerplate code | 重複性的 CRUD、DTO 轉換 | — |
+| 演算法實作 | 常見演算法的標準實作 | 需要創新的專利演算法 |
+| 測試撰寫 | Unit test、edge case 生成 | 整合測試的環境設定 |
+| 程式碼轉換 | 語言之間的翻譯 | 涉及框架特性的深度遷移 |
+| 除錯 | 分析 stack trace、解釋錯誤 | 涉及並發的 heisenbug |
+| — | — | 安全敏感的加密邏輯 |
+
+### AI Code Review 的檢查維度
+
+- **Bug Detection**：空指標、邊界條件、型別錯誤
+- **Security**：SQL Injection、XSS、硬編碼 secret
+- **Performance**：N+1 查詢、不必要的記憶體配置
+- **Code Style**：命名規範、函數長度、複雜度
+- **Best Practices**：設計模式、SOLID 原則
+
+## 常見誤區
+
+<Callout type="warning" title="常犯錯誤">
+- 盲目接受 AI 生成的程式碼（AI 會生成看起來正確但有邏輯錯誤的程式碼）
+- 用 AI 生成程式碼但不寫測試（AI 程式碼更需要測試驗證）
+- 將敏感程式碼貼到公開的 AI 服務（注意資料隱私和合規要求）
+- 以為 AI 能取代 Code Review（AI 找不到架構層面的問題和業務邏輯錯誤）
+</Callout>
+
+## 執行流程
+
+<StepDiagram data='[{"title":"描述意圖","description":"用自然語言描述你要實作什麼功能","icon":"1"},{"title":"AI 生成草稿","description":"Copilot/Claude 生成初版程式碼","icon":"2"},{"title":"人工審查","description":"仔細審查邏輯正確性、安全性、效能","icon":"3"},{"title":"AI 生成測試","description":"讓 AI 為這段程式碼生成 unit tests","icon":"4"},{"title":"驗證與修正","description":"執行測試，修正 AI 和人工的錯誤","icon":"5"}]' />
+
+流程解讀：AI 輔助開發的核心原則是「AI 起草，人類審查」。AI 擅長快速生成程式碼草稿，人類擅長判斷邏輯正確性和架構合理性。讓 AI 同時生成測試能提供額外的驗證層。最終的品質把關仍然是人類的責任 — AI 是加速器，不是替代品。
+
+## 程式碼範例
+
+### C# 版本
+
+```csharp
+// 場景：讓 AI 生成 Unit Test
+// 原始程式碼
+public class PriceCalculator
+{
+    public decimal CalculateDiscount(decimal price, string memberLevel)
+    {
+        return memberLevel switch
+        {
+            "gold" => price * 0.8m,
+            "silver" => price * 0.9m,
+            "bronze" => price * 0.95m,
+            _ => price
+        };
+    }
+}
+
+// AI 生成的測試（需要人工審查和補充）
+[TestClass]
+public class PriceCalculatorTests
+{
+    private readonly PriceCalculator _calculator = new();
+
+    [TestMethod]
+    public void GoldMember_Gets20PercentDiscount()
+    {
+        var result = _calculator.CalculateDiscount(100m, "gold");
+        Assert.AreEqual(80m, result);
+    }
+
+    [TestMethod]
+    public void UnknownLevel_NoDiscount()
+    {
+        var result = _calculator.CalculateDiscount(100m, "unknown");
+        Assert.AreEqual(100m, result);
+    }
+
+    [TestMethod]
+    public void ZeroPrice_ReturnsZero()
+    {
+        var result = _calculator.CalculateDiscount(0m, "gold");
+        Assert.AreEqual(0m, result);
+    }
+
+    // 人工補充：AI 可能遺漏的邊界案例
+    [TestMethod]
+    public void NegativePrice_ShouldThrow()
+    {
+        // AI 沒想到的：負數價格應該拋出例外
+        Assert.ThrowsException<ArgumentException>(
+            () => _calculator.CalculateDiscount(-100m, "gold"));
+    }
+}
+```
+
+### TypeScript 版本
+
+```typescript
+// 場景：AI 輔助 Code Review（自動化 PR 審查）
+// .github/workflows/ai-review.yml 概念
+
+interface ReviewComment {
+  file: string;
+  line: number;
+  severity: "critical" | "warning" | "suggestion";
+  message: string;
+  suggestedFix?: string;
+}
+
+async function aiCodeReview(diff: string): Promise<ReviewComment[]> {
+  const response = await client.messages.create({
+    model: "claude-sonnet-4-20250514",
+    max_tokens: 2000,
+    system: `你是一位資深程式碼審查員。審查以下 diff，找出：
+1. Bug 和邏輯錯誤 (critical)
+2. 安全漏洞 (critical)
+3. 效能問題 (warning)
+4. 程式碼風格建議 (suggestion)
+
+以 JSON 陣列格式回傳，每個元素包含 file, line, severity, message, suggestedFix。`,
+    messages: [{ role: "user", content: diff }],
+  });
+
+  return JSON.parse(response.content[0].text);
+}
+
+// AI 生成 Commit Message
+async function generateCommitMessage(diff: string): Promise<string> {
+  const response = await client.messages.create({
+    model: "claude-haiku-4-20250514",
+    max_tokens: 100,
+    system: "根據 git diff 生成簡潔的 commit message。格式：type: description（不超過 72 字元）",
+    messages: [{ role: "user", content: diff }],
+  });
+  return response.content[0].text;
+}
+```
+
+### Python 版本
+
+```python
+# 場景：AI 輔助除錯
+import anthropic
+import traceback
+
+client = anthropic.Anthropic()
+
+def ai_debug_assistant(error: Exception, code_context: str) -> str:
+    """當程式碼出錯時，讓 AI 分析原因並提供修復建議"""
+    error_info = {
+        "type": type(error).__name__,
+        "message": str(error),
+        "traceback": traceback.format_exc(),
+    }
+
+    response = client.messages.create(
+        model="claude-sonnet-4-20250514",
+        max_tokens=1000,
+        system="""你是一位 Python 除錯專家。分析錯誤並提供修復建議。
+
+輸出格式：
+1. 錯誤原因：（一句話）
+2. 根本問題：（為什麼會發生）
+3. 修復方案：（具體的程式碼修改）""",
+        messages=[{"role": "user", "content": f"""
+程式碼：
+```python
+{code_context}
+```
+
+錯誤：
+{error_info['type']}: {error_info['message']}
+
+Stack Trace:
+{error_info['traceback']}
+"""}],
+    )
+    return response.content[0].text
+
+# 使用
+try:
+    result = some_function()
+except Exception as e:
+    diagnosis = ai_debug_assistant(e, inspect.getsource(some_function))
+    print(diagnosis)
+```
+
+## 結構圖
+
+<Diagram data='{"nodes":[{"id":"dev","label":"Developer","type":"muted"},{"id":"copilot","label":"AI Copilot","type":"highlight"},{"id":"code","label":"Generated Code","type":"default"},{"id":"review","label":"AI Code Review","type":"default"},{"id":"test","label":"AI Test Generator","type":"default"},{"id":"ci","label":"CI Pipeline","type":"default"},{"id":"human","label":"Human Review","type":"highlight"}],"edges":[{"from":"dev","to":"copilot","label":"describe intent"},{"from":"copilot","to":"code","label":"generate draft"},{"from":"code","to":"review","label":"auto review"},{"from":"code","to":"test","label":"generate tests"},{"from":"review","to":"human","label":"findings"},{"from":"test","to":"ci","label":"run tests"},{"from":"human","to":"ci","label":"approve"}]}' />
+
+圖中 Developer 透過自然語言描述意圖，AI Copilot 生成程式碼草稿。Generated Code 同時送到 AI Code Review（自動找問題）和 AI Test Generator（自動生成測試）。Review 結果和測試結果彙整到 Human Review 做最終判斷，通過後進入 CI Pipeline。人類始終是最終決策者。
+
+## 面試常見問題
+
+**Q: AI 會取代開發者嗎？**
+
+A: 短期內不會。AI 擅長生成 boilerplate code、標準實作、測試案例，但不擅長架構決策、業務邏輯判斷、與 stakeholder 溝通。開發者的角色會從「寫每一行程式碼」轉向「設計、審查、整合、決策」。能有效使用 AI 工具的開發者會比不用的更有競爭力。
+
+**Q: 使用 AI 生成的程式碼有什麼風險？**
+
+A: 三大風險：(1) 正確性 — AI 會生成語法正確但邏輯錯誤的程式碼，必須測試驗證；(2) 安全性 — AI 可能生成有漏洞的程式碼（如沒有做 input validation）；(3) 智慧財產權 — AI 可能生成與開源專案相似的程式碼，需注意 license 問題。
+
+**Q: 團隊如何制定 AI 使用規範？**
+
+A: 定義允許和禁止的使用場景（如禁止將客戶資料貼到公開 AI 服務）。建立 AI 生成程式碼的 review checklist（比一般 PR 更嚴格）。強制 AI 生成的程式碼必須有測試覆蓋。選擇有企業級隱私保障的 AI 工具（如 GitHub Copilot Enterprise、Claude）。
+
+## 理解測驗
+
+<Quiz data='{"question":"AI 輔助開發的核心原則是什麼？","options":["完全信任 AI 生成的程式碼","AI 起草，人類審查","只在寫測試時用 AI","用 AI 取代 Code Review"],"answer":1,"explanation":"AI 擅長快速生成草稿，人類擅長判斷正確性和合理性。正確的做法是讓 AI 加速起草，人類做最終的品質把關。"}' />
+
+<Quiz data='{"question":"以下哪個場景最適合使用 AI Coding Assistant？","options":["設計系統架構","生成 CRUD 的 boilerplate code","處理高度敏感的加密邏輯","與客戶溝通需求"],"answer":1,"explanation":"重複性的 CRUD、DTO 轉換等 boilerplate code 是 AI 最擅長的場景。架構設計和安全加密仍需要人類的專業判斷。"}' />
+
+<Quiz data='{"question":"AI 生成的程式碼為什麼更需要測試？","options":["因為 AI 很慢","因為 AI 可能生成語法正確但邏輯錯誤的程式碼","因為測試很便宜","因為管理層要求"],"answer":1,"explanation":"AI 生成的程式碼可能看起來合理但有隱含的邏輯錯誤。開發者對 AI 程式碼的信任度往往比自己寫的高，反而更容易忽略問題。測試是驗證正確性的最佳手段。"}' />
+
+## 重點整理
+
+<Callout type="tip" title="一句話記住">
+**AI in SDLC = AI 加速 + 人類把關。** 口訣：「AI 寫草稿，人類審品質，測試驗正確」
+</Callout>
+
+| 概念 | 說明 |
+|------|------|
+| **AI Copilot** | 即時程式碼補全和生成 |
+| **AI Code Review** | 自動化找 bug、安全漏洞、效能問題 |
+| **AI Test Gen** | 根據程式碼自動生成測試案例 |
+| **核心原則** | AI 是加速器不是替代品 |
+| **風險管理** | 必須測試驗證、注意安全和隱私 |

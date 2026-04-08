@@ -1,0 +1,219 @@
+---
+title: "Well-Architected Framework"
+order: 8
+description: "雲端架構五大支柱的核心原則與評估方法"
+difficulty: "hard"
+interviewImportance: 4
+related:
+  - "system-design/scalability-basics"
+  - "security/owasp-top-10"
+---
+
+# Well-Architected Framework（WAF 五大支柱）
+
+<ELI5>
+想像你要蓋一棟大樓，建築師會從五個角度檢查設計：
+
+- **可靠性（Reliability）**：地震來了不會倒嗎？→ 系統掛了能自動恢復嗎？
+- **安全性（Security）**：小偷進得來嗎？→ 資料會被偷嗎？
+- **成本效益（Cost）**：花的錢值得嗎？→ 有沒有浪費雲端資源？
+- **效能（Performance）**：電梯夠快嗎？→ 使用者等太久嗎？
+- **卓越營運（Operations）**：管理員能高效管理嗎？→ 團隊能快速回應問題嗎？
+
+WAF 就是用這五個角度**體檢你的雲端架構**。
+</ELI5>
+
+## 是什麼？
+
+Well-Architected Framework 是由 AWS/Azure/GCP 各自發佈的雲端架構最佳實踐指南。核心是**五大支柱（Five Pillars）**，提供一套結構化的方法來評估和改善雲端架構。
+
+<Callout type="info" title="各雲端版本">
+AWS、Azure、GCP 各有自己的 WAF 版本，核心概念幾乎相同。Azure 的版本是 **Azure Well-Architected Framework**，AWS 是 **AWS Well-Architected Framework**。面試時通常問的是通用概念，不限特定雲端。
+</Callout>
+
+## 核心觀念
+
+- **Reliability（可靠性）**：系統在預期和非預期的情況下都能正常運作。包含高可用（HA）、災難復原（DR）、自動修復、容錯設計
+- **Security（安全性）**：保護資料和系統免受威脅。包含身份管理（IAM）、資料加密、網路隔離、合規性
+- **Cost Optimization（成本優化）**：用最少的花費達到業務目標。包含 Right-sizing、RI、Auto-Scaling、消除浪費
+- **Performance Efficiency（效能效率）**：根據需求選擇正確的資源類型和大小。包含 Auto-Scaling、快取策略、CDN、資料庫調優
+- **Operational Excellence（卓越營運）**：用自動化和最佳實踐高效運維。包含 IaC、CI/CD、監控告警、Incident Response
+
+## 常見誤區
+
+<Callout type="warning" title="常見誤區">
+- **只關注一個支柱**：五大支柱之間有取捨關係。追求極致安全可能影響效能和成本，追求最低成本可能犧牲可靠性。重點是**平衡**
+- **一次做完所有最佳實踐**：WAF 不是 Checklist，不需要一次全部做到。按業務優先級逐步改善
+- **只在建構時做 Review**：WAF Review 是持續性的，架構會演化，至少每季做一次 Review
+</Callout>
+
+## 流程/步驟
+
+<StepDiagram data='[{"title":"執行 WAF Review","description":"用官方的 Review Tool 評估現有架構","icon":"1"},{"title":"辨識弱點","description":"每個支柱給分，找出最薄弱的支柱","icon":"2"},{"title":"優先排序","description":"根據業務影響排序改善項目","icon":"3"},{"title":"制定改善計畫","description":"每個改善項目有明確的 Owner 和截止日","icon":"4"},{"title":"實施改善","description":"逐步執行，每次改善一個支柱的 1-2 個項目","icon":"5"},{"title":"定期重新評估","description":"每季重新做 WAF Review，追蹤改善進度","icon":"6"}]' />
+
+流程解讀：WAF Review 從評估現狀開始，用官方工具給各支柱打分。找出最薄弱的支柱後，根據業務影響排序改善項目。逐步實施改善，每季重新評估。WAF 是一個持續迴圈，不是一次性活動。
+
+## 程式碼範例
+
+### C# 版本
+
+```csharp
+// Reliability — Health Check + Circuit Breaker
+builder.Services.AddHealthChecks()
+    .AddDbContextCheck<AppDbContext>()
+    .AddRedis(config["Redis:Connection"]!)
+    .AddUrlGroup(new Uri("https://external-api.com/health"), "external-api");
+
+// Circuit Breaker（使用 Polly）
+builder.Services.AddHttpClient("ExternalApi")
+    .AddTransientHttpErrorPolicy(p =>
+        p.CircuitBreakerAsync(
+            handledEventsAllowedBeforeBreaking: 3,   // 3 次失敗就斷路
+            durationOfBreak: TimeSpan.FromSeconds(30) // 斷路 30 秒
+        ))
+    .AddTransientHttpErrorPolicy(p =>
+        p.WaitAndRetryAsync(3, retryAttempt =>
+            TimeSpan.FromSeconds(Math.Pow(2, retryAttempt)) // 指數退避重試
+        ));
+
+// Security — 資料加密
+builder.Services.AddDataProtection()
+    .PersistKeysToAzureBlobStorage(blobUri)
+    .ProtectKeysWithAzureKeyVault(keyUri, credential);
+
+// Performance — Response Caching
+builder.Services.AddResponseCaching();
+app.UseResponseCaching();
+
+[HttpGet("api/products")]
+[ResponseCache(Duration = 60)] // 快取 60 秒
+public async Task<ActionResult<IEnumerable<ProductDto>>> GetProducts()
+{
+    return Ok(await _productService.GetAllAsync());
+}
+```
+
+### TypeScript 版本
+
+```typescript
+// Operational Excellence — 結構化日誌
+import winston from "winston";
+
+const logger = winston.createLogger({
+  format: winston.format.combine(
+    winston.format.timestamp(),
+    winston.format.json() // 結構化 JSON 格式
+  ),
+  transports: [
+    new winston.transports.Console(),
+    new winston.transports.File({ filename: "app.log" }),
+  ],
+});
+
+// 每次請求記錄結構化日誌
+app.use((req, res, next) => {
+  const start = Date.now();
+  res.on("finish", () => {
+    logger.info("HTTP Request", {
+      method: req.method,
+      path: req.path,
+      statusCode: res.statusCode,
+      durationMs: Date.now() - start,
+      userAgent: req.headers["user-agent"],
+    });
+  });
+  next();
+});
+
+// Reliability — Graceful Shutdown
+process.on("SIGTERM", async () => {
+  logger.info("SIGTERM received, shutting down gracefully");
+  server.close(() => {
+    db.disconnect();
+    process.exit(0);
+  });
+  // 強制超時
+  setTimeout(() => process.exit(1), 10000);
+});
+```
+
+### Python 版本
+
+```python
+# Performance Efficiency — 快取策略
+from functools import lru_cache
+import redis
+
+redis_client = redis.Redis(host="localhost", port=6379)
+
+# 應用層快取 — 減少資料庫查詢
+async def get_product(product_id: int) -> dict:
+    cache_key = f"product:{product_id}"
+
+    # 先查 Redis
+    cached = redis_client.get(cache_key)
+    if cached:
+        return json.loads(cached)
+
+    # Cache Miss — 查資料庫
+    product = await db.products.find_one({"id": product_id})
+    if product:
+        redis_client.setex(cache_key, 300, json.dumps(product))  # 快取 5 分鐘
+
+    return product
+
+# Reliability — 重試機制
+from tenacity import retry, stop_after_attempt, wait_exponential
+
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=1, max=10),
+)
+async def call_external_api(url: str) -> dict:
+    async with httpx.AsyncClient() as client:
+        response = await client.get(url, timeout=5.0)
+        response.raise_for_status()
+        return response.json()
+```
+
+## 架構圖/概念圖
+
+<Diagram data='{"nodes":[{"id":"waf","label":"Well-Architected Framework","type":"highlight"},{"id":"reliability","label":"Reliability","type":"default"},{"id":"security","label":"Security","type":"default"},{"id":"cost","label":"Cost Optimization","type":"default"},{"id":"performance","label":"Performance","type":"default"},{"id":"operations","label":"Operational Excellence","type":"default"}],"edges":[{"from":"waf","to":"reliability","label":"HA + DR"},{"from":"waf","to":"security","label":"IAM + Encryption"},{"from":"waf","to":"cost","label":"Right-size + RI"},{"from":"waf","to":"performance","label":"Cache + Scale"},{"from":"waf","to":"operations","label":"IaC + CI/CD"}]}' />
+
+WAF 五大支柱涵蓋雲端架構的所有面向。Reliability 確保系統不掛、Security 確保資料不被偷、Cost 確保錢不浪費、Performance 確保使用者不等、Operations 確保團隊不崩潰。
+
+## 實戰補充
+
+**Q: 五大支柱之間有衝突時怎麼辦？**
+
+A: 根據業務優先級取捨。金融系統：Security > Reliability > Performance > Cost > Operations。新創 MVP：Cost > Performance > Operations > Security > Reliability。沒有標準答案，取決於業務需求。
+
+**Q: WAF Review 怎麼做？**
+
+A: AWS 和 Azure 都提供免費的 Review Tool（AWS Well-Architected Tool、Azure Advisor）。回答一系列問題，工具會給出各支柱的評分和改善建議。建議每季做一次，追蹤改善趨勢。
+
+**Q: 面試怎麼答 WAF 相關問題？**
+
+A: 先說出五大支柱名稱，再挑 2-3 個詳細說明。舉具體例子：「Reliability 方面，我們用多 AZ 部署 + Auto-Scaling + Health Check 實現了 99.9% 的 SLA」。展示你不只知道理論，還有實踐經驗。
+
+## 理解測驗
+
+<Quiz data='{"question":"WAF 五大支柱中，哪個支柱關注的是系統在故障時的自動恢復能力？","options":["Security","Cost Optimization","Reliability","Performance Efficiency"],"answer":2,"explanation":"Reliability 關注系統的可用性和恢復能力 — 包括高可用（HA）、災難復原（DR）、自動修復、容錯設計。"}' />
+
+<Quiz data='{"question":"為什麼 WAF Review 要定期做而不是只做一次？","options":["雲端商要求","架構會隨業務演化，新的功能和變更可能引入新的問題","每次結果都一樣所以要確認","為了好看的報告"],"answer":1,"explanation":"系統持續演化 — 新功能、新服務、流量增長都會改變架構特性。定期 Review 確保架構持續符合五大支柱的標準。"}' />
+
+<Quiz data='{"question":"五大支柱之間有衝突時，正確的做法是什麼？","options":["永遠優先 Security","永遠優先 Cost","根據業務需求和優先級做取捨，沒有標準答案","五個支柱都要做到滿分"],"answer":2,"explanation":"不同業務有不同優先級。金融系統重安全、新創重成本、即時遊戲重效能。關鍵是明確知道自己在取捨什麼。"}' />
+
+## 重點整理
+
+<Callout type="tip" title="一句話記住">
+**WAF = 從五個角度體檢雲端架構，持續改善而非一次到位。** 口訣：「穩（Reliability）、安（Security）、省（Cost）、快（Performance）、順（Operations）」
+</Callout>
+
+| 支柱 | 核心問題 | 關鍵實踐 |
+|------|---------|---------|
+| **Reliability** | 系統掛了怎麼辦？ | 多 AZ、Auto-healing、DR |
+| **Security** | 資料安全嗎？ | IAM、加密、網路隔離 |
+| **Cost** | 錢花得值嗎？ | Right-sizing、RI、Auto-Scale |
+| **Performance** | 使用者等太久嗎？ | 快取、CDN、選對規格 |
+| **Operations** | 團隊能高效維運嗎？ | IaC、CI/CD、監控告警 |

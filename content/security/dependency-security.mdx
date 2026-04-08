@@ -1,0 +1,191 @@
+---
+title: "Dependency Security"
+order: 7
+description: "相依套件安全：Dependabot、npm audit 與供應鏈攻擊防禦"
+difficulty: "easy"
+interviewImportance: 3
+related:
+  - "ci-cd/ci-cd-fundamentals"
+  - "security/security-in-sdlc"
+---
+
+# Dependency Security（相依套件安全）
+
+<ELI5>
+你做一個蛋糕，用了別人做好的奶油、巧克力、麵粉。如果巧克力工廠被壞人混入了毒藥，你的蛋糕也會有毒 — 即使你自己的食譜完全沒問題。
+
+軟體也一樣：你的程式用了幾十甚至幾百個「別人寫好的套件」（dependency），只要其中一個有漏洞或被植入惡意程式碼，你的整個應用就不安全了。這就是**供應鏈攻擊（Supply Chain Attack）**。
+</ELI5>
+
+## 是什麼？
+
+Dependency Security 是確保你的專案所使用的第三方套件（library、package、module）沒有已知漏洞、沒有被惡意篡改的安全實踐。
+
+<Callout type="info" title="觸目驚心的數字">
+現代應用程式中，**70-90% 的程式碼來自第三方套件**。2021 年的 Log4Shell（CVE-2021-44228）影響了全球數百萬個 Java 應用程式，就是相依套件漏洞的典型案例。
+</Callout>
+
+## 核心觀念
+
+### 常見威脅
+
+| 威脅 | 說明 | 案例 |
+|------|------|------|
+| 已知漏洞（CVE） | 套件中存在已被發現的安全漏洞 | Log4Shell、Lodash Prototype Pollution |
+| 惡意套件 | 攻擊者上傳偽裝成合法的套件 | event-stream 事件（2018） |
+| Typosquatting | 套件名稱與知名套件只差一個字 | `crossenv` 偽裝 `cross-env` |
+| Dependency Confusion | 利用 private/public registry 的解析順序 | Alex Birsan 研究（2021） |
+| Abandoned Package | 不再維護的套件累積未修補漏洞 | left-pad 事件後的連鎖效應 |
+
+### 防禦工具
+
+| 工具 | 語言/平台 | 功能 |
+|------|-----------|------|
+| `npm audit` | JavaScript | 掃描 node_modules 中的已知漏洞 |
+| `dotnet list package --vulnerable` | C# | 列出有漏洞的 NuGet 套件 |
+| `pip-audit` | Python | 掃描 Python 套件漏洞 |
+| Dependabot | GitHub | 自動建立更新 PR |
+| Snyk | 多語言 | 漏洞掃描 + 修復建議 |
+| Renovate | 多語言 | 自動更新依賴 + 高度可設定 |
+
+### Lock File 的重要性
+
+- `package-lock.json`（npm）、`yarn.lock`、`pnpm-lock.yaml`
+- `packages.lock.json`（NuGet）
+- `poetry.lock`（Python）
+
+Lock file 鎖定每個套件的**確切版本和 integrity hash**，確保每次安裝都得到相同的程式碼。
+
+## 常見誤區
+
+<Callout type="warning" title="常犯錯誤">
+- Lock file 不 commit 到 Git（導致不同環境安裝不同版本）
+- 盲目執行 `npm audit fix --force`（可能引入 breaking change）
+- 以為「用了知名套件就安全」（知名套件也會有漏洞）
+- 忽略 dev dependency 的漏洞（build 階段的漏洞也可能被利用）
+</Callout>
+
+## 執行流程
+
+<StepDiagram data='[{"title":"開發時掃描","description":"安裝套件前用 npm audit / pip-audit 檢查","icon":"1"},{"title":"Lock File 鎖版","description":"commit lock file 確保版本一致性","icon":"2"},{"title":"CI 自動檢查","description":"Pipeline 中加入漏洞掃描步驟","icon":"3"},{"title":"自動更新 PR","description":"Dependabot/Renovate 自動建立更新 PR","icon":"4"},{"title":"定期審查","description":"每月檢視依賴清單，移除不再使用的套件","icon":"5"}]' />
+
+流程解讀：相依套件安全是一個持續的過程，不是一次性的檢查。開發時就要養成掃描的習慣，CI Pipeline 自動化確保沒有漏洞的套件進入 production。Dependabot 或 Renovate 會自動監控已知漏洞資料庫，發現問題時自動建立更新 PR。定期審查則清除技術債和不必要的依賴。
+
+## 程式碼範例
+
+### C# 版本
+
+```csharp
+// .csproj — 啟用 NuGet Audit
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <NuGetAudit>true</NuGetAudit>
+    <NuGetAuditLevel>moderate</NuGetAuditLevel>
+    <!-- build 時自動檢查漏洞 -->
+  </PropertyGroup>
+</Project>
+
+// CLI 檢查漏洞
+// dotnet list package --vulnerable --include-transitive
+
+// Directory.Packages.props — 集中管理套件版本
+<Project>
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageVersion Include="Newtonsoft.Json" Version="13.0.3" />
+    <PackageVersion Include="Serilog" Version="3.1.1" />
+  </ItemGroup>
+</Project>
+```
+
+### TypeScript 版本
+
+```typescript
+// package.json — 設定允許的版本範圍
+{
+  "dependencies": {
+    "express": "^4.18.2",  // ^ 允許 minor 更新
+    "lodash": "4.17.21"    // 精確鎖定版本
+  },
+  "overrides": {
+    // 強制覆蓋 transitive dependency 的版本
+    "glob-parent": ">=5.1.2"
+  }
+}
+
+// .npmrc — 安全設定
+// audit=true               # 安裝時自動 audit
+// fund=false               # 關閉贊助提示
+// ignore-scripts=true      # 防止 postinstall 腳本執行惡意程式
+
+// CI 腳本中使用
+// npm ci                   # 嚴格按照 lock file 安裝
+// npm audit --audit-level=moderate
+// npx lockfile-lint --path package-lock.json \
+//   --type npm --allowed-hosts npm
+```
+
+### Python 版本
+
+```python
+# requirements.txt — 鎖定精確版本 + hash 驗證
+# pip install --require-hashes -r requirements.txt
+requests==2.31.0 \
+    --hash=sha256:58cd2187c01e70e6e26505bca751777aa9f2ee0b7f4300988b709f44e013003eb
+
+# pyproject.toml — 使用 pip-audit
+# [tool.pip-audit]
+# desc = "Audit Python dependencies for known vulnerabilities"
+
+# CI 中執行
+# pip-audit --strict --desc on
+# safety check --full-report
+
+# 使用 Poetry 管理依賴
+# poetry.lock 自動鎖定所有 transitive dependency
+# poetry audit  # 檢查漏洞
+```
+
+## 結構圖
+
+<Diagram data='{"nodes":[{"id":"dev","label":"Developer","type":"muted"},{"id":"registry","label":"Package Registry (npm/NuGet/PyPI)","type":"default"},{"id":"lock","label":"Lock File","type":"default"},{"id":"ci","label":"CI Pipeline","type":"highlight"},{"id":"scan","label":"Vulnerability Scanner","type":"default"},{"id":"bot","label":"Dependabot / Renovate","type":"default"}],"edges":[{"from":"dev","to":"registry","label":"install package"},{"from":"registry","to":"lock","label":"pinned versions"},{"from":"lock","to":"ci","label":"reproducible build"},{"from":"ci","to":"scan","label":"audit step"},{"from":"bot","to":"dev","label":"update PR"}]}' />
+
+圖中 Developer 從 Package Registry 安裝套件，Lock File 鎖定確切版本。CI Pipeline 使用 Lock File 進行可重現的建置，並在 audit step 中用 Vulnerability Scanner 掃描漏洞。Dependabot/Renovate 持續監控並自動建立更新 PR 通知 Developer。
+
+## 面試常見問題
+
+**Q: 什麼是 Supply Chain Attack？如何防禦？**
+
+A: 攻擊者不直接攻擊你的應用程式，而是攻擊你依賴的第三方套件。防禦方式包括：使用 lock file 鎖定版本、啟用 integrity hash 驗證、設定 private registry 優先（防 Dependency Confusion）、定期掃描漏洞、限制 postinstall script 執行。
+
+**Q: Dependabot 和 Renovate 有什麼差別？**
+
+A: Dependabot 是 GitHub 原生整合，設定簡單但自訂性較低。Renovate 支援更多平台（GitLab、Bitbucket）、更細緻的更新策略（group updates、schedule、automerge），適合大型專案。兩者都能自動建立依賴更新 PR。
+
+**Q: 遇到無法升級的漏洞套件怎麼辦？**
+
+A: 先評估漏洞是否在你的使用情境中可被利用（不是所有 CVE 都影響你的程式碼路徑）。如果確實有風險：嘗試用 patch-package 局部修補、尋找替代套件、用 wrapper 隔離風險、在 WAF 層面阻擋攻擊向量。記錄風險接受（risk acceptance）的決策理由。
+
+## 理解測驗
+
+<Quiz data='{"question":"Lock file 的主要作用是什麼？","options":["讓安裝速度更快","確保每次安裝都得到相同版本的套件","防止其他人修改你的程式碼","自動更新套件到最新版"],"answer":1,"explanation":"Lock file 記錄每個套件的確切版本和 integrity hash，確保在不同環境、不同時間安裝都得到完全相同的依賴樹。"}' />
+
+<Quiz data='{"question":"什麼是 Typosquatting 攻擊？","options":["用暴力破解密碼","上傳名稱與知名套件極相似的惡意套件","竊取開發者的 npm token","在套件中植入後門"],"answer":1,"explanation":"Typosquatting 利用開發者打錯字的機會，上傳名稱只差一兩個字母的惡意套件。例如 crossenv（惡意）vs cross-env（正常）。"}' />
+
+<Quiz data='{"question":"CI Pipeline 中應該用哪個指令安裝 npm 套件？","options":["npm install","npm update","npm ci","npm audit fix"],"answer":2,"explanation":"npm ci 嚴格按照 lock file 安裝，不會修改 lock file，確保 CI 環境與開發環境完全一致。npm install 可能會更新 lock file。"}' />
+
+## 重點整理
+
+<Callout type="tip" title="一句話記住">
+**Dependency Security = 鎖版本 + 掃漏洞 + 自動更新。** 口訣：「Lock file 要 commit，CI 要 audit，更新靠 bot」
+</Callout>
+
+| 概念 | 說明 |
+|------|------|
+| **Lock File** | 鎖定每個套件的確切版本和 hash |
+| **npm audit / pip-audit** | 掃描已知漏洞的 CLI 工具 |
+| **Dependabot** | GitHub 原生的自動更新服務 |
+| **Supply Chain Attack** | 攻擊第三方依賴來間接入侵應用 |
+| **核心原則** | 信任但驗證，持續監控，最小依賴 |

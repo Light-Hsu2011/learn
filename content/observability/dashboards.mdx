@@ -1,0 +1,260 @@
+---
+title: "Dashboards"
+order: 5
+description: "Dashboard 設計：Grafana 實踐與有效的視覺化策略"
+difficulty: "medium"
+interviewImportance: 3
+related:
+  - "observability/metrics-and-alerting"
+  - "observability/observability-fundamentals"
+---
+
+# Dashboards（儀表板設計）
+
+<ELI5>
+想像你開車時的儀表板：速度、油量、引擎溫度。你不需要打開引擎蓋才知道車子狀況 — 看一眼儀表板就知道。
+
+好的儀表板也一樣：不是塞滿 100 個圖表，而是**一眼就能回答「系統正常嗎？」**。如果不正常，再往下看就能找到「哪裡不正常」。
+</ELI5>
+
+## 是什麼？
+
+Dashboard 是將 Metrics、Logs、Traces 等觀測資料視覺化的介面。好的 Dashboard 讓團隊能快速判斷系統健康狀況、定位問題、追蹤趨勢。
+
+<Callout type="info" title="Dashboard 不是越多越好">
+根據 Google SRE 經驗，一個服務的核心 Dashboard 控制在 **5-7 個面板**最有效。超過 15 個面板就很少有人會仔細看。Dashboard 的設計原則是「Less is More」。
+</Callout>
+
+## 核心觀念
+
+### Dashboard 的層級架構
+
+| 層級 | 目的 | 受眾 | 面板數 |
+|------|------|------|--------|
+| **Executive** | 業務健康概覽 | 管理層 | 3-5 |
+| **Service** | 單一服務的 RED 指標 | On-call 工程師 | 5-7 |
+| **Deep Dive** | 詳細的除錯資訊 | 開發者 | 10-15 |
+| **Infrastructure** | 機器和基礎設施指標 | SRE/DevOps | 5-10 |
+
+### 面板排列原則
+
+- **上方**：最重要的指標（SLI/SLO 達成率）
+- **中間**：RED 指標（Rate、Error、Duration）
+- **下方**：詳細分解（按 endpoint、按 status code）
+- **最下方**：資源指標（CPU、Memory、Connections）
+
+### 有效的視覺化選擇
+
+| 資料類型 | 推薦圖表 | 避免 |
+|----------|---------|------|
+| 趨勢（延遲隨時間） | Time Series（折線圖） | 圓餅圖 |
+| 目前值（CPU 使用率） | Gauge / Stat | 折線圖 |
+| 分布（延遲百分位） | Heatmap / Histogram | 柱狀圖 |
+| 比較（服務間錯誤率） | Bar Chart | 圓餅圖 |
+| 狀態（服務健康） | Status Map / Table | 折線圖 |
+
+## 常見誤區
+
+<Callout type="warning" title="常犯錯誤">
+- 一個 Dashboard 塞 30+ 個面板（資訊過載，沒人會看）
+- 所有面板用同一種圖表類型（不同資料適合不同視覺化方式）
+- 沒有設定合理的時間範圍預設值（預設 24 小時可能看不到短暫的 spike）
+- Dashboard 建好後從不更新（隨著系統演進，指標可能已經失效）
+</Callout>
+
+## 執行流程
+
+<StepDiagram data='[{"title":"定義受眾與目的","description":"這個 Dashboard 給誰看？要回答什麼問題？","icon":"1"},{"title":"選擇關鍵指標","description":"用 RED/USE 方法選出 5-7 個最重要的指標","icon":"2"},{"title":"設計版面","description":"按重要性從上到下排列，選擇合適的圖表類型","icon":"3"},{"title":"設定閾值線","description":"在圖表中標示 SLO 目標線和告警閾值","icon":"4"},{"title":"加入 Drill-down 連結","description":"從概覽面板可以連結到詳細的 Deep Dive Dashboard","icon":"5"}]' />
+
+流程解讀：Dashboard 設計從「給誰看」開始。On-call 工程師需要快速判斷問題在哪裡，不需要看業務指標。管理層需要看 SLO 達成率，不需要看 CPU 使用率。選擇最關鍵的 5-7 個指標，用合適的圖表類型呈現，並標示 SLO 目標線讓異常一目了然。Drill-down 連結讓使用者可以從概覽進入詳細資訊，避免一個 Dashboard 塞太多東西。
+
+## 程式碼範例
+
+### C# 版本
+
+```csharp
+// Grafana Dashboard as Code（使用 Terraform）
+// grafana-dashboards/order-service.json
+{
+  "dashboard": {
+    "title": "Order Service",
+    "panels": [
+      {
+        "title": "Request Rate (QPS)",
+        "type": "timeseries",
+        "targets": [{
+          "expr": "rate(http_requests_total{service=\"order-service\"}[5m])"
+        }]
+      },
+      {
+        "title": "Error Rate (%)",
+        "type": "timeseries",
+        "targets": [{
+          "expr": "rate(http_requests_total{service=\"order-service\",status=~\"5..\"}[5m]) / rate(http_requests_total{service=\"order-service\"}[5m]) * 100"
+        }],
+        "thresholds": [{"value": 1, "color": "yellow"}, {"value": 5, "color": "red"}]
+      },
+      {
+        "title": "P99 Latency (ms)",
+        "type": "timeseries",
+        "targets": [{
+          "expr": "histogram_quantile(0.99, rate(http_request_duration_seconds_bucket{service=\"order-service\"}[5m])) * 1000"
+        }]
+      }
+    ]
+  }
+}
+
+// ASP.NET Core — 暴露 Grafana 需要的 metrics
+app.MapGet("/health/ready", () => Results.Ok(new { status = "ready" }));
+app.MapGet("/health/live", () => Results.Ok(new { status = "alive" }));
+```
+
+### TypeScript 版本
+
+```typescript
+// Grafana Dashboard provisioning（JSON Model）
+const orderServiceDashboard = {
+  title: "Order Service - RED Metrics",
+  tags: ["order", "production"],
+  time: { from: "now-1h", to: "now" },
+  refresh: "30s",
+  panels: [
+    // Row 1: SLO Status
+    {
+      title: "SLO: Availability (target: 99.9%)",
+      type: "stat",
+      gridPos: { h: 4, w: 6, x: 0, y: 0 },
+      targets: [{
+        expr: '(1 - rate(http_requests_total{status=~"5.."}[24h]) / rate(http_requests_total[24h])) * 100',
+      }],
+      thresholds: { steps: [
+        { value: 0, color: "red" },
+        { value: 99.5, color: "yellow" },
+        { value: 99.9, color: "green" },
+      ]},
+    },
+    // Row 2: RED Metrics
+    {
+      title: "Request Rate",
+      type: "timeseries",
+      gridPos: { h: 8, w: 8, x: 0, y: 4 },
+      targets: [{
+        expr: 'sum(rate(http_requests_total{service="order-service"}[5m]))',
+        legendFormat: "RPS",
+      }],
+    },
+    {
+      title: "Error Rate",
+      type: "timeseries",
+      gridPos: { h: 8, w: 8, x: 8, y: 4 },
+      targets: [{
+        expr: 'sum(rate(http_requests_total{service="order-service",status=~"5.."}[5m])) / sum(rate(http_requests_total{service="order-service"}[5m])) * 100',
+      }],
+    },
+    {
+      title: "Latency (P50 / P95 / P99)",
+      type: "timeseries",
+      gridPos: { h: 8, w: 8, x: 16, y: 4 },
+      targets: [50, 95, 99].map(p => ({
+        expr: `histogram_quantile(0.${p}, rate(http_request_duration_seconds_bucket[5m])) * 1000`,
+        legendFormat: `P${p}`,
+      })),
+    },
+  ],
+};
+```
+
+### Python 版本
+
+```python
+# Grafana Dashboard as Code（使用 grafanalib）
+from grafanalib.core import Dashboard, TimeSeries, Row, Target, Stat
+
+dashboard = Dashboard(
+    title="Order Service - RED Metrics",
+    refresh="30s",
+    tags=["order", "production"],
+    rows=[
+        # Row 1: SLO Overview
+        Row(panels=[
+            Stat(
+                title="Availability (24h)",
+                targets=[Target(
+                    expr='(1 - rate(http_requests_total{status=~"5.."}[24h]) / rate(http_requests_total[24h])) * 100',
+                )],
+                thresholds=[
+                    {"value": 0, "color": "red"},
+                    {"value": 99.9, "color": "green"},
+                ],
+            ),
+        ]),
+        # Row 2: RED Metrics
+        Row(panels=[
+            TimeSeries(
+                title="Request Rate (RPS)",
+                targets=[Target(
+                    expr='sum(rate(http_requests_total{service="order-service"}[5m]))',
+                    legendFormat="RPS",
+                )],
+            ),
+            TimeSeries(
+                title="Error Rate (%)",
+                targets=[Target(
+                    expr='sum(rate(http_requests_total{status=~"5.."}[5m])) / sum(rate(http_requests_total[5m])) * 100',
+                )],
+            ),
+            TimeSeries(
+                title="Latency Percentiles",
+                targets=[
+                    Target(expr=f'histogram_quantile(0.{p}, rate(http_request_duration_seconds_bucket[5m])) * 1000',
+                           legendFormat=f"P{p}")
+                    for p in [50, 95, 99]
+                ],
+            ),
+        ]),
+    ],
+)
+```
+
+## 結構圖
+
+<Diagram data='{"nodes":[{"id":"exec","label":"Executive Dashboard","type":"muted"},{"id":"service","label":"Service Dashboard (RED)","type":"highlight"},{"id":"deep","label":"Deep Dive Dashboard","type":"default"},{"id":"infra","label":"Infrastructure Dashboard","type":"default"},{"id":"prom","label":"Prometheus","type":"muted"},{"id":"loki","label":"Loki (Logs)","type":"muted"}],"edges":[{"from":"exec","to":"service","label":"drill down"},{"from":"service","to":"deep","label":"drill down"},{"from":"service","to":"infra","label":"drill down"},{"from":"prom","to":"exec","label":"metrics"},{"from":"prom","to":"service","label":"metrics"},{"from":"loki","to":"deep","label":"logs"}]}' />
+
+圖中展示了 Dashboard 的層級架構。Executive Dashboard 提供高層級的業務健康概覽，點擊可以下鑽到 Service Dashboard 看 RED 指標。Service Dashboard 再下鑽到 Deep Dive Dashboard 看詳細的除錯資訊，或到 Infrastructure Dashboard 看資源狀況。資料來源是 Prometheus（metrics）和 Loki（logs）。
+
+## 面試常見問題
+
+**Q: 設計 Dashboard 時最重要的原則是什麼？**
+
+A: 「能在 5 秒內回答一個問題」。每個 Dashboard 有一個明確的目的（如「order-service 是否正常」），面板數量控制在 5-7 個，從上到下按重要性排列。最上方的面板能一眼判斷「正常/異常」（用顏色表示），有問題時往下看詳細資訊。
+
+**Q: 什麼是 Dashboard as Code？為什麼需要？**
+
+A: Dashboard as Code 是用程式碼（JSON、Terraform、grafanalib）定義 Dashboard，存在 Git 中版本控制。好處是可重現（新環境自動建立）、可審查（PR review Dashboard 的變更）、一致性（所有服務的 Dashboard 風格統一）。
+
+**Q: 常見的 PromQL 查詢有哪些？**
+
+A: `rate(counter[5m])` — 計算 counter 的每秒增長率。`histogram_quantile(0.99, rate(buckets[5m]))` — 計算 P99 延遲。`increase(counter[1h])` — 計算一小時內的增長量。`avg_over_time(gauge[5m])` — 計算 gauge 的 5 分鐘平均值。
+
+## 理解測驗
+
+<Quiz data='{"question":"一個 Service Dashboard 建議包含幾個面板？","options":["1-2 個","5-7 個","20-30 個","越多越好"],"answer":1,"explanation":"根據 Google SRE 經驗，5-7 個面板最有效。超過 15 個就很少有人仔細看。面板太少資訊不足，太多則資訊過載。"}' />
+
+<Quiz data='{"question":"Dashboard 面板的排列順序應該是？","options":["按字母順序","隨機排列","從最重要（SLO 達成率）到最細節（資源指標）","按圖表類型分組"],"answer":2,"explanation":"從上到下按重要性排列：最上方是 SLO 達成率（一眼判斷正常/異常），中間是 RED 指標，下方是詳細分解和資源指標。"}' />
+
+<Quiz data='{"question":"以下哪種圖表最適合顯示延遲的百分位分布？","options":["圓餅圖","Heatmap","表格","單一數值"],"answer":1,"explanation":"Heatmap 能同時顯示時間維度和延遲分布，顏色深淺表示請求數量。可以清楚看到延遲的分布變化和異常的長尾。"}' />
+
+## 重點整理
+
+<Callout type="tip" title="一句話記住">
+**Dashboard = 一眼看出正不正常，兩下找到問題在哪。** 口訣：「面板要精簡，層級要分明，閾值要標示」
+</Callout>
+
+| 概念 | 說明 |
+|------|------|
+| **層級架構** | Executive → Service → Deep Dive → Infra |
+| **RED 面板** | Rate、Error、Duration 三大指標 |
+| **SLO 目標線** | 在圖表中標示目標值，異常一目了然 |
+| **Dashboard as Code** | 用程式碼定義，版本控制 |
+| **核心原則** | Less is More，5-7 個面板最有效 |

@@ -1,0 +1,231 @@
+---
+title: "Pipeline 中的測試策略"
+order: 3
+description: "在 CI/CD Pipeline 中安排不同層級測試的策略與實務"
+difficulty: "medium"
+interviewImportance: 4
+related:
+  - "tdd/test-pyramid"
+  - "tdd/integration-testing"
+---
+
+# Pipeline 中的測試策略
+
+<ELI5>
+想像一間工廠的品質檢查線：
+
+- **第一關（快速檢查）**：用眼睛看有沒有明顯瑕疵（Lint + Unit Test）— 1 分鐘內完成
+- **第二關（功能測試）**：實際操作看功能正不正常（Integration Test）— 需要 5 分鐘
+- **第三關（壓力測試）**：模擬大量使用看會不會壞（E2E / Performance）— 需要 15 分鐘
+
+越前面的檢查越快、越便宜；越後面的越慢、越貴。所以先做快的，不通過就不用繼續。
+</ELI5>
+
+## 是什麼？
+
+Pipeline 中的測試策略是定義**在 CI/CD 的哪個階段、跑哪些類型的測試**，以最小時間成本獲得最大信心。核心原則是「快的先跑、重的後跑、失敗就停」。
+
+<Callout type="info" title="Shift Left Testing">
+「Shift Left」意味著把測試**往開發流程的左邊（更早期）移動**。越早發現 bug，修復成本越低。Pipeline 中的測試就是 Shift Left 的具體實踐。
+</Callout>
+
+## 核心觀念
+
+- **測試金字塔（Test Pyramid）**：底層大量 Unit Test（快、便宜）、中層適量 Integration Test、頂層少量 E2E Test（慢、貴）
+- **Fast Feedback**：Pipeline 前段放最快的測試，讓開發者在 2-3 分鐘內知道結果
+- **Gate（門檻）**：每個 Stage 都是一道門，不通過就不進入下一關。測試覆蓋率低於門檻也算不通過
+- **並行測試**：互不依賴的測試 Job 並行執行，減少總時間
+- **Flaky Test（不穩定測試）**：有時過有時不過的測試。Flaky Test 是 Pipeline 信任度的殺手，必須優先修復或隔離
+
+## 常見誤區
+
+<Callout type="warning" title="常見誤區">
+- **只跑 Unit Test 不跑 Integration Test**：Unit Test 全過但模組之間的整合可能是壞的。至少在 Pipeline 中包含關鍵路徑的 Integration Test
+- **E2E Test 放在每次 PR 觸發**：E2E 太慢（通常 10 分鐘以上），放在 merge 到 main 後或每日排程跑即可
+- **忽略 Flaky Test**：開發者看到紅色測試但知道「那個一直 flaky」就直接重跑，久了就沒人相信 Pipeline 的結果
+</Callout>
+
+## 流程/步驟
+
+<StepDiagram data='[{"title":"Lint + Type Check","description":"靜態分析，最快回饋（30 秒內）","icon":"1"},{"title":"Unit Test","description":"獨立的函式/類別測試（1-2 分鐘）","icon":"2"},{"title":"Integration Test","description":"模組間整合測試，可能需要 DB（3-5 分鐘）","icon":"3"},{"title":"Coverage Gate","description":"檢查覆蓋率是否達標（如 80%）","icon":"4"},{"title":"E2E / Smoke Test","description":"端對端或冒煙測試（合併後或排程）","icon":"5"},{"title":"Performance Test","description":"效能基準測試（排程或 Release 前）","icon":"6"}]' />
+
+流程解讀：Pipeline 測試從輕量到重量排列。Lint 和 Unit Test 每次 PR 都跑，提供最快回饋。Integration Test 在 Unit Test 通過後才執行。E2E 和 Performance Test 因為耗時，通常在 merge 後或排程執行。
+
+## 程式碼範例
+
+### C# 版本
+
+```csharp
+// .github/workflows/test-strategy.yml 的 C# 範例
+// Pipeline 中各層級測試的組織方式
+
+// Unit Test — 獨立、快速、不依賴外部資源
+[Fact]
+public void CalculateDiscount_VipUser_Returns20Percent()
+{
+    var calculator = new DiscountCalculator();
+    var result = calculator.Calculate(userType: UserType.Vip, amount: 1000m);
+    Assert.Equal(200m, result);
+}
+
+// Integration Test — 需要真實資料庫（用 Testcontainers）
+public class UserRepositoryTests : IClassFixture<DatabaseFixture>
+{
+    private readonly AppDbContext _db;
+
+    public UserRepositoryTests(DatabaseFixture fixture)
+    {
+        _db = fixture.CreateContext();
+    }
+
+    [Fact]
+    public async Task CreateUser_PersistsToDatabase()
+    {
+        var repo = new UserRepository(_db);
+        await repo.Create(new User { Name = "Alice", Email = "a@b.com" });
+
+        var user = await _db.Users.FirstAsync(u => u.Email == "a@b.com");
+        Assert.Equal("Alice", user.Name);
+    }
+}
+```
+
+### TypeScript 版本
+
+```yaml
+# .github/workflows/test-strategy.yml
+name: Test Strategy
+
+on: [push, pull_request]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '20', cache: 'npm' }
+      - run: npm ci
+      - run: npm run lint
+      - run: npx tsc --noEmit  # Type check
+
+  unit-test:
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '20', cache: 'npm' }
+      - run: npm ci
+      - run: npm test -- --coverage --ci
+      # Coverage gate
+      - run: |
+          COVERAGE=$(npx coverage-summary)
+          if [ "$COVERAGE" -lt 80 ]; then exit 1; fi
+
+  integration-test:
+    runs-on: ubuntu-latest
+    needs: unit-test
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: test
+        ports: ['5432:5432']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '20', cache: 'npm' }
+      - run: npm ci
+      - run: npm run test:integration
+        env:
+          DATABASE_URL: postgresql://postgres:test@localhost:5432/test
+
+  e2e:
+    runs-on: ubuntu-latest
+    needs: integration-test
+    if: github.ref == 'refs/heads/main'  # 只在 merge 到 main 時跑
+    steps:
+      - uses: actions/checkout@v4
+      - run: npx playwright test
+```
+
+### Python 版本
+
+```python
+# conftest.py — 測試分層設定
+import pytest
+
+# 標記慢速測試
+def pytest_configure(config):
+    config.addinivalue_line("markers", "integration: integration tests")
+    config.addinivalue_line("markers", "e2e: end-to-end tests")
+
+# CI 中用 -m 篩選
+# 快速回饋：pytest -m "not integration and not e2e"
+# 整合測試：pytest -m integration
+# E2E：pytest -m e2e
+
+@pytest.mark.integration
+class TestUserRepository:
+    def test_create_and_retrieve(self, db_session):
+        repo = UserRepository(db_session)
+        repo.create(User(name="Alice", email="a@b.com"))
+
+        user = repo.get_by_email("a@b.com")
+        assert user.name == "Alice"
+
+@pytest.mark.e2e
+class TestUserFlow:
+    def test_register_and_login(self, api_client):
+        # 註冊
+        res = api_client.post("/api/users", json={"name": "Alice", "email": "a@b.com"})
+        assert res.status_code == 201
+
+        # 登入
+        res = api_client.post("/auth/login", json={"email": "a@b.com", "password": "..."})
+        assert res.status_code == 200
+        assert "access_token" in res.json()
+```
+
+## 架構圖/概念圖
+
+<Diagram data='{"nodes":[{"id":"pr","label":"Pull Request","type":"muted"},{"id":"lint","label":"Lint (30s)","type":"default"},{"id":"unit","label":"Unit Test (2min)","type":"default"},{"id":"integration","label":"Integration Test (5min)","type":"highlight"},{"id":"merge","label":"Merge to Main","type":"muted"},{"id":"e2e","label":"E2E Test (15min)","type":"default"}],"edges":[{"from":"pr","to":"lint","label":"always"},{"from":"lint","to":"unit","label":"pass"},{"from":"unit","to":"integration","label":"pass"},{"from":"integration","to":"merge","label":"approve"},{"from":"merge","to":"e2e","label":"post-merge"}]}' />
+
+PR 觸發輕量測試（Lint → Unit → Integration），通過後人工 Approve 並 Merge。Merge 後觸發較重的 E2E 測試。這樣開發者在 PR 階段得到快速回饋，重量級測試不阻塞 PR 流程。
+
+## 實戰補充
+
+**Q: 測試覆蓋率門檻設多少？**
+
+A: 新專案建議 **80%** 作為起點，逐步提升。不要追求 100% — 那會導致大量無意義的測試。重點是覆蓋**關鍵業務邏輯**和**容易出錯的邊界條件**。
+
+**Q: Flaky Test 怎麼處理？**
+
+A: (1) 標記為 `@flaky`，從主 Pipeline 中隔離到獨立的 Job。(2) 記錄 flaky 頻率，超過門檻就強制修復。(3) 常見原因：依賴時間、依賴網路、測試之間有共享狀態。
+
+**Q: Integration Test 需要真實資料庫嗎？**
+
+A: 建議用 **Testcontainers** 在 CI 中啟動真實的 Docker 化資料庫。比 In-Memory DB 更貼近生產環境，且每次測試都是乾淨的狀態。
+
+## 理解測驗
+
+<Quiz data='{"question":"為什麼 Pipeline 中要先跑 Unit Test 再跑 Integration Test？","options":["Unit Test 比較重要","Unit Test 更快，能在最短時間內提供回饋","Integration Test 不需要每次都跑","順序不影響結果"],"answer":1,"explanation":"Unit Test 通常在 1-2 分鐘內完成，Integration Test 需要 5 分鐘以上。先跑快的讓開發者盡早知道結果，節省等待時間。"}' />
+
+<Quiz data='{"question":"Flaky Test 對 Pipeline 的最大危害是什麼？","options":["讓 Pipeline 跑得更慢","浪費 CI 伺服器資源","降低團隊對 Pipeline 結果的信任，開發者開始忽視紅色警告","增加程式碼行數"],"answer":2,"explanation":"當 Flaky Test 頻繁出現假紅（false failure），開發者會習慣性重跑而不去看失敗原因，真正的問題也會被忽略。"}' />
+
+<Quiz data='{"question":"E2E Test 為什麼通常不在每次 PR 觸發？","options":["E2E Test 不重要","E2E Test 太慢（10 分鐘以上），會嚴重拖慢 PR 的回饋速度","GitHub Actions 不支援 E2E","E2E Test 只能手動跑"],"answer":1,"explanation":"E2E Test 涉及完整的系統啟動和瀏覽器自動化，耗時很長。放在 merge 後或排程執行，不阻塞 PR 的快速回饋。"}' />
+
+## 重點整理
+
+<Callout type="tip" title="一句話記住">
+**Pipeline 測試 = 快的先跑、重的後跑、紅了就停。** 口訣：「Lint 秒回，Unit 分鐘回，Integration 合併後」
+</Callout>
+
+| 測試層級 | 時間 | Pipeline 時機 | 特性 |
+|---------|------|--------------|------|
+| **Lint** | 30 秒 | 每次 PR | 靜態分析 |
+| **Unit Test** | 1-2 分鐘 | 每次 PR | 快、獨立 |
+| **Integration** | 3-5 分鐘 | 每次 PR | 需要外部資源 |
+| **E2E** | 10-15 分鐘 | merge 後/排程 | 慢、全流程 |
+| **Performance** | 15+ 分鐘 | Release 前/排程 | 基準測試 |

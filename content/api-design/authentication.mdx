@@ -1,0 +1,203 @@
+---
+title: "API 認證機制"
+order: 5
+description: "JWT、OAuth 2.0、API Key 三大認證方式的原理與選擇"
+difficulty: "hard"
+interviewImportance: 5
+related:
+  - "security/authentication-security"
+  - "cloud-architecture/identity-and-access"
+---
+
+# API 認證機制（Authentication）
+
+<ELI5>
+想像你進一棟大樓：
+
+- **API Key** = 大門密碼，知道密碼就能進，但不知道是誰進來的
+- **JWT** = 員工識別證，上面寫了你的名字、部門、權限，警衛掃一下就知道你是誰、能去哪
+- **OAuth 2.0** = 訪客登記流程，你跟櫃台說「我要見 3 樓的 Alice」，櫃台打電話確認後發給你一張臨時通行證
+
+三種方式適合不同場景，沒有「最好的」，只有「最適合的」。
+</ELI5>
+
+## 是什麼？
+
+API 認證（Authentication）是驗證「你是誰」的機制。不同的認證方式在安全性、複雜度、適用場景上各有取捨。JWT 適合無狀態認證、OAuth 2.0 適合第三方授權、API Key 適合服務間通訊。
+
+<Callout type="info" title="認證 vs 授權">
+**Authentication（認證）**= 你是誰？驗證身份。**Authorization（授權）**= 你能做什麼？檢查權限。認證在前，授權在後。本篇聚焦認證，授權會在 IAM 章節深入討論。
+</Callout>
+
+## 核心觀念
+
+- **JWT（JSON Web Token）**：由三段 Base64 編碼組成（Header.Payload.Signature），伺服器用密鑰簽名，不需查資料庫即可驗證。包含使用者資訊（claims），有過期時間
+- **OAuth 2.0**：授權框架（不是認證協議），定義了四種授權流程（Grant Types）。核心角色：Resource Owner、Client、Authorization Server、Resource Server
+- **API Key**：一組隨機字串，通常放在 Header 或 Query 中。簡單但缺乏細緻的權限控制
+- **Refresh Token**：JWT 過期後用 Refresh Token 換新的 Access Token，避免使用者頻繁重新登入
+- **Bearer Token**：放在 `Authorization: Bearer <token>` Header 中傳送的認證令牌
+
+## 常見誤區
+
+<Callout type="warning" title="常見誤區">
+- **把敏感資料放在 JWT Payload**：JWT 的 Payload 只是 Base64 編碼（不是加密），任何人都能解碼讀取。不要放密碼、信用卡號等敏感資訊
+- **JWT 不設過期時間**：沒有過期時間的 JWT 一旦洩漏就永久有效。Access Token 建議 15-60 分鐘過期
+- **用 API Key 做使用者認證**：API Key 適合服務對服務（S2S）通訊，不適合終端使用者認證（因為無法追蹤個別使用者）
+</Callout>
+
+## 流程/步驟
+
+<StepDiagram data='[{"title":"使用者登入","description":"送出帳號密碼到 /auth/login","icon":"1"},{"title":"伺服器驗證","description":"比對密碼 Hash，驗證身份","icon":"2"},{"title":"產生 Token","description":"簽發 JWT Access Token + Refresh Token","icon":"3"},{"title":"客戶端儲存","description":"Access Token 存記憶體，Refresh Token 存 HttpOnly Cookie","icon":"4"},{"title":"帶 Token 請求","description":"每次 API 請求帶 Authorization: Bearer token","icon":"5"},{"title":"Token 過期換新","description":"用 Refresh Token 換新的 Access Token","icon":"6"}]' />
+
+流程解讀：使用者登入後取得一對 Token。Access Token 短效（15-60 分鐘）放在請求 Header 中，Refresh Token 長效（7-30 天）安全儲存在 HttpOnly Cookie。Access Token 過期時用 Refresh Token 無感刷新。
+
+## 程式碼範例
+
+### C# 版本
+
+```csharp
+// ASP.NET Core — JWT 認證設定
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer(options =>
+    {
+        options.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuer = true,
+            ValidIssuer = "https://api.example.com",
+            ValidateAudience = true,
+            ValidAudience = "https://app.example.com",
+            ValidateLifetime = true,
+            IssuerSigningKey = new SymmetricSecurityKey(
+                Encoding.UTF8.GetBytes(config["Jwt:Secret"]!))
+        };
+    });
+
+// 產生 JWT
+public string GenerateToken(User user)
+{
+    var claims = new[]
+    {
+        new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
+        new Claim(ClaimTypes.Email, user.Email),
+        new Claim(ClaimTypes.Role, user.Role)
+    };
+
+    var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_secret));
+    var token = new JwtSecurityToken(
+        issuer: "https://api.example.com",
+        audience: "https://app.example.com",
+        claims: claims,
+        expires: DateTime.UtcNow.AddMinutes(30),
+        signingCredentials: new SigningCredentials(key, SecurityAlgorithms.HmacSha256)
+    );
+
+    return new JwtSecurityTokenHandler().WriteToken(token);
+}
+```
+
+### TypeScript 版本
+
+```typescript
+// Express.js — JWT 認證
+import jwt from "jsonwebtoken";
+
+// 產生 Token
+function generateToken(user: User): string {
+  return jwt.sign(
+    { userId: user.id, email: user.email, role: user.role },
+    process.env.JWT_SECRET!,
+    { expiresIn: "30m", issuer: "https://api.example.com" }
+  );
+}
+
+// 驗證 Middleware
+function authMiddleware(req: Request, res: Response, next: NextFunction) {
+  const token = req.headers.authorization?.replace("Bearer ", "");
+  if (!token) return res.status(401).json({ error: "No token provided" });
+
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET!);
+    req.user = decoded;
+    next();
+  } catch {
+    res.status(401).json({ error: "Invalid or expired token" });
+  }
+}
+
+// 保護路由
+app.get("/api/profile", authMiddleware, (req, res) => {
+  res.json({ user: req.user });
+});
+```
+
+### Python 版本
+
+```python
+# FastAPI — JWT 認證
+from jose import jwt, JWTError
+from datetime import datetime, timedelta
+from fastapi import Depends, HTTPException
+from fastapi.security import HTTPBearer
+
+security = HTTPBearer()
+SECRET_KEY = "your-secret-key"
+
+def create_access_token(user_id: int, role: str) -> str:
+    payload = {
+        "sub": str(user_id),
+        "role": role,
+        "exp": datetime.utcnow() + timedelta(minutes=30),
+    }
+    return jwt.encode(payload, SECRET_KEY, algorithm="HS256")
+
+async def get_current_user(credentials=Depends(security)):
+    try:
+        payload = jwt.decode(credentials.credentials, SECRET_KEY, algorithms=["HS256"])
+        return payload
+    except JWTError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+@app.get("/api/profile")
+async def profile(user=Depends(get_current_user)):
+    return {"user": user}
+```
+
+## 架構圖/概念圖
+
+<Diagram data='{"nodes":[{"id":"user","label":"User / Client","type":"muted"},{"id":"auth","label":"Auth Server","type":"highlight"},{"id":"access","label":"Access Token (JWT)","type":"default"},{"id":"refresh","label":"Refresh Token","type":"default"},{"id":"api","label":"Resource API","type":"muted"}],"edges":[{"from":"user","to":"auth","label":"login credentials"},{"from":"auth","to":"access","label":"issues"},{"from":"auth","to":"refresh","label":"issues"},{"from":"user","to":"api","label":"Bearer access_token"},{"from":"user","to":"auth","label":"refresh_token (when expired)"}]}' />
+
+使用者用帳密向 Auth Server 認證，取得 Access Token 和 Refresh Token。之後每次請求 API 帶上 Access Token。Token 過期時用 Refresh Token 向 Auth Server 換新的 Access Token。
+
+## 實戰補充
+
+**Q: JWT 的 Secret Key 該怎麼管理？**
+
+A: 不要硬寫在程式碼中。用環境變數或 Secret Manager（如 Azure Key Vault、AWS Secrets Manager）管理。生產環境的 Key 長度至少 256 bits。考慮用 RSA 非對稱加密（RS256）取代對稱加密（HS256），這樣驗證方只需公鑰。
+
+**Q: OAuth 2.0 的四種 Grant Type 怎麼選？**
+
+A: **Authorization Code**：Web App、有後端的 SPA（最安全）。**Authorization Code + PKCE**：純前端 SPA、Mobile App。**Client Credentials**：服務對服務（S2S）。**Implicit** 和 **Resource Owner Password** 已不推薦使用。
+
+**Q: 為什麼不用 localStorage 存 Token？**
+
+A: localStorage 容易被 XSS 攻擊讀取。Refresh Token 建議存在 HttpOnly + Secure + SameSite Cookie 中。Access Token 可存在記憶體（JavaScript 變數）中。
+
+## 理解測驗
+
+<Quiz data='{"question":"JWT 的 Payload 是加密的嗎？","options":["是，只有伺服器能讀取","不是，只是 Base64 編碼，任何人都能解碼讀取","取決於演算法設定","只有在 HTTPS 下才是加密的"],"answer":1,"explanation":"JWT 的 Payload 只是 Base64 編碼，任何人拿到 Token 都能解碼讀取內容。Signature 只保證資料沒被竄改，不保證機密性。"}' />
+
+<Quiz data='{"question":"服務對服務（S2S）的認證最適合用哪種方式？","options":["JWT + 使用者帳密","OAuth 2.0 Authorization Code","OAuth 2.0 Client Credentials 或 API Key","Session Cookie"],"answer":2,"explanation":"S2S 沒有使用者介入，適合用 Client Credentials（用 client_id + secret 取得 token）或 API Key。"}' />
+
+<Quiz data='{"question":"Access Token 建議的過期時間是多長？","options":["永不過期","24 小時","15-60 分鐘","1 年"],"answer":2,"explanation":"Access Token 建議短效（15-60 分鐘），搭配 Refresh Token 換新。過長的有效期增加 Token 洩漏的風險。"}' />
+
+## 重點整理
+
+<Callout type="tip" title="一句話記住">
+**JWT 無狀態驗身份、OAuth 委託授權、API Key 簡單但粗。** 口訣：「短命 Access、長命 Refresh、密鑰不寫死」
+</Callout>
+
+| 方式 | 適用場景 | 優點 | 缺點 |
+|------|---------|------|------|
+| **JWT** | 使用者認證、微服務間 | 無狀態、不查 DB | 無法即時撤銷 |
+| **OAuth 2.0** | 第三方登入、授權 | 標準化、細粒度授權 | 複雜度高 |
+| **API Key** | S2S、公開 API | 簡單 | 無法追蹤使用者 |

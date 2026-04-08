@@ -1,0 +1,210 @@
+---
+title: "RESTful API 設計原則"
+order: 1
+description: "資源命名、HTTP 動詞、狀態碼 — 建構清晰一致的 API"
+difficulty: "easy"
+interviewImportance: 5
+related:
+  - "system-design/url-shortener"
+  - "security/authentication-security"
+---
+
+# RESTful API 設計原則
+
+<ELI5>
+想像你去一間圖書館：
+
+- **書架上的書** = 資源（Resource）
+- **你的動作** = HTTP 動詞（借書 = GET、捐書 = POST、換書 = PUT、撕頁 = DELETE）
+- **圖書館員的回應** = 狀態碼（「找到了」= 200、「沒這本書」= 404、「你沒借書證」= 401）
+
+REST 就是讓所有人用**同一套規則**跟圖書館互動，不用每次都問「怎麼借書」。
+</ELI5>
+
+## 是什麼？
+
+REST（Representational State Transfer）是一種 **API 架構風格**，以「資源」為中心，透過標準 HTTP 動詞對資源進行操作，並用狀態碼回傳結果。
+
+<Callout type="info" title="核心精神">
+REST 不是協議（Protocol），而是一組**設計約束**。遵守這些約束的 API 稱為 RESTful API。Roy Fielding 在 2000 年的博士論文中首次提出此概念。
+</Callout>
+
+## 核心觀念
+
+- **資源（Resource）**：API 操作的對象，用名詞表示。URL 代表資源的位置，例如 `/users/123` 代表 ID 為 123 的使用者
+- **HTTP 動詞（Verb）**：表示對資源的操作 — GET（讀取）、POST（新增）、PUT（完整更新）、PATCH（部分更新）、DELETE（刪除）
+- **狀態碼（Status Code）**：伺服器回應結果的數字代號 — 2xx 成功、3xx 重導向、4xx 客戶端錯誤、5xx 伺服器錯誤
+- **無狀態（Stateless）**：每次請求必須包含所有必要資訊，伺服器不保留前次請求的上下文
+- **統一介面（Uniform Interface）**：所有資源用相同的 URL 結構和 HTTP 動詞操作，降低學習成本
+
+## 常見誤區
+
+<Callout type="warning" title="常見誤區">
+- **在 URL 中用動詞**：`/getUsers` 或 `/deleteUser/123` 是錯的，正確做法是 `GET /users` 和 `DELETE /users/123`
+- **所有回應都回 200**：把錯誤訊息塞在 body 裡但狀態碼永遠是 200，會讓客戶端無法正確處理錯誤
+- **混淆 PUT 和 PATCH**：PUT 是完整替換資源，PATCH 是部分更新。用 PUT 但只傳部分欄位會導致未傳的欄位被清空
+</Callout>
+
+## 流程/步驟
+
+<StepDiagram data='[{"title":"辨識資源","description":"找出系統中的核心名詞（users、orders、products）","icon":"1"},{"title":"設計 URL","description":"用複數名詞組成階層路徑，如 /users/123/orders","icon":"2"},{"title":"對應 HTTP 動詞","description":"GET 讀取、POST 新增、PUT/PATCH 更新、DELETE 刪除","icon":"3"},{"title":"定義狀態碼","description":"成功用 2xx、客戶端錯誤用 4xx、伺服器錯誤用 5xx","icon":"4"},{"title":"設計回應格式","description":"統一 JSON 結構，包含 data、error、pagination 等欄位","icon":"5"}]' />
+
+流程解讀：RESTful API 設計從辨識核心資源開始。每個資源對應一個 URL 路徑，透過 HTTP 動詞區分操作類型。狀態碼讓客戶端無需解析 body 就能判斷結果，最後統一回應格式確保 API 的一致性。
+
+## 程式碼範例
+
+### C# 版本
+
+```csharp
+// ASP.NET Core Controller — RESTful 風格
+[ApiController]
+[Route("api/[controller]")]
+public class UsersController : ControllerBase
+{
+    // GET /api/users
+    [HttpGet]
+    public async Task<ActionResult<IEnumerable<UserDto>>> GetAll()
+    {
+        var users = await _userService.GetAllAsync();
+        return Ok(users); // 200
+    }
+
+    // GET /api/users/123
+    [HttpGet("{id}")]
+    public async Task<ActionResult<UserDto>> GetById(int id)
+    {
+        var user = await _userService.GetByIdAsync(id);
+        if (user == null) return NotFound(); // 404
+        return Ok(user); // 200
+    }
+
+    // POST /api/users
+    [HttpPost]
+    public async Task<ActionResult<UserDto>> Create(CreateUserDto dto)
+    {
+        var user = await _userService.CreateAsync(dto);
+        return CreatedAtAction(nameof(GetById), new { id = user.Id }, user); // 201
+    }
+
+    // PUT /api/users/123
+    [HttpPut("{id}")]
+    public async Task<IActionResult> Update(int id, UpdateUserDto dto)
+    {
+        await _userService.UpdateAsync(id, dto);
+        return NoContent(); // 204
+    }
+
+    // DELETE /api/users/123
+    [HttpDelete("{id}")]
+    public async Task<IActionResult> Delete(int id)
+    {
+        await _userService.DeleteAsync(id);
+        return NoContent(); // 204
+    }
+}
+```
+
+### TypeScript 版本
+
+```typescript
+// Express.js — RESTful 路由
+import express from "express";
+const router = express.Router();
+
+// GET /api/users
+router.get("/users", async (req, res) => {
+  const users = await userService.getAll();
+  res.status(200).json({ data: users });
+});
+
+// GET /api/users/:id
+router.get("/users/:id", async (req, res) => {
+  const user = await userService.getById(req.params.id);
+  if (!user) return res.status(404).json({ error: "User not found" });
+  res.status(200).json({ data: user });
+});
+
+// POST /api/users
+router.post("/users", async (req, res) => {
+  const user = await userService.create(req.body);
+  res.status(201).json({ data: user });
+});
+
+// DELETE /api/users/:id
+router.delete("/users/:id", async (req, res) => {
+  await userService.delete(req.params.id);
+  res.status(204).send();
+});
+```
+
+### Python 版本
+
+```python
+# FastAPI — RESTful 路由
+from fastapi import FastAPI, HTTPException
+
+app = FastAPI()
+
+@app.get("/api/users")
+async def get_users():
+    users = await user_service.get_all()
+    return {"data": users}  # 200
+
+@app.get("/api/users/{user_id}")
+async def get_user(user_id: int):
+    user = await user_service.get_by_id(user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    return {"data": user}
+
+@app.post("/api/users", status_code=201)
+async def create_user(dto: CreateUserDto):
+    user = await user_service.create(dto)
+    return {"data": user}
+
+@app.delete("/api/users/{user_id}", status_code=204)
+async def delete_user(user_id: int):
+    await user_service.delete(user_id)
+```
+
+## 架構圖/概念圖
+
+<Diagram data='{"nodes":[{"id":"client","label":"Client","type":"muted"},{"id":"verb","label":"HTTP Verb (GET/POST/PUT/DELETE)","type":"highlight"},{"id":"resource","label":"Resource (/users/123)","type":"default"},{"id":"status","label":"Status Code (200/201/404)","type":"default"},{"id":"body","label":"Response Body (JSON)","type":"muted"}],"edges":[{"from":"client","to":"verb","label":"sends"},{"from":"verb","to":"resource","label":"operates on"},{"from":"resource","to":"status","label":"returns"},{"from":"resource","to":"body","label":"includes"}]}' />
+
+Client 發送帶有 HTTP Verb 的請求，指定要操作的 Resource。伺服器處理後回傳 Status Code 表示結果，並在 Response Body 中附帶資料。這種統一的互動模式讓任何客戶端都能用相同方式存取 API。
+
+## 實戰補充
+
+**Q: URL 該用單數還是複數名詞？**
+
+A: 業界主流用**複數名詞**（`/users`、`/orders`）。即使取得單一資源（`/users/123`），路徑前綴仍用複數，保持一致性。GitHub、Stripe、Twilio 等知名 API 都採用此慣例。
+
+**Q: 巢狀資源該嵌到幾層？**
+
+A: 最多兩層（如 `/users/123/orders`）。超過兩層會讓 URL 過長且難以維護。如果需要更深層的關聯，改用查詢參數（`/orders?userId=123`）或獨立端點。
+
+**Q: 應該回傳什麼狀態碼？**
+
+A: 常用對照表 — GET 成功: 200、POST 成功: 201、PUT/PATCH/DELETE 成功: 204、參數錯誤: 400、未認證: 401、無權限: 403、找不到: 404、伺服器錯誤: 500。
+
+## 理解測驗
+
+<Quiz data='{"question":"以下哪個 URL 設計最符合 RESTful 規範？","options":["/getUser?id=123","/api/users/123","/api/user/get/123","/api/fetchUserById/123"],"answer":1,"explanation":"RESTful 用名詞表示資源（/users/123），操作類型由 HTTP 動詞決定，不在 URL 中放動詞。"}' />
+
+<Quiz data='{"question":"用 PUT /api/users/123 更新使用者時，只傳了 name 欄位，其他欄位會怎樣？","options":["只更新 name，其他不變","所有未傳的欄位會被清空或設為預設值","伺服器會自動補上其他欄位","回傳 400 錯誤"],"answer":1,"explanation":"PUT 是完整替換，未傳的欄位會被覆蓋。如果只想更新部分欄位，應該用 PATCH。"}' />
+
+<Quiz data='{"question":"POST 成功建立資源後，最適合回傳哪個狀態碼？","options":["200 OK","201 Created","204 No Content","202 Accepted"],"answer":1,"explanation":"201 Created 表示資源已成功建立，通常搭配 Location header 指向新資源的 URL。"}' />
+
+## 重點整理
+
+<Callout type="tip" title="一句話記住">
+**REST = 用名詞定義資源、用動詞定義操作、用狀態碼定義結果。** 口訣：「名詞當路徑，動詞選 HTTP」
+</Callout>
+
+| 概念 | 說明 |
+|------|------|
+| **Resource** | API 操作的對象，用 URL 表示 |
+| **HTTP Verb** | GET/POST/PUT/PATCH/DELETE 對應 CRUD |
+| **Status Code** | 2xx 成功、4xx 客戶端錯、5xx 伺服器錯 |
+| **Stateless** | 每次請求獨立，不依賴前次狀態 |
+| **命名規範** | 複數名詞、最多兩層巢狀、kebab-case |

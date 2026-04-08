@@ -1,0 +1,226 @@
+---
+title: "OWASP Top 10 概覽"
+order: 1
+description: "OWASP Top 10 十大 Web 應用安全風險總覽與防禦策略"
+difficulty: "easy"
+interviewImportance: 5
+related:
+  - "security/injection"
+  - "security/xss"
+---
+
+# OWASP Top 10 概覽
+
+<ELI5>
+想像你的房子有很多門窗，小偷會從最容易進入的地方下手：
+
+- **OWASP** = 一群安全專家組成的「防盜聯盟」
+- **Top 10** = 他們列出的「最常見的 10 個弱點」清單
+
+就像消防局公佈「最常見的火災原因 Top 10」一樣，OWASP Top 10 告訴開發者：**這十種安全漏洞最常被駭客利用，優先修好它們**。
+</ELI5>
+
+## 是什麼？
+
+OWASP（Open Worldwide Application Security Project）是一個非營利的 Web 應用安全社群。OWASP Top 10 是每隔幾年更新一次的**十大 Web 應用安全風險清單**，是業界公認的安全基準線。
+
+<Callout type="info" title="最新版本">
+目前最新是 **OWASP Top 10:2021** 版本。和 2017 版相比，新增了「不安全的設計（Insecure Design）」和「軟體及資料完整性失敗（Software and Data Integrity Failures）」等類別。
+</Callout>
+
+## 核心觀念
+
+- **A01: Broken Access Control（存取控制失效）**：使用者能存取不該有權限的資源。例如普通用戶能存取管理員頁面、修改其他人的訂單
+- **A02: Cryptographic Failures（加密失敗）**：敏感資料未加密或用弱加密。例如密碼用 MD5 存、傳輸未用 HTTPS
+- **A03: Injection（注入攻擊）**：攻擊者將惡意程式碼注入系統。包含 SQL Injection、Command Injection、XSS
+- **A04: Insecure Design（不安全的設計）**：架構層級的安全缺陷，不是 Bug 而是設計問題。例如沒有 Rate Limiting、沒有驗證碼防機器人
+- **A05: Security Misconfiguration（安全設定錯誤）**：預設密碼未更改、不必要的服務暴露、錯誤訊息洩漏內部資訊
+- **A06: Vulnerable Components（使用有漏洞的元件）**：依賴的套件有已知漏洞未更新
+- **A07: Authentication Failures（認證失敗）**：弱密碼策略、未啟用 MFA、Session 管理不當
+- **A08: Software Integrity Failures（軟體完整性失敗）**：CI/CD Pipeline 未驗證、依賴來源不可信
+- **A09: Logging Failures（日誌與監控不足）**：安全事件未記錄、沒有告警、無法追蹤攻擊行為
+- **A10: SSRF（Server-Side Request Forgery）**：攻擊者讓伺服器發出請求存取內部資源
+
+## 常見誤區
+
+<Callout type="warning" title="常見誤區">
+- **OWASP Top 10 就夠了**：Top 10 只是最常見的風險，不代表涵蓋所有安全問題。它是起點不是終點
+- **只在開發完成後才做安全檢查**：安全應該融入開發流程（Security by Design），不是事後補救
+- **用了框架就安全了**：框架提供預設防護（如 CSRF Token），但開發者可能無意間繞過這些防護
+</Callout>
+
+## 流程/步驟
+
+<StepDiagram data='[{"title":"了解 Top 10 風險","description":"團隊所有人都要知道這十種風險是什麼","icon":"1"},{"title":"威脅建模","description":"分析系統可能受到哪些 Top 10 攻擊","icon":"2"},{"title":"安全編碼","description":"開發時遵循安全編碼規範，使用框架內建防護","icon":"3"},{"title":"自動化掃描","description":"在 CI/CD Pipeline 中加入 SAST/DAST 掃描","icon":"4"},{"title":"Penetration Testing","description":"定期進行滲透測試，模擬攻擊者行為","icon":"5"},{"title":"持續監控","description":"監控安全事件、定期更新有漏洞的依賴","icon":"6"}]' />
+
+流程解讀：安全不是一個階段而是一個持續的循環。從團隊安全意識培養開始，威脅建模識別風險，安全編碼預防漏洞，自動化掃描持續檢查，滲透測試驗證防禦，監控追蹤異常行為。
+
+## 程式碼範例
+
+### C# 版本
+
+```csharp
+// A01: Broken Access Control — 正確的授權檢查
+[HttpPut("api/orders/{id}")]
+[Authorize]
+public async Task<IActionResult> UpdateOrder(int id, UpdateOrderDto dto)
+{
+    var order = await _orderService.GetByIdAsync(id);
+    if (order == null) return NotFound();
+
+    // 關鍵：檢查這筆訂單是否屬於當前使用者
+    var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+    if (order.UserId.ToString() != userId)
+        return Forbid(); // 403 — 不是你的訂單
+
+    await _orderService.UpdateAsync(id, dto);
+    return NoContent();
+}
+
+// A02: Cryptographic Failures — 正確的密碼 Hash
+using BCrypt.Net;
+
+public string HashPassword(string password)
+    => BCrypt.Net.BCrypt.HashPassword(password, workFactor: 12);
+
+public bool VerifyPassword(string password, string hash)
+    => BCrypt.Net.BCrypt.Verify(password, hash);
+
+// A05: Security Misconfiguration — 生產環境設定
+if (app.Environment.IsProduction())
+{
+    app.UseHsts();
+    app.UseExceptionHandler("/error"); // 不顯示詳細錯誤
+}
+app.UseHttpsRedirection();
+```
+
+### TypeScript 版本
+
+```typescript
+// A03: Injection — 參數化查詢防止 SQL Injection
+// 錯誤示範
+// const query = `SELECT * FROM users WHERE id = ${req.params.id}`; // 危險！
+
+// 正確做法
+const user = await db.query("SELECT * FROM users WHERE id = $1", [req.params.id]);
+
+// A06: Vulnerable Components — 自動掃描依賴漏洞
+// package.json scripts:
+// "audit": "npm audit --production",
+// "audit:fix": "npm audit fix"
+
+// A09: Logging — 記錄安全事件
+app.post("/auth/login", async (req, res) => {
+  const { email, password } = req.body;
+  const user = await userService.findByEmail(email);
+
+  if (!user || !await verifyPassword(password, user.passwordHash)) {
+    // 記錄失敗的登入嘗試（安全事件）
+    logger.warn("Failed login attempt", {
+      email,
+      ip: req.ip,
+      userAgent: req.headers["user-agent"],
+      timestamp: new Date().toISOString(),
+    });
+    return res.status(401).json({ error: "Invalid credentials" });
+  }
+
+  logger.info("Successful login", { userId: user.id, ip: req.ip });
+  // ...
+});
+```
+
+### Python 版本
+
+```python
+# A07: Authentication Failures — 安全的 Session 管理
+from fastapi import FastAPI, Depends, HTTPException
+from fastapi.security import HTTPBearer
+
+# 密碼複雜度驗證
+def validate_password(password: str) -> bool:
+    if len(password) < 12:
+        return False
+    if not any(c.isupper() for c in password):
+        return False
+    if not any(c.isdigit() for c in password):
+        return False
+    if not any(c in "!@#$%^&*" for c in password):
+        return False
+    return True
+
+# A04: Insecure Design — Rate Limiting 防暴力破解
+from slowapi import Limiter
+limiter = Limiter(key_func=get_remote_address)
+
+@app.post("/auth/login")
+@limiter.limit("5/minute")  # 每分鐘最多 5 次登入嘗試
+async def login(request: Request, credentials: LoginDto):
+    user = await authenticate(credentials.email, credentials.password)
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+    return {"access_token": create_token(user)}
+
+# A10: SSRF — 驗證 URL 防止存取內部資源
+from urllib.parse import urlparse
+import ipaddress
+
+def is_safe_url(url: str) -> bool:
+    parsed = urlparse(url)
+    hostname = parsed.hostname
+    if not hostname:
+        return False
+    try:
+        ip = ipaddress.ip_address(hostname)
+        return not (ip.is_private or ip.is_loopback)  # 禁止內部 IP
+    except ValueError:
+        return hostname not in ["localhost", "127.0.0.1", "0.0.0.0"]
+```
+
+## 架構圖/概念圖
+
+<Diagram data='{"nodes":[{"id":"attacker","label":"Attacker","type":"muted"},{"id":"a01","label":"A01: Access Control","type":"highlight"},{"id":"a03","label":"A03: Injection","type":"highlight"},{"id":"a07","label":"A07: Auth Failures","type":"highlight"},{"id":"app","label":"Web Application","type":"default"},{"id":"data","label":"Sensitive Data","type":"muted"}],"edges":[{"from":"attacker","to":"a07","label":"brute force login"},{"from":"attacker","to":"a03","label":"SQL injection"},{"from":"attacker","to":"a01","label":"bypass auth check"},{"from":"a07","to":"app","label":"gains access"},{"from":"a03","to":"data","label":"steals data"},{"from":"a01","to":"data","label":"unauthorized access"}]}' />
+
+攻擊者從多個角度嘗試入侵。Auth Failures 讓攻擊者取得合法身份、Injection 讓攻擊者直接存取資料、Broken Access Control 讓攻擊者越權操作。每個 OWASP Top 10 風險都是一個潛在的攻擊路徑。
+
+## 實戰補充
+
+**Q: 面試被問到 OWASP Top 10 怎麼答？**
+
+A: 不需要背全部 10 個。記住前三名（Access Control、Cryptographic Failures、Injection）並能舉具體例子和防禦方式。例如：「A03 Injection 最常見的是 SQL Injection，防禦方式是用參數化查詢，永遠不要拼接使用者輸入到 SQL 字串中。」
+
+**Q: 怎麼在團隊中推動安全意識？**
+
+A: (1) 每月一次 Security Lunch & Learn，講解一個 Top 10 風險。(2) 在 CI/CD Pipeline 加入 `npm audit` / `dotnet list package --vulnerable`。(3) Code Review 時有安全 Checklist。(4) 用 OWASP ZAP 做定期自動化掃描。
+
+**Q: SAST 和 DAST 是什麼？**
+
+A: **SAST（Static Application Security Testing）**：掃描源碼找漏洞，不需要執行程式。如 SonarQube、CodeQL。**DAST（Dynamic Application Security Testing）**：對運行中的程式發送攻擊請求找漏洞。如 OWASP ZAP、Burp Suite。兩者互補，都應該在 Pipeline 中使用。
+
+## 理解測驗
+
+<Quiz data='{"question":"OWASP Top 10:2021 中排名第一的安全風險是什麼？","options":["Injection","Broken Access Control","Cryptographic Failures","XSS"],"answer":1,"explanation":"2021 版中 Broken Access Control 從 2017 年的第 5 名躍升到第 1 名，代表存取控制問題仍然是最普遍的安全漏洞。"}' />
+
+<Quiz data='{"question":"以下哪個做法可以防禦 A05: Security Misconfiguration？","options":["使用更快的伺服器","移除預設帳號密碼、關閉不必要的服務、生產環境不顯示詳細錯誤","加入更多功能","使用更新的程式語言"],"answer":1,"explanation":"Security Misconfiguration 的防禦重點是「關閉不需要的、修改預設的、隱藏內部的」。預設帳號、不必要的服務、詳細的錯誤訊息都是常見的設定錯誤。"}' />
+
+<Quiz data='{"question":"A06: Vulnerable Components 的防禦策略是什麼？","options":["不使用任何第三方套件","定期掃描並更新有已知漏洞的依賴套件","只用最新版本的套件","自己寫所有的功能"],"answer":1,"explanation":"不用第三方套件不實際。正確做法是定期用 npm audit、dotnet list package --vulnerable 等工具掃描，並及時更新有漏洞的套件。"}' />
+
+## 重點整理
+
+<Callout type="tip" title="一句話記住">
+**OWASP Top 10 = Web 安全的基本體檢表，不是全部但是起點。** 口訣：「前三記牢：權限、加密、注入」
+</Callout>
+
+| 排名 | 風險 | 一句話描述 |
+|------|------|-----------|
+| **A01** | Broken Access Control | 使用者做了不該做的事 |
+| **A02** | Cryptographic Failures | 敏感資料未加密或加密太弱 |
+| **A03** | Injection | 惡意輸入被當作程式碼執行 |
+| **A04** | Insecure Design | 架構層級的安全缺陷 |
+| **A05** | Security Misconfiguration | 設定錯誤暴露弱點 |
+| **A06** | Vulnerable Components | 依賴套件有已知漏洞 |
+| **A07** | Auth Failures | 認證機制不安全 |
+| **A08** | Integrity Failures | 軟體供應鏈未驗證 |
+| **A09** | Logging Failures | 安全事件沒記錄 |
+| **A10** | SSRF | 伺服器被利用存取內部資源 |

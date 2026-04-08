@@ -4,6 +4,8 @@ import { getLessons } from "@/lib/content";
 import Link from "next/link";
 import { ProgressBar } from "@/components/progress-bar";
 import { LessonStatus } from "@/components/lesson-status";
+import { DifficultyBadge } from "@/components/difficulty-badge";
+import { InterviewBadge } from "@/components/interview-badge";
 
 interface Props {
   params: Promise<{ topic: string }>;
@@ -62,6 +64,8 @@ export default async function TopicPage({ params }: Props) {
                     <p className="text-sm text-gray-500">{lesson.description}</p>
                   )}
                 </div>
+                <DifficultyBadge difficulty={lesson.difficulty} />
+                <InterviewBadge importance={lesson.interviewImportance} />
                 <span className="text-xs text-gray-400 whitespace-nowrap">
                   {lesson.readingTime} min
                 </span>

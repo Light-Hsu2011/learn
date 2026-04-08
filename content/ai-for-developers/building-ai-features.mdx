@@ -1,0 +1,303 @@
+---
+title: "Building AI Features"
+order: 6
+description: "產品中加入 AI：Streaming、Guardrails、成本控制實踐"
+difficulty: "hard"
+interviewImportance: 3
+related:
+  - "ai-for-developers/rag"
+  - "api-design/rest-fundamentals"
+---
+
+# Building AI Features（產品中加入 AI）
+
+<ELI5>
+你開了一家餐廳，想加一個「AI 推薦菜單」的功能。聽起來很酷，但你馬上會遇到這些問題：
+
+- **太慢了**：AI 想了 10 秒才推薦，客人等不及（**Streaming** — 一道一道推薦，不用等全部想完）
+- **推薦了奇怪的東西**：AI 推薦了「生魚片巧克力」（**Guardrails** — 設定規則過濾掉不合理的推薦）
+- **太貴了**：每次推薦都要呼叫 GPT-4，一天 API 費用比食材還貴（**成本控制** — 簡單推薦用便宜模型，複雜才用貴的）
+
+把 AI 從 demo 變成產品，最難的不是「讓它動起來」，而是「讓它又快又安全又省錢」。
+</ELI5>
+
+## 是什麼？
+
+Building AI Features 是將 AI 能力整合到產品中的工程實踐。核心挑戰不在於呼叫 API，而在於處理延遲（Streaming）、確保安全（Guardrails）、控制成本（Cost Optimization）、和提供良好的使用者體驗。
+
+<Callout type="info" title="Demo 到 Production 的鴻溝">
+LLM 的 demo 很容易做到驚艷，但 production 需要處理：token 成本爆炸、回應延遲影響 UX、Hallucination 導致錯誤資訊、惡意使用者的 prompt injection、以及合規和隱私要求。
+</Callout>
+
+## 核心觀念
+
+### Streaming — 解決延遲問題
+
+LLM 生成回應通常需要 2-10 秒。Streaming 讓 token 一個一個送回 client，使用者能即時看到回應在「打字」，感知延遲大幅降低。
+
+| 指標 | 說明 | 目標值 |
+|------|------|--------|
+| TTFT | Time to First Token（首個 token 的延遲） | 小於 500ms |
+| TPS | Tokens Per Second（生成速度） | 30-80 tokens/s |
+| Total Time | 完整回應的總時間 | 依回應長度而異 |
+
+### Guardrails — 安全防護
+
+| 防護層 | 說明 | 範例 |
+|--------|------|------|
+| **Input Guard** | 過濾使用者的危險輸入 | 偵測 prompt injection、敏感內容 |
+| **Output Guard** | 過濾模型的不當輸出 | 偵測幻覺、個資洩漏、有害內容 |
+| **Topic Guard** | 限制回答的主題範圍 | 只回答產品相關問題 |
+| **Rate Limit** | 限制使用頻率 | 每分鐘最多 10 次 |
+
+### 成本控制策略
+
+| 策略 | 說明 | 節省比例 |
+|------|------|----------|
+| 模型分級 | 簡單任務用 Haiku、複雜用 Sonnet | 50-80% |
+| Prompt 快取 | 快取常見的 system prompt | 30-50% |
+| 回應快取 | 相同問題直接回傳快取結果 | 60-90% |
+| Token 精簡 | 精簡 prompt，只傳必要的 context | 20-40% |
+| Batch API | 非即時任務用 batch 處理（通常半價） | 50% |
+
+## 常見誤區
+
+<Callout type="warning" title="常犯錯誤">
+- 不做 Streaming（使用者看到空白畫面等 5 秒會以為壞了）
+- 沒有 Guardrails（使用者可以透過 prompt injection 讓你的 AI 做不該做的事）
+- 所有請求都用最貴的模型（80% 的請求用便宜模型就能處理好）
+- 不設 token 上限（一個惡意使用者可以用你的 API key 產生百萬 token 的回應）
+</Callout>
+
+## 執行流程
+
+<StepDiagram data='[{"title":"輸入防護","description":"過濾 prompt injection 和敏感內容","icon":"1"},{"title":"模型路由","description":"根據任務複雜度選擇合適的模型","icon":"2"},{"title":"Streaming 回應","description":"用 SSE/WebSocket 逐 token 串流回 client","icon":"3"},{"title":"輸出防護","description":"過濾幻覺、個資、有害內容","icon":"4"},{"title":"監控與計費","description":"記錄 token 用量、延遲、品質指標","icon":"5"}]' />
+
+流程解讀：Production 級的 AI feature 是一條嚴謹的管線。使用者輸入先經過 Input Guard 過濾，然後根據任務複雜度路由到合適的模型（節省成本）。回應用 Streaming 方式逐 token 送回 client（改善 UX）。在送出之前經過 Output Guard 過濾不當內容。全程監控 token 用量和品質指標，確保成本可控、品質達標。
+
+## 程式碼範例
+
+### C# 版本
+
+```csharp
+// Streaming — Server-Sent Events (SSE)
+app.MapPost("/api/chat", async (ChatRequest req, HttpContext context) =>
+{
+    // Input Guard
+    if (await ContainsPromptInjection(req.Message))
+        return Results.BadRequest("Invalid input");
+
+    context.Response.ContentType = "text/event-stream";
+    context.Response.Headers.CacheControl = "no-cache";
+
+    // 選擇模型（成本控制）
+    var model = req.Message.Length > 500 ? "claude-sonnet-4-20250514" : "claude-haiku-4-20250514";
+
+    // Streaming
+    await foreach (var token in StreamChatResponse(model, req.Message))
+    {
+        // Output Guard（逐步檢查）
+        if (ContainsPII(token)) continue;
+
+        await context.Response.WriteAsync($"data: {token}\n\n");
+        await context.Response.Body.FlushAsync();
+    }
+    await context.Response.WriteAsync("data: [DONE]\n\n");
+});
+
+// Token 用量追蹤
+public class UsageTracker
+{
+    public async Task TrackUsage(string userId, int inputTokens, int outputTokens, string model)
+    {
+        var cost = CalculateCost(inputTokens, outputTokens, model);
+        await _db.UsageLogs.AddAsync(new UsageLog
+        {
+            UserId = userId,
+            InputTokens = inputTokens,
+            OutputTokens = outputTokens,
+            Model = model,
+            Cost = cost,
+            Timestamp = DateTime.UtcNow
+        });
+    }
+}
+```
+
+### TypeScript 版本
+
+```typescript
+// Streaming with Anthropic SDK
+import Anthropic from "@anthropic-ai/sdk";
+
+const client = new Anthropic();
+
+// SSE Endpoint
+app.post("/api/chat", async (req, res) => {
+  // Input Guard
+  const input = req.body.message;
+  if (await detectPromptInjection(input)) {
+    return res.status(400).json({ error: "Invalid input" });
+  }
+
+  // 模型路由（成本控制）
+  const model = selectModel(input);
+
+  // SSE headers
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+
+  // Streaming
+  const stream = await client.messages.stream({
+    model,
+    max_tokens: 1024,
+    system: "你是一個產品助手。只回答與產品相關的問題。",
+    messages: [{ role: "user", content: input }],
+  });
+
+  let totalTokens = 0;
+
+  for await (const event of stream) {
+    if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
+      const text = event.delta.text;
+      // Output Guard
+      if (!containsSensitiveInfo(text)) {
+        res.write(`data: ${JSON.stringify({ text })}\n\n`);
+      }
+    }
+  }
+
+  // 記錄用量
+  const usage = await stream.finalMessage();
+  await trackUsage(req.user.id, usage.usage.input_tokens, usage.usage.output_tokens, model);
+
+  res.write("data: [DONE]\n\n");
+  res.end();
+});
+
+// 模型路由
+function selectModel(input: string): string {
+  if (input.length < 100) return "claude-haiku-4-20250514";    // 簡單問題
+  if (input.includes("分析") || input.includes("比較"))
+    return "claude-sonnet-4-20250514"; // 複雜分析
+  return "claude-haiku-4-20250514"; // 預設用便宜的
+}
+
+// 回應快取
+const cache = new Map<string, string>();
+
+async function getCachedOrGenerate(input: string): Promise<string> {
+  const cacheKey = hashInput(input);
+  if (cache.has(cacheKey)) return cache.get(cacheKey)!;
+  const response = await generate(input);
+  cache.set(cacheKey, response);
+  return response;
+}
+```
+
+### Python 版本
+
+```python
+import anthropic
+from fastapi import FastAPI
+from fastapi.responses import StreamingResponse
+import hashlib
+from functools import lru_cache
+
+app = FastAPI()
+client = anthropic.Anthropic()
+
+# Input Guard — Prompt Injection 偵測
+INJECTION_PATTERNS = [
+    "ignore previous instructions",
+    "you are now",
+    "system prompt",
+    "reveal your instructions",
+]
+
+def detect_injection(text: str) -> bool:
+    lower = text.lower()
+    return any(pattern in lower for pattern in INJECTION_PATTERNS)
+
+# Streaming Endpoint
+@app.post("/api/chat")
+async def chat(request: ChatRequest):
+    if detect_injection(request.message):
+        raise HTTPException(400, "Invalid input")
+
+    # 模型路由
+    model = select_model(request.message)
+
+    async def generate():
+        with client.messages.stream(
+            model=model,
+            max_tokens=1024,
+            system="你是一個產品助手。只回答與產品相關的問題。如果問題與產品無關，禮貌拒絕。",
+            messages=[{"role": "user", "content": request.message}],
+        ) as stream:
+            for text in stream.text_stream:
+                # Output Guard
+                if not contains_pii(text):
+                    yield f"data: {text}\n\n"
+            yield "data: [DONE]\n\n"
+
+    return StreamingResponse(generate(), media_type="text/event-stream")
+
+# 成本監控
+class CostTracker:
+    PRICES = {
+        "claude-haiku-4-20250514": {"input": 0.25, "output": 1.25},     # per 1M tokens
+        "claude-sonnet-4-20250514": {"input": 3.0, "output": 15.0},
+    }
+
+    def calculate_cost(self, model: str, input_tokens: int, output_tokens: int) -> float:
+        prices = self.PRICES[model]
+        return (input_tokens * prices["input"] + output_tokens * prices["output"]) / 1_000_000
+
+    async def check_budget(self, user_id: str) -> bool:
+        monthly_cost = await self.get_monthly_cost(user_id)
+        return monthly_cost < 10.0  # 每個使用者每月上限 $10
+```
+
+## 結構圖
+
+<Diagram data='{"nodes":[{"id":"user","label":"User","type":"muted"},{"id":"input","label":"Input Guard","type":"default"},{"id":"router","label":"Model Router","type":"default"},{"id":"cache","label":"Response Cache","type":"default"},{"id":"llm","label":"LLM (Streaming)","type":"highlight"},{"id":"output","label":"Output Guard","type":"default"},{"id":"monitor","label":"Cost Monitor","type":"muted"}],"edges":[{"from":"user","to":"input","label":"request"},{"from":"input","to":"router","label":"validated"},{"from":"router","to":"cache","label":"check cache"},{"from":"router","to":"llm","label":"select model"},{"from":"llm","to":"output","label":"stream tokens"},{"from":"output","to":"user","label":"SSE stream"},{"from":"llm","to":"monitor","label":"track tokens"}]}' />
+
+圖中 User 請求先經過 Input Guard 驗證安全性。Model Router 先檢查 Response Cache（命中就直接回傳），沒命中則選擇合適的模型。LLM 以 Streaming 方式生成回應，經過 Output Guard 過濾後以 SSE 串流回 User。全程 Cost Monitor 追蹤 token 用量和費用。
+
+## 面試常見問題
+
+**Q: 如何防止 Prompt Injection？**
+
+A: 多層防護：(1) Input Guard 偵測已知的 injection 模式（如「ignore previous instructions」）；(2) System Prompt 中明確聲明行為邊界（「你只能回答產品相關的問題」）；(3) 將使用者輸入放在 user message 中，不直接拼接到 system prompt；(4) Output Guard 過濾不預期的輸出格式；(5) 使用 LLM-as-a-judge 讓另一個模型檢查輸出是否合規。
+
+**Q: Streaming 的技術實現是什麼？**
+
+A: 最常用 Server-Sent Events（SSE）— client 發送 POST 請求，server 以 `text/event-stream` 格式持續推送 token。比 WebSocket 簡單，且天然支援 HTTP/2。前端用 `EventSource` 或 `fetch` + `ReadableStream` 接收。每個 `data:` 行包含一個或多個 token。
+
+**Q: 如何控制 AI feature 的成本？**
+
+A: 五個策略依序實施：(1) 模型路由 — 80% 的請求用便宜模型；(2) 回應快取 — 相同問題不重複呼叫；(3) Token 精簡 — 最小化 prompt 和 context；(4) 設定用量限制 — 每使用者每月上限；(5) Batch API — 非即時任務用半價的 batch 處理。
+
+## 理解測驗
+
+<Quiz data='{"question":"Streaming 回應的主要目的是什麼？","options":["節省 API 費用","降低使用者感知的延遲","提升模型準確度","減少 token 數量"],"answer":1,"explanation":"LLM 生成完整回應可能需要 5-10 秒。Streaming 讓 token 逐個送回 client，使用者能即時看到回應在「打字」，感知延遲從數秒降到幾百毫秒。"}' />
+
+<Quiz data='{"question":"以下哪個是有效的成本控制策略？","options":["所有請求都用最貴的模型確保品質","簡單任務用便宜模型，複雜任務用貴的模型","不設 token 上限讓使用者自由使用","關閉回應快取確保回答都是最新的"],"answer":1,"explanation":"模型路由是最有效的成本控制策略。80% 的簡單請求用 Haiku 級別的模型就能處理好，只有複雜的分析和推理才需要 Sonnet 級別。可以節省 50-80% 的成本。"}' />
+
+<Quiz data='{"question":"Guardrails 的 Output Guard 負責什麼？","options":["加速模型回應","過濾模型輸出中的幻覺、個資和有害內容","壓縮回應大小","翻譯回應語言"],"answer":1,"explanation":"Output Guard 在模型回應送出之前進行過濾，檢查是否包含幻覺（與事實不符）、個人資訊洩漏、或有害內容，確保送到使用者的內容是安全的。"}' />
+
+## 重點整理
+
+<Callout type="tip" title="一句話記住">
+**Building AI Features = Streaming + Guardrails + Cost Control。** 口訣：「串流降延遲，護欄保安全，路由省成本」
+</Callout>
+
+| 概念 | 說明 |
+|------|------|
+| **Streaming** | 逐 token 串流回應，降低感知延遲 |
+| **Input Guard** | 過濾 prompt injection 和敏感輸入 |
+| **Output Guard** | 過濾幻覺、個資和有害內容 |
+| **Model Router** | 根據任務複雜度選擇合適的模型 |
+| **核心挑戰** | 從 demo 到 production 的品質和成本控制 |

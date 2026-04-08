@@ -1,0 +1,226 @@
+---
+title: "GraphQL 入門"
+order: 6
+description: "GraphQL 核心概念與 REST 比較，選擇適合的 API 風格"
+difficulty: "medium"
+interviewImportance: 3
+related:
+  - "api-design/rest-fundamentals"
+  - "microservices/service-communication"
+---
+
+# GraphQL 入門與 REST 比較
+
+<ELI5>
+想像你去自助餐 vs 套餐餐廳：
+
+- **REST** = 套餐，你點「A 套餐」就固定拿到那幾道菜，多了不要的菜（over-fetching），少了想吃的就得再點一份（under-fetching）
+- **GraphQL** = 自助餐，你自己夾想要的菜，不多不少，一盤搞定
+
+GraphQL 讓前端**精確指定**想要哪些欄位，伺服器只回傳你要的，不多不少。
+</ELI5>
+
+## 是什麼？
+
+GraphQL 是 Facebook 在 2015 年開源的**查詢語言**和**執行引擎**。它用一個端點（通常是 `/graphql`）處理所有請求，由客戶端在查詢中指定需要的資料結構。
+
+<Callout type="info" title="GraphQL 不是資料庫">
+GraphQL 是 API 層的查詢語言，不是資料庫查詢語言。它位於前端和後端之間，後端仍然用 SQL / ORM 操作資料庫。
+</Callout>
+
+## 核心觀念
+
+- **Schema**：用 SDL（Schema Definition Language）定義資料型別和可用操作，是 API 的「合約」
+- **Query**：讀取資料的操作，客戶端精確指定要哪些欄位
+- **Mutation**：修改資料的操作（新增、更新、刪除）
+- **Resolver**：每個欄位對應一個 Resolver 函數，負責從資料源取得該欄位的值
+- **Over-fetching / Under-fetching**：REST 常見問題 — 回傳太多不需要的欄位（over）或需要多次請求才能拿到完整資料（under）
+
+## 常見誤區
+
+<Callout type="warning" title="常見誤區">
+- **GraphQL 一定比 REST 好**：GraphQL 增加了伺服器端複雜度（Schema 維護、N+1 查詢問題、快取困難），簡單 CRUD 用 REST 更合適
+- **GraphQL 自動解決效能問題**：不處理 N+1 問題的 GraphQL 比 REST 更慢。必須搭配 DataLoader 批次查詢
+- **一個前端頁面只發一次 GraphQL 請求**：過度合併查詢反而降低可快取性，合理拆分查詢更好
+</Callout>
+
+## 流程/步驟
+
+<StepDiagram data='[{"title":"定義 Schema","description":"用 SDL 宣告 Type、Query、Mutation","icon":"1"},{"title":"實作 Resolver","description":"每個欄位寫對應的資料取得邏輯","icon":"2"},{"title":"客戶端組查詢","description":"前端用 GraphQL 語法指定需要的欄位","icon":"3"},{"title":"引擎解析執行","description":"GraphQL 引擎解析查詢，逐層呼叫 Resolver","icon":"4"},{"title":"回傳精確資料","description":"只回傳客戶端指定的欄位，不多不少","icon":"5"}]' />
+
+流程解讀：GraphQL 從 Schema 定義開始，它是前後端的合約。Resolver 是資料的實際來源。客戶端組合查詢語句，引擎解析後逐層呼叫 Resolver 取得資料，最終只回傳查詢中指定的欄位。
+
+## 程式碼範例
+
+### C# 版本
+
+```csharp
+// Hot Chocolate — .NET GraphQL Server
+// Schema 定義
+public class User
+{
+    public int Id { get; set; }
+    public string Name { get; set; } = "";
+    public string Email { get; set; } = "";
+    public List<Order> Orders { get; set; } = new();
+}
+
+public class Query
+{
+    public User GetUser(int id, [Service] IUserService service)
+        => service.GetById(id);
+
+    public IQueryable<User> GetUsers([Service] AppDbContext db)
+        => db.Users;
+}
+
+public class Mutation
+{
+    public User CreateUser(string name, string email, [Service] IUserService service)
+        => service.Create(name, email);
+}
+
+// Program.cs
+builder.Services
+    .AddGraphQLServer()
+    .AddQueryType<Query>()
+    .AddMutationType<Mutation>()
+    .AddFiltering()
+    .AddSorting();
+```
+
+### TypeScript 版本
+
+```typescript
+// Apollo Server — GraphQL
+import { ApolloServer } from "@apollo/server";
+
+const typeDefs = `#graphql
+  type User {
+    id: ID!
+    name: String!
+    email: String!
+    orders: [Order!]!
+  }
+
+  type Order {
+    id: ID!
+    total: Float!
+  }
+
+  type Query {
+    user(id: ID!): User
+    users: [User!]!
+  }
+
+  type Mutation {
+    createUser(name: String!, email: String!): User!
+  }
+`;
+
+const resolvers = {
+  Query: {
+    user: (_: any, { id }: { id: string }) => userService.getById(id),
+    users: () => userService.getAll(),
+  },
+  User: {
+    orders: (parent: User) => orderService.getByUserId(parent.id),
+  },
+  Mutation: {
+    createUser: (_: any, { name, email }: { name: string; email: string }) =>
+      userService.create(name, email),
+  },
+};
+
+// 客戶端查詢 — 精確指定需要的欄位
+const GET_USER = `
+  query GetUser($id: ID!) {
+    user(id: $id) {
+      name
+      email
+      orders {
+        total
+      }
+    }
+  }
+`;
+```
+
+### Python 版本
+
+```python
+# Strawberry — Python GraphQL
+import strawberry
+from typing import List
+
+@strawberry.type
+class User:
+    id: int
+    name: str
+    email: str
+
+    @strawberry.field
+    async def orders(self) -> List["Order"]:
+        return await order_service.get_by_user_id(self.id)
+
+@strawberry.type
+class Order:
+    id: int
+    total: float
+
+@strawberry.type
+class Query:
+    @strawberry.field
+    async def user(self, id: int) -> User | None:
+        return await user_service.get_by_id(id)
+
+@strawberry.type
+class Mutation:
+    @strawberry.mutation
+    async def create_user(self, name: str, email: str) -> User:
+        return await user_service.create(name, email)
+
+schema = strawberry.Schema(query=Query, mutation=Mutation)
+```
+
+## 架構圖/概念圖
+
+<Diagram data='{"nodes":[{"id":"client","label":"Client (Query)","type":"muted"},{"id":"graphql","label":"GraphQL Engine","type":"highlight"},{"id":"schema","label":"Schema (SDL)","type":"default"},{"id":"resolvers","label":"Resolvers","type":"default"},{"id":"db","label":"Data Sources","type":"muted"}],"edges":[{"from":"client","to":"graphql","label":"sends query"},{"from":"graphql","to":"schema","label":"validates against"},{"from":"graphql","to":"resolvers","label":"executes"},{"from":"resolvers","to":"db","label":"fetches from"}]}' />
+
+客戶端發送查詢到 GraphQL Engine，Engine 先用 Schema 驗證查詢語法，然後逐層呼叫 Resolver 從各種 Data Source 取得資料。最終只回傳查詢中指定的欄位。
+
+## 實戰補充
+
+**Q: REST 和 GraphQL 怎麼選？**
+
+A: **用 REST**：簡單 CRUD、公開 API、強快取需求、團隊不熟 GraphQL。**用 GraphQL**：前端需要彈性查詢、多種客戶端（Web/Mobile）需要不同欄位、資料關聯複雜需要一次取得多層資料。
+
+**Q: GraphQL 的 N+1 問題是什麼？**
+
+A: 查詢 10 個 User 時，每個 User 的 orders 欄位各觸發一次 DB 查詢，總共 1 + 10 = 11 次查詢。解法：用 **DataLoader** 批次收集所有 userId，一次查詢所有 orders。
+
+**Q: GraphQL 怎麼做快取？**
+
+A: REST 靠 URL 做 HTTP 快取很簡單，GraphQL 因為只有一個端點所以 HTTP 快取失效。改用 **Persisted Queries**（把查詢存成 hash）或 **Apollo Client 的 normalized cache**。
+
+## 理解測驗
+
+<Quiz data='{"question":"GraphQL 的 Over-fetching 問題指的是什麼？","options":["查詢太多次 API","API 回傳了客戶端不需要的欄位","GraphQL Schema 定義太多型別","伺服器消耗太多記憶體"],"answer":1,"explanation":"Over-fetching 是 REST 的常見問題 — API 回傳固定的所有欄位，但客戶端只需要其中幾個。GraphQL 讓客戶端指定需要的欄位，解決此問題。"}' />
+
+<Quiz data='{"question":"GraphQL 的 Resolver 負責什麼？","options":["驗證客戶端的身份","定義 API 的 URL 結構","為每個欄位提供實際的資料取得邏輯","壓縮回應資料"],"answer":2,"explanation":"Resolver 是每個欄位的資料來源函數，GraphQL 引擎解析查詢後會逐層呼叫對應的 Resolver 取得資料。"}' />
+
+<Quiz data='{"question":"什麼是 GraphQL 的 N+1 問題的標準解法？","options":["用更快的資料庫","把所有查詢合併成一個","用 DataLoader 批次查詢","禁用巢狀查詢"],"answer":2,"explanation":"DataLoader 會收集同一批次中所有的 ID，合併成一次資料庫查詢，避免 N+1 次獨立查詢。"}' />
+
+## 重點整理
+
+<Callout type="tip" title="一句話記住">
+**GraphQL = 前端點菜、後端精準出餐。** 口訣：「一個端點打天下，要啥給啥不浪費」
+</Callout>
+
+| 對比 | REST | GraphQL |
+|------|------|---------|
+| **端點** | 多個 URL | 單一 `/graphql` |
+| **資料精確度** | 固定回傳結構 | 客戶端指定欄位 |
+| **快取** | HTTP 快取簡單 | 需要額外方案 |
+| **學習成本** | 低 | 中高 |
+| **適合場景** | 簡單 CRUD、公開 API | 複雜關聯、多端需求 |

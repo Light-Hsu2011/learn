@@ -1,0 +1,272 @@
+---
+title: "RAG"
+order: 3
+description: "RAG：向量資料庫、Chunking、Retrieval 的完整實作"
+difficulty: "hard"
+interviewImportance: 4
+related:
+  - "ai-for-developers/ai-fundamentals"
+  - "system-design/search-autocomplete"
+---
+
+# RAG（Retrieval-Augmented Generation）
+
+<ELI5>
+想像你考試的時候：
+
+- **不帶參考書**（純 LLM）：你只能靠記憶回答，可能記錯或根本沒學過
+- **帶參考書**（RAG）：你可以先翻書找到相關章節，再根據書上的內容回答
+
+RAG 就是讓 AI 在回答前先「翻參考書」— 從你的資料庫中找到最相關的資訊，然後把這些資訊和問題一起餵給 LLM，讓它根據**真實資料**回答而不是靠「記憶」瞎猜。
+</ELI5>
+
+## 是什麼？
+
+RAG（Retrieval-Augmented Generation）是一種結合**資訊檢索**和**文本生成**的架構模式。先從知識庫中檢索相關文件，再將檢索結果作為上下文送入 LLM 生成回答，大幅降低 Hallucination 並讓 LLM 能回答「它沒學過的知識」。
+
+<Callout type="info" title="為什麼不直接 Fine-tune？">
+Fine-tuning 需要大量訓練資料和 GPU 資源，而且模型更新很慢。RAG 只需要更新知識庫（加一篇文件就行），更靈活、更便宜、更即時。兩者可以搭配使用，但大多數場景 RAG 就夠了。
+</Callout>
+
+## 核心觀念
+
+### RAG 的三步驟
+
+| 步驟 | 說明 | 技術 |
+|------|------|------|
+| **Index** | 將文件切塊、產生 Embedding、存入向量資料庫 | Chunking + Embedding Model |
+| **Retrieve** | 將使用者問題轉為 Embedding，搜尋最相似的文件塊 | Vector Search + Reranking |
+| **Generate** | 將檢索結果作為 context 送入 LLM 生成回答 | LLM + Prompt Template |
+
+### Chunking 策略
+
+| 策略 | 說明 | 適用場景 |
+|------|------|----------|
+| Fixed Size | 固定 token 數量切割 | 通用、簡單 |
+| Sentence | 按句子切割 | 文章、新聞 |
+| Paragraph | 按段落切割 | 結構化文件 |
+| Recursive | 先段落、段落太長再切句子 | 長文件 |
+| Semantic | 按語意相似度分群 | 品質最高但最複雜 |
+
+Chunk size 的經驗值：200-500 tokens，overlap 10-20%。
+
+### 向量資料庫比較
+
+| 資料庫 | 類型 | 特點 |
+|--------|------|------|
+| Pinecone | 雲端託管 | 簡單易用，全託管 |
+| Weaviate | 自建/雲端 | 支援 hybrid search |
+| Qdrant | 自建/雲端 | 高效能，Rust 寫的 |
+| pgvector | PostgreSQL 外掛 | 已有 PG 就能用 |
+| Chroma | 自建 | 輕量，適合 prototype |
+
+## 常見誤區
+
+<Callout type="warning" title="常犯錯誤">
+- Chunk 太大（檢索不精確，帶入太多無關資訊）
+- Chunk 太小（缺少上下文，回答不完整）
+- 不做 Reranking（向量搜尋的 top-K 不一定是最相關的）
+- 把 LLM 的回答直接回傳給使用者（必須標示資訊來源，讓使用者能驗證）
+</Callout>
+
+## 執行流程
+
+<StepDiagram data='[{"title":"文件前處理","description":"清洗、切塊（Chunking）、加入 metadata","icon":"1"},{"title":"產生 Embedding","description":"用 Embedding Model 將每個 chunk 轉為向量","icon":"2"},{"title":"存入向量 DB","description":"向量和原文一起存入 Pinecone/pgvector","icon":"3"},{"title":"查詢檢索","description":"使用者提問 → Embedding → 向量相似度搜尋 top-K","icon":"4"},{"title":"LLM 生成","description":"將 top-K 結果作為 context 送入 LLM 生成回答","icon":"5"}]' />
+
+流程解讀：RAG 分為「離線建索引」和「線上查詢」兩個階段。離線階段將文件切塊、產生 Embedding、存入向量資料庫，這是一次性（或定期更新）的工作。線上階段接收使用者問題，將問題轉為 Embedding 進行相似度搜尋，找到最相關的 chunk 後組合成 prompt 送入 LLM。LLM 根據提供的真實資料生成回答，大幅降低 Hallucination。
+
+## 程式碼範例
+
+### C# 版本
+
+```csharp
+// 使用 Semantic Kernel 實作 RAG
+using Microsoft.SemanticKernel;
+using Microsoft.SemanticKernel.Connectors.OpenAI;
+using Microsoft.SemanticKernel.Memory;
+
+// 建立索引
+var memoryBuilder = new MemoryBuilder()
+    .WithOpenAITextEmbeddingGeneration("text-embedding-3-small", apiKey)
+    .WithQdrantMemoryStore("http://localhost:6333", 1536)
+    .Build();
+
+// 存入文件（自動切塊和 embedding）
+await memoryBuilder.SaveInformationAsync("docs",
+    id: "doc-001",
+    text: "微服務架構是將應用拆分為多個獨立部署的服務...",
+    additionalMetadata: "source:architecture-guide.md");
+
+// 查詢
+var results = memoryBuilder.SearchAsync("docs",
+    query: "什麼是微服務？",
+    limit: 3,
+    minRelevanceScore: 0.7);
+
+// RAG — 組合 context 送入 LLM
+var context = string.Join("\n\n", await results
+    .Select(r => r.Metadata.Text).ToListAsync());
+
+var prompt = $@"根據以下參考資料回答問題。如果資料中沒有答案，請說「我不確定」。
+
+參考資料：
+{context}
+
+問題：什麼是微服務？";
+
+var answer = await kernel.InvokePromptAsync(prompt);
+```
+
+### TypeScript 版本
+
+```typescript
+import { OpenAI } from "openai";
+import { QdrantClient } from "@qdrant/js-client-rest";
+
+const openai = new OpenAI();
+const qdrant = new QdrantClient({ url: "http://localhost:6333" });
+
+// Step 1: Chunking
+function chunkText(text: string, maxTokens = 300, overlap = 50): string[] {
+  const words = text.split(/\s+/);
+  const chunks: string[] = [];
+  for (let i = 0; i < words.length; i += maxTokens - overlap) {
+    chunks.push(words.slice(i, i + maxTokens).join(" "));
+  }
+  return chunks;
+}
+
+// Step 2: 產生 Embedding 並存入向量 DB
+async function indexDocument(docId: string, text: string) {
+  const chunks = chunkText(text);
+  for (let i = 0; i < chunks.length; i++) {
+    const embedding = await openai.embeddings.create({
+      model: "text-embedding-3-small",
+      input: chunks[i],
+    });
+    await qdrant.upsert("documents", {
+      points: [{
+        id: `${docId}-${i}`,
+        vector: embedding.data[0].embedding,
+        payload: { text: chunks[i], docId, chunkIndex: i },
+      }],
+    });
+  }
+}
+
+// Step 3: 查詢 + 生成
+async function ragQuery(question: string): Promise<string> {
+  // Retrieve
+  const queryEmbedding = await openai.embeddings.create({
+    model: "text-embedding-3-small",
+    input: question,
+  });
+  const results = await qdrant.search("documents", {
+    vector: queryEmbedding.data[0].embedding,
+    limit: 5,
+  });
+  const context = results.map(r => r.payload?.text).join("\n\n");
+
+  // Generate
+  const response = await openai.chat.completions.create({
+    model: "gpt-4o",
+    messages: [
+      { role: "system", content: "根據提供的參考資料回答問題。引用資料來源。如果資料不足，明確表示。" },
+      { role: "user", content: `參考資料：\n${context}\n\n問題：${question}` },
+    ],
+  });
+  return response.choices[0].message.content ?? "";
+}
+```
+
+### Python 版本
+
+```python
+from langchain_community.vectorstores import Qdrant
+from langchain_openai import OpenAIEmbeddings, ChatOpenAI
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.runnables import RunnablePassthrough
+
+# Step 1: Chunking
+splitter = RecursiveCharacterTextSplitter(
+    chunk_size=500,
+    chunk_overlap=50,
+    separators=["\n\n", "\n", "。", ".", " "]
+)
+chunks = splitter.split_text(document_text)
+
+# Step 2: 存入向量 DB
+embeddings = OpenAIEmbeddings(model="text-embedding-3-small")
+vectorstore = Qdrant.from_texts(
+    texts=chunks,
+    embedding=embeddings,
+    url="http://localhost:6333",
+    collection_name="documents"
+)
+
+# Step 3: RAG Chain
+retriever = vectorstore.as_retriever(search_kwargs={"k": 5})
+llm = ChatOpenAI(model="gpt-4o")
+
+prompt = ChatPromptTemplate.from_template("""
+根據以下參考資料回答問題。如果資料中沒有答案，請說「我不確定」。
+引用你參考的段落。
+
+參考資料：
+{context}
+
+問題：{question}
+""")
+
+rag_chain = (
+    {"context": retriever, "question": RunnablePassthrough()}
+    | prompt
+    | llm
+)
+
+answer = rag_chain.invoke("什麼是微服務？")
+print(answer.content)
+```
+
+## 結構圖
+
+<Diagram data='{"nodes":[{"id":"docs","label":"Documents","type":"muted"},{"id":"chunk","label":"Chunking","type":"default"},{"id":"embed","label":"Embedding Model","type":"default"},{"id":"vectordb","label":"Vector Database","type":"highlight"},{"id":"query","label":"User Question","type":"muted"},{"id":"retrieve","label":"Similarity Search","type":"default"},{"id":"llm","label":"LLM","type":"highlight"},{"id":"answer","label":"Generated Answer","type":"default"}],"edges":[{"from":"docs","to":"chunk","label":"split"},{"from":"chunk","to":"embed","label":"encode"},{"from":"embed","to":"vectordb","label":"store"},{"from":"query","to":"embed","label":"encode"},{"from":"embed","to":"retrieve","label":"query vector"},{"from":"vectordb","to":"retrieve","label":"top-K results"},{"from":"retrieve","to":"llm","label":"context"},{"from":"query","to":"llm","label":"question"},{"from":"llm","to":"answer","label":"generate"}]}' />
+
+圖中上半部是離線索引流程：Documents 經過 Chunking 切塊，Embedding Model 編碼後存入 Vector Database。下半部是線上查詢流程：User Question 經過同一個 Embedding Model 編碼，在 Vector Database 中進行 Similarity Search 取得 top-K 結果，作為 context 和原始 question 一起送入 LLM 生成 Answer。
+
+## 面試常見問題
+
+**Q: RAG 和 Fine-tuning 各自適用什麼場景？**
+
+A: RAG 適合知識庫會頻繁更新的場景（文件系統、知識庫問答），不需要重新訓練模型，成本低且即時。Fine-tuning 適合需要學習特定風格、格式或專業術語的場景（例如法律文件生成），需要大量標註資料和 GPU 資源。大多數企業場景 RAG 就夠了。
+
+**Q: Chunk size 怎麼決定？太大太小各有什麼問題？**
+
+A: Chunk 太大（1000+ tokens）：檢索精確度下降，混入太多無關資訊。Chunk 太小（50- tokens）：缺少上下文，LLM 無法理解片段含義。經驗值是 200-500 tokens，overlap 10-20%。最佳做法是用你的實際資料做 A/B 測試，因為不同類型的文件（程式碼 vs 文章）最佳 chunk size 不同。
+
+**Q: 如何評估 RAG 系統的品質？**
+
+A: 三個維度：Retrieval 品質（用 precision@K 和 recall@K 量測檢索是否找到正確的文件）、Generation 品質（用 faithfulness 量測回答是否忠於參考資料，用 relevance 量測回答是否切題）、End-to-end（用人工評估和自動化評估框架如 RAGAS）。
+
+## 理解測驗
+
+<Quiz data='{"question":"RAG 的主要目的是什麼？","options":["讓 LLM 跑得更快","讓 LLM 根據真實資料回答問題，減少 Hallucination","取代所有傳統搜尋引擎","訓練新的 AI 模型"],"answer":1,"explanation":"RAG 在 LLM 回答前先從知識庫檢索相關資料，將真實資料作為上下文提供給 LLM，讓它根據事實回答而非靠「記憶」猜測，大幅減少 Hallucination。"}' />
+
+<Quiz data='{"question":"Chunking 時 overlap 的作用是什麼？","options":["減少儲存空間","確保切割邊界的資訊不會遺失","加快搜尋速度","美化文字格式"],"answer":1,"explanation":"Chunk 的切割點可能剛好在重要資訊的中間。Overlap 讓相鄰的 chunk 有重疊的內容，確保切割邊界的資訊在至少一個 chunk 中是完整的。"}' />
+
+<Quiz data='{"question":"向量資料庫中的相似度搜尋是基於什麼原理？","options":["關鍵字匹配","Embedding 向量之間的距離（如 cosine similarity）","正規表達式","資料庫 JOIN"],"answer":1,"explanation":"向量資料庫將文字轉為高維度 Embedding 向量，用 cosine similarity 或歐氏距離計算向量之間的距離。距離越近表示語意越相似。"}' />
+
+## 重點整理
+
+<Callout type="tip" title="一句話記住">
+**RAG = 先找資料再回答，讓 AI 有據可查。** 口訣：「切塊存向量，查詢找最近，結合來回答」
+</Callout>
+
+| 概念 | 說明 |
+|------|------|
+| **RAG** | 檢索增強生成，先找再答 |
+| **Chunking** | 將文件切成適當大小的片段 |
+| **Embedding** | 將文字轉為語意向量 |
+| **Vector DB** | 儲存和搜尋向量的專用資料庫 |
+| **核心價值** | 減少 Hallucination，讓 AI 基於事實回答 |

@@ -1,0 +1,185 @@
+---
+title: "運算服務選擇"
+order: 2
+description: "VM、Container、Serverless 三種運算模式的比較與選擇"
+difficulty: "medium"
+interviewImportance: 4
+related:
+  - "ci-cd/containerization"
+  - "cloud-architecture/serverless"
+---
+
+# 運算服務選擇（VM vs Container vs Serverless）
+
+<ELI5>
+想像你要辦活動需要場地：
+
+- **VM（租一間辦公室）**：24 小時都是你的，要怎麼裝潢都行，但不用的時候也在付租金
+- **Container（共享辦公空間）**：你有自己的區域，和其他人共享大樓設施。搬遷快速，月租靈活
+- **Serverless（會議室按時租）**：有活動才租會議室，用幾小時付幾小時。沒活動就不花錢
+
+三種方式的核心取捨：**控制權 vs 維運負擔 vs 成本效率**。
+</ELI5>
+
+## 是什麼？
+
+雲端提供三種主要的運算模式。VM 給你最大控制權、Container 在控制和效率間取得平衡、Serverless 讓你完全不管基礎設施。選擇取決於應用特性、團隊能力和成本考量。
+
+<Callout type="info" title="趨勢觀察">
+業界趨勢是從 VM 逐漸遷移到 Container（Kubernetes），再對適合的工作負載採用 Serverless。但 VM 不會消失 — 需要特殊 OS 設定或長時間運行的密集計算仍然用 VM 最合適。
+</Callout>
+
+## 核心觀念
+
+- **VM（Virtual Machine）**：完整的虛擬電腦，有自己的 OS。啟動需要分鐘，可以安裝任何軟體。適合需要完全控制 OS 的場景
+- **Container（容器）**：共享 Host OS Kernel，隔離應用程式和依賴。啟動只需秒，通常搭配 Kubernetes 編排。適合微服務架構
+- **Serverless（函式即服務）**：只寫函式，雲端自動管理執行環境。按呼叫次數和執行時間計費。適合事件驅動的輕量工作
+- **Cold Start（冷啟動）**：Serverless 函式閒置一段時間後，下次觸發需要額外時間啟動執行環境。延遲可能從數百毫秒到數秒
+- **Container Orchestration（容器編排）**：Kubernetes（K8s）管理大量 Container 的部署、擴縮、負載均衡、自我修復
+
+## 常見誤區
+
+<Callout type="warning" title="常見誤區">
+- **Serverless 永遠最便宜**：低流量時 Serverless 最便宜，但高持續流量下反而比 Container 貴（因為按呼叫計費）
+- **Container 一定要用 Kubernetes**：小型應用用 Azure Container Apps、AWS ECS、Google Cloud Run 就夠了，不需要管理完整的 K8s 集群
+- **VM 已經過時**：需要 GPU 計算、特殊驅動程式、Windows Desktop 應用、或長時間運行的排程任務，VM 仍是最佳選擇
+</Callout>
+
+## 流程/步驟
+
+<StepDiagram data='[{"title":"評估工作負載","description":"長時間運行？事件驅動？需要特殊 OS？","icon":"1"},{"title":"評估團隊能力","description":"有 K8s 經驗嗎？願意學習 Serverless 限制嗎？","icon":"2"},{"title":"估算流量模式","description":"穩定流量？突發流量？間歇性觸發？","icon":"3"},{"title":"計算成本","description":"用雲端計價器比較三種模式的月費","icon":"4"},{"title":"選擇並設計","description":"可以混用 — 核心 API 用 Container，背景任務用 Serverless","icon":"5"}]' />
+
+流程解讀：選擇運算服務不是非黑即白。先評估工作負載特性（長運行 vs 事件驅動），再考慮團隊能力和流量模式。成本計算是決定性因素之一。實務中常見混用策略 — 核心服務用 Container，事件處理用 Serverless。
+
+## 程式碼範例
+
+### C# 版本
+
+```csharp
+// Azure Functions（Serverless）— 事件驅動
+public class OrderFunctions
+{
+    // HTTP 觸發
+    [Function("ProcessOrder")]
+    public async Task<IActionResult> ProcessOrder(
+        [HttpTrigger(AuthorizationLevel.Function, "post")] HttpRequest req)
+    {
+        var order = await req.ReadFromJsonAsync<OrderDto>();
+        await _orderService.ProcessAsync(order!);
+        return new OkObjectResult(new { status = "processed" });
+    }
+
+    // Queue 觸發 — 有新訊息就自動執行
+    [Function("SendOrderEmail")]
+    public async Task SendOrderEmail(
+        [QueueTrigger("order-emails")] OrderEmailMessage message)
+    {
+        await _emailService.SendAsync(message.Email, message.OrderId);
+    }
+
+    // Timer 觸發 — 排程執行
+    [Function("DailyReport")]
+    public async Task DailyReport(
+        [TimerTrigger("0 0 8 * * *")] TimerInfo timer) // 每天早上 8 點
+    {
+        await _reportService.GenerateDailyAsync();
+    }
+}
+```
+
+### TypeScript 版本
+
+```typescript
+// AWS Lambda（Serverless）— 事件驅動
+import { APIGatewayProxyHandler, SQSHandler } from "aws-lambda";
+
+// HTTP 觸發
+export const processOrder: APIGatewayProxyHandler = async (event) => {
+  const order = JSON.parse(event.body || "{}");
+  await orderService.process(order);
+  return {
+    statusCode: 200,
+    body: JSON.stringify({ status: "processed" }),
+  };
+};
+
+// SQS 觸發 — Queue 有新訊息就執行
+export const sendEmail: SQSHandler = async (event) => {
+  for (const record of event.Records) {
+    const message = JSON.parse(record.body);
+    await emailService.send(message.email, message.orderId);
+  }
+};
+
+// Kubernetes Deployment（Container）— 長時間運行的 API
+// deployment.yaml 搭配 TypeScript Express 應用
+// 適合持續運行的核心 API 服務
+```
+
+### Python 版本
+
+```python
+# Azure Functions（Python）
+import azure.functions as func
+
+app = func.FunctionApp()
+
+# HTTP 觸發
+@app.function_name("ProcessOrder")
+@app.route(route="orders", methods=["POST"])
+async def process_order(req: func.HttpRequest) -> func.HttpResponse:
+    order = req.get_json()
+    await order_service.process(order)
+    return func.HttpResponse('{"status": "processed"}', status_code=200)
+
+# Blob 觸發 — 有新檔案上傳就執行
+@app.function_name("ProcessUpload")
+@app.blob_trigger(arg_name="blob", path="uploads/{name}", connection="StorageConn")
+async def process_upload(blob: func.InputStream):
+    content = blob.read()
+    await file_service.process(blob.name, content)
+
+# Google Cloud Run（Managed Container）
+# 不需要管 K8s，直接部署 Docker Image
+# gcloud run deploy myapi --image gcr.io/myproject/myapi:v1
+```
+
+## 架構圖/概念圖
+
+<Diagram data='{"nodes":[{"id":"user","label":"User Request","type":"muted"},{"id":"lb","label":"Load Balancer","type":"highlight"},{"id":"vm","label":"VM (Always On)","type":"default"},{"id":"container","label":"Container (K8s/ECS)","type":"default"},{"id":"serverless","label":"Serverless (Functions)","type":"default"},{"id":"queue","label":"Event Queue","type":"muted"}],"edges":[{"from":"user","to":"lb","label":"HTTP"},{"from":"lb","to":"vm","label":"legacy API"},{"from":"lb","to":"container","label":"core API"},{"from":"container","to":"queue","label":"async task"},{"from":"queue","to":"serverless","label":"triggers"}]}' />
+
+混合架構中，Load Balancer 將流量分配到不同的運算服務。VM 跑遺留系統、Container 跑核心 API、Serverless 處理非同步事件。三者共存，各司其職。
+
+## 實戰補充
+
+**Q: 怎麼決定該用哪種？**
+
+A: 決策樹 — (1) 需要特殊 OS / GPU → VM。(2) 長時間運行的 API / 微服務 → Container。(3) 事件驅動（Queue、Timer、Webhook）→ Serverless。(4) 不確定 → 從 PaaS Container（Cloud Run / Container Apps）開始。
+
+**Q: Serverless 的 Cold Start 怎麼解決？**
+
+A: (1) 保持函式體積小（減少依賴）。(2) 用 Provisioned Concurrency（預熱實例，但會增加成本）。(3) 定時 Ping 保持 Warm。(4) 對延遲敏感的 API 不適合用 Serverless。
+
+**Q: Kubernetes 的學習曲線值得嗎？**
+
+A: K8s 的學習曲線陡峭。10 個以下的微服務用 Managed Container 服務（Cloud Run、Container Apps）就夠了。超過 10 個微服務、需要細緻的網路策略和服務治理時，K8s 的投資才值得。
+
+## 理解測驗
+
+<Quiz data='{"question":"以下哪種場景最適合 Serverless？","options":["24/7 運行的核心電商 API","每天凌晨 3 點產生一次日報","需要 GPU 的機器學習訓練","需要 WebSocket 長連接的聊天室"],"answer":1,"explanation":"定時產生日報是典型的事件驅動場景 — 只在觸發時執行，其餘時間不花錢。核心 API 和長連接不適合 Serverless。"}' />
+
+<Quiz data='{"question":"Serverless 在高持續流量下可能比 Container 貴，為什麼？","options":["Serverless 的 CPU 比較差","Serverless 按呼叫次數計費，持續高流量下累計費用超過 Container 的固定費用","Serverless 不支援高流量","雲端商故意定高價"],"answer":1,"explanation":"Serverless 按次計費，每月千萬次呼叫的費用可能超過幾台 Container 實例的固定月費。低流量時 Serverless 最划算，高流量時 Container 更經濟。"}' />
+
+<Quiz data='{"question":"Container 和 VM 最關鍵的架構差異是什麼？","options":["Container 比較安全","Container 共享 Host OS Kernel，啟動快且資源佔用少","Container 不能跑 Linux","VM 不支援網路"],"answer":1,"explanation":"Container 共享 Host OS Kernel 所以啟動只需秒級（VM 需要分鐘），記憶體佔用 MB 級（VM 佔 GB 級）。但 Container 不包含完整 OS，控制權較低。"}' />
+
+## 重點整理
+
+<Callout type="tip" title="一句話記住">
+**VM 全控制、Container 好平衡、Serverless 零維運。** 口訣：「長跑用 Container、觸發用 Serverless、特殊用 VM」
+</Callout>
+
+| 模式 | 啟動時間 | 計費方式 | 適合場景 |
+|------|---------|---------|---------|
+| **VM** | 分鐘 | 按時計費（即使閒置） | 特殊 OS、GPU |
+| **Container** | 秒 | 按實例計費 | 微服務、核心 API |
+| **Serverless** | 毫秒~秒 | 按呼叫次數+執行時間 | 事件驅動、間歇任務 |

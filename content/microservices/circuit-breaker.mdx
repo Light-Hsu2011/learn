@@ -1,0 +1,250 @@
+---
+title: "Circuit Breaker"
+order: 6
+description: "Circuit Breaker 熔斷模式：Polly、Resilience4j 與容錯設計"
+difficulty: "medium"
+interviewImportance: 4
+related:
+  - "design-patterns/state"
+  - "observability/metrics-and-alerting"
+---
+
+# Circuit Breaker（熔斷模式）
+
+<ELI5>
+你家的電路有**保險絲**。如果某個電器短路了，保險絲會自動**斷開**，防止整間房子跳電。等你修好短路的電器後，再把保險絲接回去。
+
+微服務也一樣：如果一個服務掛了或回應很慢，你不應該一直傻傻地呼叫它（這會讓問題更嚴重）。**Circuit Breaker** 就像保險絲 — 偵測到故障就「斷開」，直接回傳備用結果，過一段時間再「試探性地接回去」看看是否恢復了。
+</ELI5>
+
+## 是什麼？
+
+Circuit Breaker 是一種容錯模式，用來防止一個服務的故障**級聯擴散**到整個系統。它監控對某個服務的呼叫，當失敗率超過閾值時自動「斷開電路」，在一段時間內直接回傳 fallback 結果，避免持續呼叫已故障的服務。
+
+<Callout type="info" title="三種狀態">
+**Closed**（正常）→ 失敗率超過閾值 → **Open**（熔斷中）→ timeout 到期 → **Half-Open**（試探）→ 成功 → 回到 **Closed**；失敗 → 回到 **Open**。
+</Callout>
+
+## 核心觀念
+
+### 三種狀態詳解
+
+| 狀態 | 行為 | 轉換條件 |
+|------|------|----------|
+| **Closed** | 正常放行所有請求，監控失敗率 | 失敗率超過閾值 → Open |
+| **Open** | 直接回傳 fallback，不發送請求 | timeout 到期 → Half-Open |
+| **Half-Open** | 放行少量探測請求 | 成功 → Closed；失敗 → Open |
+
+### 關鍵參數
+
+| 參數 | 說明 | 典型值 |
+|------|------|--------|
+| Failure Threshold | 觸發熔斷的失敗率 | 50% |
+| Sampling Duration | 統計失敗率的時間窗口 | 30 秒 |
+| Minimum Throughput | 最低請求數才開始統計 | 10 次 |
+| Break Duration | Open 狀態持續時間 | 30-60 秒 |
+| Success Threshold | Half-Open 需要連續成功幾次才回到 Closed | 3 次 |
+
+### 搭配的容錯策略
+
+- **Retry**：短暫故障時重試（搭配 exponential backoff）
+- **Timeout**：設定請求超時，避免無限等待
+- **Fallback**：熔斷時提供備用回應（快取資料、預設值、降級服務）
+- **Bulkhead**：限制同時對某個服務的並發請求數
+
+順序組合：Timeout → Retry → Circuit Breaker → Fallback
+
+## 常見誤區
+
+<Callout type="warning" title="常犯錯誤">
+- Circuit Breaker 沒有搭配 Timeout（請求卡住永遠不失敗，熔斷永遠不觸發）
+- Retry 放在 Circuit Breaker 外面（重試的失敗也被計入熔斷統計）
+- 熔斷後沒有 Fallback（直接回傳 500 給使用者）
+- 所有服務共用一個 Circuit Breaker（應該每個目標服務各自獨立）
+</Callout>
+
+## 執行流程
+
+<StepDiagram data='[{"title":"正常運作（Closed）","description":"請求正常轉發，同時監控失敗率","icon":"1"},{"title":"偵測到故障","description":"失敗率超過 50%，觸發熔斷","icon":"2"},{"title":"熔斷啟動（Open）","description":"直接回傳 fallback，不發送請求到目標服務","icon":"3"},{"title":"試探恢復（Half-Open）","description":"timeout 到期，放行少量請求測試服務是否恢復","icon":"4"},{"title":"恢復或繼續熔斷","description":"探測成功回到 Closed，失敗則繼續 Open","icon":"5"}]' />
+
+流程解讀：Circuit Breaker 就像一個智慧保險絲。正常時它透明地轉發請求並收集統計數據。當失敗率超過閾值時，它快速「斷開」，保護系統不被故障服務拖垮。Open 狀態的 timeout 到期後，它小心翼翼地放行少量請求測試水溫。如果故障已修復就恢復正常，否則繼續保護。
+
+## 程式碼範例
+
+### C# 版本
+
+```csharp
+// Polly — .NET 的 Resilience 函式庫
+using Polly;
+using Polly.CircuitBreaker;
+
+// 定義 Circuit Breaker Policy
+var circuitBreaker = Policy
+    .Handle<HttpRequestException>()
+    .OrResult<HttpResponseMessage>(r => !r.IsSuccessStatusCode)
+    .CircuitBreakerAsync(
+        failureThreshold: 0.5,          // 50% 失敗率
+        samplingDuration: TimeSpan.FromSeconds(30),
+        minimumThroughput: 10,           // 至少 10 次請求才統計
+        breakDuration: TimeSpan.FromSeconds(30),
+        onBreak: (result, duration) =>
+            Console.WriteLine($"Circuit opened for {duration.TotalSeconds}s"),
+        onReset: () => Console.WriteLine("Circuit closed"),
+        onHalfOpen: () => Console.WriteLine("Circuit half-open")
+    );
+
+// 搭配 Retry + Timeout + Fallback
+var resilientPolicy = Policy.WrapAsync(
+    Policy.Handle<Exception>()
+          .FallbackAsync(_ => Task.FromResult(GetCachedData())),
+    circuitBreaker,
+    Policy.Handle<HttpRequestException>()
+          .WaitAndRetryAsync(3, i => TimeSpan.FromMilliseconds(200 * i)),
+    Policy.TimeoutAsync(TimeSpan.FromSeconds(3))
+);
+
+// 使用
+var result = await resilientPolicy.ExecuteAsync(async () =>
+{
+    return await httpClient.GetAsync("http://inventory-service/api/stock");
+});
+```
+
+### TypeScript 版本
+
+```typescript
+// 手動實作 Circuit Breaker
+enum CircuitState { Closed, Open, HalfOpen }
+
+class CircuitBreaker {
+  private state = CircuitState.Closed;
+  private failures = 0;
+  private lastFailureTime = 0;
+  private readonly threshold: number;
+  private readonly timeout: number;
+
+  constructor(threshold = 5, timeoutMs = 30000) {
+    this.threshold = threshold;
+    this.timeout = timeoutMs;
+  }
+
+  async call<T>(fn: () => Promise<T>, fallback: () => T): Promise<T> {
+    if (this.state === CircuitState.Open) {
+      if (Date.now() - this.lastFailureTime > this.timeout) {
+        this.state = CircuitState.HalfOpen;
+      } else {
+        return fallback(); // 熔斷中，回傳 fallback
+      }
+    }
+
+    try {
+      const result = await fn();
+      this.onSuccess();
+      return result;
+    } catch (error) {
+      this.onFailure();
+      return fallback();
+    }
+  }
+
+  private onSuccess() {
+    this.failures = 0;
+    this.state = CircuitState.Closed;
+  }
+
+  private onFailure() {
+    this.failures++;
+    this.lastFailureTime = Date.now();
+    if (this.failures >= this.threshold) {
+      this.state = CircuitState.Open;
+    }
+  }
+}
+
+// 使用
+const breaker = new CircuitBreaker(5, 30000);
+const data = await breaker.call(
+  () => fetch("http://inventory-service/api/stock").then(r => r.json()),
+  () => ({ stock: -1, source: "fallback" })
+);
+```
+
+### Python 版本
+
+```python
+# pybreaker — Python Circuit Breaker
+import pybreaker
+import requests
+
+# 定義 Circuit Breaker
+inventory_breaker = pybreaker.CircuitBreaker(
+    fail_max=5,                # 失敗 5 次觸發熔斷
+    reset_timeout=30,          # 30 秒後進入 Half-Open
+    exclude=[requests.exceptions.Timeout],  # Timeout 不計入失敗
+)
+
+@inventory_breaker
+def get_inventory(product_id: str) -> dict:
+    response = requests.get(
+        f"http://inventory-service/api/stock/{product_id}",
+        timeout=3
+    )
+    response.raise_for_status()
+    return response.json()
+
+# 使用 with fallback
+def get_inventory_safe(product_id: str) -> dict:
+    try:
+        return get_inventory(product_id)
+    except pybreaker.CircuitBreakerError:
+        # 熔斷中，回傳快取資料
+        return get_cached_inventory(product_id)
+    except Exception:
+        return {"stock": -1, "source": "error"}
+
+# 監控熔斷狀態
+print(f"State: {inventory_breaker.current_state}")
+print(f"Fail count: {inventory_breaker.fail_counter}")
+```
+
+## 結構圖
+
+<Diagram data='{"nodes":[{"id":"client","label":"Order Service","type":"default"},{"id":"cb","label":"Circuit Breaker","type":"highlight"},{"id":"target","label":"Inventory Service","type":"default"},{"id":"fallback","label":"Fallback (Cache)","type":"muted"},{"id":"closed","label":"Closed: forward requests","type":"default"},{"id":"open","label":"Open: return fallback","type":"default"},{"id":"half","label":"Half-Open: probe","type":"default"}],"edges":[{"from":"client","to":"cb","label":"request"},{"from":"cb","to":"target","label":"forward (Closed/Half-Open)"},{"from":"cb","to":"fallback","label":"fallback (Open)"},{"from":"closed","to":"open","label":"failure threshold"},{"from":"open","to":"half","label":"timeout expires"},{"from":"half","to":"closed","label":"probe succeeds"}]}' />
+
+圖中 Order Service 的所有請求經過 Circuit Breaker。Closed 狀態下請求正常轉發到 Inventory Service。當失敗率超過閾值，Circuit Breaker 進入 Open 狀態，直接回傳 Fallback（Cache）的資料。Timeout 到期後進入 Half-Open 試探，成功則回到 Closed。
+
+## 面試常見問題
+
+**Q: Circuit Breaker 和 Retry 的關係？應該怎麼組合？**
+
+A: Retry 處理短暫的瞬時故障（網路抖動），Circuit Breaker 處理持續的服務故障。組合順序：外層 Fallback → Circuit Breaker → Retry → Timeout。Retry 在 Circuit Breaker 內部，這樣 retry 的失敗會被計入熔斷統計。如果 Retry 在外部，熔斷後的 retry 是無意義的。
+
+**Q: 什麼是 Bulkhead Pattern？和 Circuit Breaker 有什麼關係？**
+
+A: Bulkhead（艙壁）限制同時對某個服務的並發請求數，像船的水密隔艙一樣隔離故障。Circuit Breaker 是在故障發生後斷開，Bulkhead 是預防性地限制影響範圍。兩者搭配使用：Bulkhead 限制並發，Circuit Breaker 偵測故障。
+
+**Q: 熔斷時的 Fallback 策略有哪些？**
+
+A: 依場景選擇：回傳快取資料（最近的有效結果）、回傳預設值（空列表、預設設定）、降級服務（完整功能降級為基本功能）、將請求排入佇列稍後處理。關鍵是 fallback 不能也依賴同一個故障服務，否則 fallback 也會失敗。
+
+## 理解測驗
+
+<Quiz data='{"question":"Circuit Breaker 的 Open 狀態代表什麼？","options":["正常放行所有請求","熔斷中，直接回傳 fallback","只放行部分請求做測試","服務已經恢復正常"],"answer":1,"explanation":"Open 狀態表示熔斷已啟動，所有請求直接回傳 fallback 結果，不會發送到目標服務。這保護了系統不被故障服務拖垮。"}' />
+
+<Quiz data='{"question":"Half-Open 狀態的作用是什麼？","options":["完全關閉熔斷器","放行少量探測請求測試服務是否恢復","永久阻擋所有請求","重新啟動故障服務"],"answer":1,"explanation":"Half-Open 是 Open 和 Closed 之間的過渡狀態，放行少量請求試探目標服務是否已恢復。如果成功就回到 Closed，失敗就回到 Open。"}' />
+
+<Quiz data='{"question":"Retry 和 Circuit Breaker 的正確組合順序是什麼？","options":["Retry 在 Circuit Breaker 外層","Circuit Breaker 在 Retry 外層","兩者不能一起使用","順序不重要"],"answer":1,"explanation":"Circuit Breaker 應在 Retry 外層：Fallback → Circuit Breaker → Retry → Timeout。這樣 retry 的失敗會被計入熔斷統計，熔斷後不會做無意義的 retry。"}' />
+
+## 重點整理
+
+<Callout type="tip" title="一句話記住">
+**Circuit Breaker = 智慧保險絲，故障自動斷開，恢復自動接回。** 口訣：「Closed 放行，Open 擋，Half-Open 去試探」
+</Callout>
+
+| 概念 | 說明 |
+|------|------|
+| **Closed** | 正常狀態，監控失敗率 |
+| **Open** | 熔斷中，回傳 fallback |
+| **Half-Open** | 試探中，放行少量請求 |
+| **Fallback** | 熔斷時的備用方案（快取/預設值） |
+| **核心目的** | 防止故障級聯擴散，保護整體系統 |

@@ -1,0 +1,198 @@
+---
+title: "Docker 容器化"
+order: 4
+description: "Dockerfile、Image、Container、Compose 核心概念與實務"
+difficulty: "medium"
+interviewImportance: 5
+related:
+  - "ci-cd/deployment-strategies"
+  - "cloud-architecture/compute-services"
+---
+
+# Docker 容器化
+
+<ELI5>
+想像你要搬家：
+
+- **沒有 Docker**：你把所有家具散裝搬到新家，到了才發現沙發進不了門、電器插頭不合
+- **有 Docker**：你把所有東西打包進一個**標準貨櫃（Container）**，不管搬到哪裡，打開就能用
+
+Docker 把你的程式碼和所有需要的東西（執行環境、套件、設定檔）打包成一個「貨櫃」，在任何機器上都能一模一樣地運行。
+</ELI5>
+
+## 是什麼？
+
+Docker 是一個**容器化平台**，把應用程式和所有依賴打包成標準化的 Container。Container 比虛擬機更輕量（共享 OS Kernel），啟動速度以秒計，是現代 CI/CD 和雲端部署的基礎設施。
+
+<Callout type="info" title="Container vs VM">
+**VM**：包含完整 OS，啟動需要分鐘，佔用 GB 級記憶體。**Container**：共享 Host OS Kernel，啟動只需秒，佔用 MB 級記憶體。Container 不是輕量級 VM，而是一種程序隔離技術。
+</Callout>
+
+## 核心觀念
+
+- **Image（映像檔）**：Container 的藍圖，唯讀的分層檔案系統。由 Dockerfile 定義，可推送到 Registry（如 Docker Hub、GitHub Container Registry）
+- **Container（容器）**：Image 的執行實例，有自己的檔案系統、網路、程序空間。可以啟動、停止、刪除
+- **Dockerfile**：定義如何建置 Image 的腳本。每一行指令產生一個新的 Layer
+- **Docker Compose**：用 YAML 定義多個 Container 的組合（如 App + DB + Redis），一鍵啟動整個開發環境
+- **Multi-stage Build**：在 Dockerfile 中用多個 FROM，分離建置環境和執行環境，大幅縮小最終 Image 大小
+
+## 常見誤區
+
+<Callout type="warning" title="常見誤區">
+- **Image 太大**：用 `node:20` 作為 base（1GB+），應該用 `node:20-alpine`（~130MB）。最終 Image 不需要包含編譯工具
+- **不用 Multi-stage Build**：把 build 工具和 source code 留在最終 Image 中，不但肥大還有安全風險
+- **用 root 跑容器**：Container 內預設用 root 執行，一旦被攻破等於拿到 root 權限。必須建立非 root 用戶
+</Callout>
+
+## 流程/步驟
+
+<StepDiagram data='[{"title":"撰寫 Dockerfile","description":"定義 base image、安裝依賴、複製程式碼、設定啟動命令","icon":"1"},{"title":"Build Image","description":"docker build -t myapp:v1 . 建置映像檔","icon":"2"},{"title":"測試 Container","description":"docker run -p 8080:80 myapp:v1 在本機測試","icon":"3"},{"title":"推送 Registry","description":"docker push 到 Docker Hub 或私有 Registry","icon":"4"},{"title":"Compose 編排","description":"用 docker-compose.yml 定義多容器開發環境","icon":"5"},{"title":"CI/CD 整合","description":"在 Pipeline 中 build、push、deploy Image","icon":"6"}]' />
+
+流程解讀：Dockerfile 定義 Image 的建置步驟。Build 後在本機測試，確認正常後推送到 Registry。開發環境用 Docker Compose 一鍵啟動多個服務。CI/CD Pipeline 中自動 build 和 push Image。
+
+## 程式碼範例
+
+### C# 版本
+
+```dockerfile
+# .NET Multi-stage Dockerfile
+# Stage 1: Build
+FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
+WORKDIR /src
+COPY *.csproj .
+RUN dotnet restore
+COPY . .
+RUN dotnet publish -c Release -o /app/publish
+
+# Stage 2: Runtime（最終 Image 只有 runtime，不含 SDK）
+FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS runtime
+WORKDIR /app
+
+# 建立非 root 用戶
+RUN adduser --disabled-password --gecos "" appuser
+USER appuser
+
+COPY --from=build /app/publish .
+EXPOSE 8080
+ENTRYPOINT ["dotnet", "MyApp.dll"]
+```
+
+### TypeScript 版本
+
+```dockerfile
+# Node.js Multi-stage Dockerfile
+# Stage 1: Build
+FROM node:20-alpine AS build
+WORKDIR /app
+COPY package*.json .
+RUN npm ci
+COPY . .
+RUN npm run build
+
+# Stage 2: Runtime
+FROM node:20-alpine AS runtime
+WORKDIR /app
+
+# 非 root 用戶
+RUN addgroup -S appgroup && adduser -S appuser -G appgroup
+USER appuser
+
+COPY --from=build /app/dist ./dist
+COPY --from=build /app/node_modules ./node_modules
+COPY package*.json .
+
+EXPOSE 3000
+CMD ["node", "dist/index.js"]
+```
+
+### Python 版本
+
+```dockerfile
+# Python Multi-stage Dockerfile
+FROM python:3.12-slim AS build
+WORKDIR /app
+COPY requirements.txt .
+RUN pip install --no-cache-dir --target=/deps -r requirements.txt
+
+FROM python:3.12-slim AS runtime
+WORKDIR /app
+
+RUN useradd --create-home appuser
+USER appuser
+
+COPY --from=build /deps /home/appuser/.local/lib/python3.12/site-packages
+COPY . .
+
+EXPOSE 8000
+CMD ["python", "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+```
+
+```yaml
+# docker-compose.yml — 開發環境
+services:
+  app:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      - DATABASE_URL=postgresql://postgres:secret@db:5432/myapp
+    depends_on:
+      - db
+      - redis
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_PASSWORD: secret
+      POSTGRES_DB: myapp
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+
+volumes:
+  pgdata:
+```
+
+## 架構圖/概念圖
+
+<Diagram data='{"nodes":[{"id":"dockerfile","label":"Dockerfile","type":"muted"},{"id":"image","label":"Docker Image (Layers)","type":"highlight"},{"id":"registry","label":"Container Registry","type":"default"},{"id":"container1","label":"Container (Dev)","type":"default"},{"id":"container2","label":"Container (Staging)","type":"default"},{"id":"container3","label":"Container (Prod)","type":"default"}],"edges":[{"from":"dockerfile","to":"image","label":"docker build"},{"from":"image","to":"registry","label":"docker push"},{"from":"registry","to":"container1","label":"docker run"},{"from":"registry","to":"container2","label":"docker run"},{"from":"registry","to":"container3","label":"docker run"}]}' />
+
+Dockerfile 建置出 Image，推送到 Registry 後，任何環境都能從 Registry 拉取同一個 Image 建立 Container。Dev、Staging、Prod 跑的是同一個 Image，確保環境一致性。
+
+## 實戰補充
+
+**Q: Image 太大怎麼瘦身？**
+
+A: (1) 用 Alpine 基底（`node:20-alpine`）。(2) 用 Multi-stage Build，最終 Image 不含 SDK 和 Build 工具。(3) `.dockerignore` 排除不需要的檔案。(4) 合併 RUN 指令減少 Layer 數量。
+
+**Q: Docker Compose 和 Kubernetes 的關係？**
+
+A: **Docker Compose** 適合本機開發和簡單部署（單機多容器）。**Kubernetes** 適合生產環境的大規模容器編排（多機、自動擴縮、滾動更新）。開發時用 Compose，上線用 K8s。
+
+**Q: Volume 和 Bind Mount 有什麼區別？**
+
+A: **Volume**（`-v mydata:/data`）：Docker 管理的持久化儲存，適合資料庫等需要持久化的場景。**Bind Mount**（`-v ./src:/app/src`）：直接掛載 Host 目錄，適合開發時即時同步程式碼。
+
+## 理解測驗
+
+<Quiz data='{"question":"Container 和 VM 的核心差異是什麼？","options":["Container 比較安全","Container 共享 Host OS Kernel，VM 包含完整 OS","Container 只能跑 Linux","VM 比 Container 快"],"answer":1,"explanation":"Container 共享 Host 的 OS Kernel，所以啟動快（秒級）、佔用少（MB 級）。VM 包含完整 OS，啟動慢（分鐘級）、佔用大（GB 級）。"}' />
+
+<Quiz data='{"question":"Multi-stage Build 的主要好處是什麼？","options":["加快建置速度","最終 Image 不包含 Build 工具和源碼，更小且更安全","讓 Dockerfile 更短","支援多種程式語言"],"answer":1,"explanation":"Multi-stage Build 讓建置階段的 SDK、源碼、中間產物不會出現在最終 Image 中，大幅縮小 Image 並減少攻擊面。"}' />
+
+<Quiz data='{"question":"為什麼 Container 內不應該用 root 執行？","options":["root 執行會比較慢","Container 不支援 root","一旦 Container 被攻破，攻擊者就有 root 權限，可能影響 Host","法律規定"],"answer":2,"explanation":"雖然 Container 有隔離機制，但以 root 執行增加了逃逸攻擊的風險。建立非 root 用戶是基本的安全實踐。"}' />
+
+## 重點整理
+
+<Callout type="tip" title="一句話記住">
+**Docker = 把應用和環境打包成標準貨櫃，走到哪都能跑。** 口訣：「Dockerfile 定義、Image 打包、Container 執行」
+</Callout>
+
+| 概念 | 說明 |
+|------|------|
+| **Image** | 唯讀藍圖，由 Dockerfile 建置 |
+| **Container** | Image 的執行實例 |
+| **Multi-stage** | 分離 Build 和 Runtime，縮小 Image |
+| **Compose** | YAML 定義多容器開發環境 |
+| **Registry** | 存放和分發 Image 的倉庫 |
