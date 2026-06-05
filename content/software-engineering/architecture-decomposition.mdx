@@ -1,0 +1,212 @@
+---
+title: "系統切分：架構、資料庫、API 怎麼切"
+order: 4
+description: "如何依業務能力與領域邊界切分系統、資料庫拆分策略，以及 API 粒度設計"
+difficulty: "medium"
+interviewImportance: 4
+related:
+  - "ddd/bounded-context"
+  - "microservices/decomposition"
+  - "api-design/rest-fundamentals"
+---
+
+# 系統切分：架構、資料庫、API 怎麼切
+
+<ELI5>
+切系統就像切蛋糕分工。最笨的切法是「一個人負責所有蛋糕的底層、一個人負責所有奶油、一個人負責所有水果」——只要客人想要完整一塊蛋糕，三個人就得同時動手、互相等待。聰明的切法是「整理房間」的邏輯：把同一類東西放在同一個抽屜（高內聚），不同抽屜彼此不用打開對方就能運作（低耦合）。切系統的核心問題其實只有一個：**邊界該畫在哪？** 畫對了，每塊都能獨立運作；畫錯了，改一個地方要動五個地方。
+</ELI5>
+
+## 是什麼？
+
+「切分（Decomposition）」就是**決定邊界**——決定哪些東西該放在一起、哪些該分開。對資深 C# 開發者來說，這不是新概念：你早就在用 namespace、assembly、專案來切分程式碼。差別在於，系統層級的切分要同時切三件事：
+
+- **架構**：類別 → 模組 → 服務該怎麼分群？
+- **資料庫**：資料表、schema、實體 DB 該怎麼分？
+- **API**：對外的合約該以什麼粒度暴露？
+
+切分的唯一目標可以濃縮成兩句話：**高內聚（High Cohesion）、低耦合（Low Coupling）**。高內聚 = 會一起改變的東西放在一起；低耦合 = 不相關的東西不要互相依賴。所有判準都是這兩句話的推論。
+
+<Callout type="info" title="一個反直覺的事實">
+切分的好壞，不是看「切了幾塊」，而是看「邊界跨越的頻率」。如果你每改一個需求都要同時動到三個模組，那不管你切了 3 塊還是 30 塊，這個切分都是失敗的。好的邊界讓多數變更落在單一邊界內。
+</Callout>
+
+## 切分的核心原則
+
+切系統時，下面五個原則由強到弱排序，**業務維度永遠優先於技術維度**。
+
+<StepDiagram data='[{"title":"依業務能力切","description":"用「公司部門」來想：訂單、金流、庫存。每塊對應一個可獨立負責的業務能力","icon":"1"},{"title":"依領域邊界切（Bounded Context）","description":"同一個詞在不同情境意義不同。客戶在銷售情境是名單，在出貨情境是收件地址，邊界就在語意改變處","icon":"2"},{"title":"依變更頻率切","description":"一週改三次的東西，和一年改一次的東西，不要綁在一起。把易變與穩定隔開","icon":"3"},{"title":"沿變化軸切","description":"找出「會獨立變化的維度」。付款方式常換、稅率規則常變，就讓它們各自成為可抽換的單元","icon":"4"},{"title":"檢驗：高內聚低耦合","description":"切完反問：一個需求改動會跨幾個邊界？跨越越少越好。耦合度是最終驗收標準","icon":"5"}]' />
+
+**Bounded Context（限界上下文）** 是這裡最關鍵的概念。它是 DDD（領域驅動設計）的核心：同一個名詞，在不同業務情境下其實是不同的東西，邊界就應該畫在「語意改變」的地方。
+
+```csharp
+// ❌ 一個 God Class，所有情境共用一個「客戶」概念
+public class Customer
+{
+    public int Id { get; set; }
+    public string Name { get; set; }
+    public decimal CreditLimit { get; set; }   // 信用控管才在乎
+    public string ShippingAddress { get; set; } // 出貨才在乎
+    public List<Campaign> Campaigns { get; set; } // 行銷才在乎
+}
+
+// ✅ 依 Bounded Context 切，各情境只持有自己關心的模型
+namespace Ordering   { public class Customer { public CustomerId Id; public string Name; } }
+namespace Shipping   { public class Recipient { public CustomerId Id; public Address Address; } }
+namespace Billing    { public class Payer { public CustomerId Id; public decimal CreditLimit; } }
+```
+
+注意：三個 `Customer` 用同一個 `CustomerId` 關聯，但**模型本身不共用**。這就是「依語意切」而非「依資料表切」。
+
+## 架構怎麼切
+
+架構切分有三個粒度層級，由輕到重：
+
+| 切法 | 邊界強度 | 部署 | 何時用 |
+| --- | --- | --- | --- |
+| **分層 Layer** | 弱（技術維度） | 同一程序 | 任何專案的內部組織 |
+| **模組 Module** | 中（業務維度） | 同一程序 | 單體內依領域分群 |
+| **服務 Service** | 強（業務 + 程序） | 獨立部署 | 確認需獨立擴展/部署時 |
+
+<Diagram data='{"nodes":[{"id":"layer","label":"分層 Layer\n(UI/Logic/Data 橫切)","type":"muted"},{"id":"module","label":"模組 Module\n(訂單/金流/庫存 縱切)","type":"highlight"},{"id":"service","label":"服務 Service\n(獨立程序+獨立DB)","type":"default"}],"edges":[{"from":"layer","to":"module","label":"從技術切轉向業務切"},{"from":"module","to":"service","label":"邊界穩定後才拆出程序"}]}' />
+
+關鍵原則：**模組是縱切（依業務），分層是橫切（依技術）**，兩者正交。新手最常見的錯是只做橫切——把所有 Controller 放一起、所有 Repository 放一起。結果改一個「訂單」需求，要在五個技術層之間來回跳。正確做法是先依模組縱切，每個模組內部再分層。
+
+<Callout type="tip" title="Modular Monolith：被低估的甜蜜點">
+不要一開始就拆微服務。先做「模組化單體（Modular Monolith）」：單一部署單元，但內部用清晰的模組邊界（在 C# 中可用獨立 assembly + internal 存取修飾詞強制隔離）。邊界在程序內反而更容易調整。等到某個模組「需要獨立擴展」或「團隊邊界穩定」時，再把它拆成服務——那時邊界早已驗證過，拆出去幾乎無痛。
+</Callout>
+
+```csharp
+// 模組化單體中，用 internal + 公開合約強制邊界
+// Ordering 模組只暴露介面，內部實作對外不可見
+namespace Ordering.Contracts  // 唯一允許跨模組引用的 assembly
+{
+    public interface IOrderService
+    {
+        Task<OrderId> PlaceOrderAsync(PlaceOrderCommand cmd);
+    }
+}
+
+namespace Ordering.Internal   // 對其他模組 internal，無法直接 new
+{
+    internal sealed class OrderService : IOrderService { /* ... */ }
+}
+```
+
+## 資料庫怎麼切
+
+資料庫切分是整個系統切分中**代價最高、最難回頭**的決定，務必謹慎。
+
+**正規化 vs 反正規化**：單體內部維持正規化（消除重複、靠外鍵維持一致性）通常是對的。但一旦跨服務邊界，外鍵就無法跨庫存在——這時被迫接受**反正規化**（把對方需要的欄位冗餘複製過來）。
+
+**共用 DB vs 每服務一 DB**：
+
+<Diagram data='{"nodes":[{"id":"sharedapp1","label":"訂單服務","type":"default"},{"id":"sharedapp2","label":"金流服務","type":"default"},{"id":"shareddb","label":"共用資料庫\n(隱性耦合)","type":"muted"},{"id":"odb","label":"訂單服務 + 訂單DB","type":"highlight"},{"id":"pdb","label":"金流服務 + 金流DB","type":"highlight"}],"edges":[{"from":"sharedapp1","to":"shareddb","label":"直接讀寫"},{"from":"sharedapp2","to":"shareddb","label":"直接讀寫"},{"from":"odb","to":"pdb","label":"只能透過 API/事件"}]}' />
+
+**共用資料庫是最危險的耦合來源**：兩個服務直接讀寫同一張表，等於讓對方的 schema 變成你的隱性 API。金流服務改了一個欄位型別，訂單服務就半夜爆炸。所以微服務的鐵律是「每服務一 DB，且不准跨庫直接查詢」。
+
+**何時拆表/分庫？** 給具體判準，不要憑感覺：
+
+1. **拆表**：當一張表混了兩個不同變更頻率或不同存取模式的欄位（如訂單主檔 vs 大量的訂單歷程 log）。
+2. **分庫**：當兩塊資料**幾乎不需要交易一致性**、且分屬不同 Bounded Context 時。反之，若兩塊資料每筆操作都要在同一個 transaction 內更新，**這是它們屬於同一邊界的強烈訊號**，硬拆只會自找麻煩。
+
+```sql
+-- 跨庫之後，原本一個 JOIN 就能拿到的資料，再也 JOIN 不到了
+-- ❌ 跨服務不可行：訂單 DB 無法 JOIN 金流 DB
+SELECT o.id, p.status
+FROM   orders o
+JOIN   payments p ON p.order_id = o.id;  -- payments 在另一個庫
+
+-- ✅ 改為：訂單 DB 內冗餘一份必要的付款狀態（反正規化）
+ALTER TABLE orders ADD payment_status VARCHAR(20) NOT NULL DEFAULT 'Pending';
+-- 由金流服務發事件 PaymentCompleted → 訂單服務訂閱後更新此欄位（最終一致性）
+```
+
+<Callout type="warning" title="拆庫的真實代價：你失去了 ACID 交易">
+單體內 `BEGIN TRAN ... COMMIT` 能保證跨表原子性。一旦分庫，跨服務操作**無法**用資料庫交易包起來。你被迫改用 **Saga（補償交易）** 與**最終一致性**——「先扣庫存，付款失敗再補回庫存」。這代表更多程式碼、更多失敗路徑、更難除錯。拆庫前先問：這個一致性需求，業務真的能接受「最終」而非「立即」嗎？
+</Callout>
+
+## API 怎麼切
+
+API 是邊界的對外合約，切分聚焦在**粒度（granularity）權衡**。
+
+- **Chatty（太細）**：每個欄位一支 API，前端渲染一頁要打 20 次請求，造成 N+1 與延遲累積。
+- **Chunky（太粗）**：一支 API 回傳整個世界，傳輸肥大、難以快取、不同呼叫端各取所需卻被迫接收全部。
+
+實務上以**資源導向（Resource-oriented）** 為基準：`/orders/{id}`、`/orders/{id}/items`。當「呼叫端固定需要多個資源的組合」時，引入**聚合端點（Aggregation）** 或 **BFF（Backend for Frontend）**。
+
+<Diagram data='{"nodes":[{"id":"web","label":"Web 前端","type":"default"},{"id":"mobile","label":"Mobile App","type":"default"},{"id":"bff","label":"BFF 聚合層\n(為前端裁剪/聚合)","type":"highlight"},{"id":"order","label":"訂單服務","type":"default"},{"id":"pay","label":"金流服務","type":"default"},{"id":"ship","label":"出貨服務","type":"default"}],"edges":[{"from":"web","to":"bff","label":"一次請求"},{"from":"mobile","to":"bff","label":"一次請求"},{"from":"bff","to":"order","label":"並行聚合"},{"from":"bff","to":"pay","label":"並行聚合"},{"from":"bff","to":"ship","label":"並行聚合"}]}' />
+
+BFF 的價值：前端只打**一支** `GET /bff/order-detail/{id}`，由 BFF 在後端並行呼叫三個服務、裁剪成前端剛好需要的形狀。把 chatty 的成本從「跨網路」降到「同一資料中心內部」。
+
+**版本邊界**：API 是合約，合約一旦公開就難改。用 `/v1/`、`/v2/` 或 header 版本化隔離破壞性變更。原則：**新增不破壞（加欄位）可以原地做；移除或改語意（破壞性）必須升版**。
+
+## 實例演練：訂單系統
+
+走一遍。需求：使用者下單，系統處理付款、扣庫存、安排出貨。先依**業務能力**找出五個 Bounded Context：
+
+<Diagram data='{"nodes":[{"id":"identity","label":"使用者 Identity\n(帳號/認證)","type":"default"},{"id":"catalog","label":"商品 Catalog\n(商品/價格)","type":"default"},{"id":"order","label":"訂單 Ordering\n(下單/狀態)","type":"highlight"},{"id":"payment","label":"付款 Payment\n(金流/對帳)","type":"default"},{"id":"shipping","label":"出貨 Shipping\n(物流/追蹤)","type":"default"}],"edges":[{"from":"order","to":"catalog","label":"查價/驗證商品"},{"from":"order","to":"payment","label":"發起付款"},{"from":"payment","to":"order","label":"PaymentCompleted 事件"},{"from":"order","to":"shipping","label":"OrderPaid → 觸發出貨"},{"from":"order","to":"identity","label":"驗證使用者"}]}' />
+
+**邊界檢驗**：為什麼這樣切？因為這五塊的變更頻率與職責各自獨立——金流規則改變不該影響商品目錄，物流商更換不該動到下單邏輯。每塊都對應一個可獨立負責的團隊與業務能力。
+
+**資料流（最終一致性）**：下單不是一個大交易，而是一連串事件：
+
+<StepDiagram data='[{"title":"建立訂單","description":"Ordering 寫入 orders（狀態 Pending），向 Catalog 驗證商品與價格","icon":"1"},{"title":"發起付款","description":"Ordering 呼叫 Payment。Payment 處理完成後發出 PaymentCompleted 事件","icon":"2"},{"title":"更新訂單狀態","description":"Ordering 訂閱事件，更新本地冗餘的 payment_status = Paid","icon":"3"},{"title":"觸發出貨","description":"Ordering 發出 OrderPaid 事件，Shipping 訂閱後建立出貨單","icon":"4"},{"title":"失敗則補償(Saga)","description":"若付款失敗，發出 PaymentFailed，Ordering 將訂單標記 Cancelled，釋放保留的庫存","icon":"5"}]' />
+
+```csharp
+// Ordering 不直接呼叫 Shipping，而是發布事件，達成低耦合
+public async Task HandleAsync(PaymentCompleted evt)
+{
+    var order = await _repo.GetAsync(evt.OrderId);
+    order.MarkPaid();                       // 更新本地狀態（自己的 DB）
+    await _repo.SaveAsync(order);
+    await _bus.PublishAsync(new OrderPaid(order.Id)); // Shipping 自行訂閱
+}
+```
+
+關鍵設計：Ordering **不知道** Shipping 的存在，只負責喊「訂單付款了」。誰要反應、怎麼反應，是訂閱者自己的事——這就是低耦合的具體實現。
+
+## 常見誤區
+
+<Callout type="warning" title="三個會讓你後悔的切分錯誤">
+1. **過早微服務（Premature Microservices）**：在邊界還沒搞清楚時就拆成分散式系統。結果是「分散式單體」——既有微服務的運維複雜度（網路、部署、監控），又有單體的耦合（牽一髮動全身），兩邊的缺點全收。**先做模組化單體，邊界穩定再拆。**
+
+2. **依技術分層而非業務切**：把所有 Controller / Service / Repository 各自堆成一坨。改一個業務需求要橫跨所有技術層。正確做法是**先依業務縱切模組，模組內再分技術層**。
+
+3. **共用資料庫造成隱性耦合**：兩個服務直接讀寫同一張表，schema 變成不受控的隱性 API。表面上拆了服務，骨子裡還是死死綁在一起。**邊界必須包含資料的所有權——你的資料只有你能寫。**
+</Callout>
+
+## 實戰補充（Q&A）
+
+**Q：「依業務切」聽起來很抽象，我怎麼知道一個東西該不該獨立成邊界？**
+A：問三個問題。(1) 它有獨立的變更原因嗎？（單一職責的系統版）(2) 它能由一個團隊獨立負責嗎？（康威定律：系統結構會趨近組織結構）(3) 它的資料能由它獨佔寫入嗎？三個都「是」，就是個好邊界。
+
+**Q：那「依業務切」和我熟悉的「三層架構」衝突嗎？**
+A：不衝突，是正交的。三層（UI/邏輯/資料）是技術維度的橫切，業務模組是領域維度的縱切。先縱切出 Ordering、Payment 模組，每個模組內部再用三層組織。錯誤是只做橫切。
+
+**Q：什麼時候「不該」拆？**
+A：當兩塊資料需要強一致性交易（每筆操作都要在同一 transaction）、團隊很小（拆了沒人維運分散式系統）、或邊界尚未驗證時。拆分的代價是分散式系統的複雜度，沒有對應的收益就別拆。
+
+**Q：BFF 會不會又變成新的 God Service？**
+A：會，如果你把業務邏輯塞進去。BFF 只該做**聚合與裁剪（aggregation & shaping）**，不該有業務規則。業務規則屬於各自的領域服務。BFF 是「為某個前端量身的薄殼」，一個前端一個 BFF，避免共用。
+
+## 理解測驗
+
+<Quiz data='{"question":"團隊想把單體電商拆成微服務。下列哪個訊號最強烈地表示「訂單」與「付款」其實應該留在同一個邊界，而不該拆庫？","options":["訂單和付款的程式碼行數差不多","每一筆下單操作都必須在同一個資料庫交易中同時更新訂單與付款，否則業務無法接受不一致","訂單和付款由同一個資深工程師維護","訂單表和付款表都很大"],"answer":1,"explanation":"需要強一致性的資料庫交易，是「這兩塊屬於同一邊界」的強烈訊號。硬拆會被迫改用 Saga 與最終一致性，引入大量複雜度卻無對應收益。程式碼行數、維護者、表大小都不是切分的判準。"}' />
+
+<Quiz data='{"question":"關於「依業務切」與「依技術層切」，下列敘述何者正確？","options":["兩者互斥，選了業務切就不能分層","應該只依技術層切，把所有 Controller、Repository 各自集中","兩者正交：先依業務縱切模組，每個模組內部再依技術分層","技術層切一定比業務切好，因為符合三層架構"],"explanation":"業務模組是縱切（領域維度），技術分層是橫切（技術維度），兩者正交可並存。正確做法是先依業務縱切模組，模組內再分層。只做橫切會導致改一個業務需求要橫跨所有技術層。","answer":2}' />
+
+<Quiz data='{"question":"前端一個頁面需要同時顯示訂單、付款狀態、物流進度，目前要打三支不同服務的 API（chatty）。最合適的解法是？","options":["把三個服務合併成一個大服務，省掉跨服務呼叫","在前端用迴圈逐筆呼叫，反正瀏覽器夠快","引入 BFF 聚合層，前端打一支 API，由 BFF 在後端並行聚合三個服務並裁剪回傳","讓三個服務共用同一個資料庫，前端直接查 DB"],"answer":2,"explanation":"BFF（Backend for Frontend）在後端並行聚合並裁剪成前端需要的形狀，把 chatty 成本從跨網路降到資料中心內部，同時保留各服務的邊界。合併服務會破壞業務邊界；共用 DB 造成隱性耦合；前端迴圈呼叫就是 chatty 本身的問題。"}' />
+
+## 重點整理
+
+<Callout type="tip" title="一句話記住">
+切系統的唯一目標是「高內聚、低耦合」——讓會一起改變的東西在一起，不相關的東西互不依賴。**永遠依業務維度切，技術分層在模組內部做。**
+</Callout>
+
+| 維度 | 核心判準 | 最大陷阱 | 拆分代價 |
+| --- | --- | --- | --- |
+| **架構** | 依業務能力 / Bounded Context 縱切，先模組化單體 | 只依技術層橫切；過早微服務 | 分散式運維複雜度 |
+| **資料庫** | 強一致性需求 = 同邊界；無交易關聯 = 可分庫 | 共用 DB 造成隱性耦合 | 失去 ACID，改用 Saga + 最終一致性 |
+| **API** | 資源導向為基準，固定組合用 BFF 聚合 | chatty 造成 N+1；chunky 傳輸肥大 | 多一層 BFF 需維護 |
+
+切分不是一次定生死的決定，而是隨著對領域的理解加深而持續演化的過程。**寧可先合（模組化單體），驗證邊界後再分（服務），也不要在不確定時就拆成難以回頭的分散式系統。**

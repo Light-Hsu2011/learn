@@ -1,0 +1,165 @@
+---
+title: "敏捷方法論：Scrum vs Kanban"
+order: 3
+description: "Scrum 的迭代節奏與 Kanban 的持續流動，兩者差異、適用場景與 Scrumban"
+difficulty: "easy"
+interviewImportance: 4
+related:
+  - "software-engineering/sdlc-overview"
+---
+
+# 敏捷方法論：Scrum vs Kanban
+
+<ELI5>
+想像兩種把人從 A 點載到 B 點的方式：
+
+- **Scrum 像「固定班次的公車」**：每天 8:00、8:30、9:00 準時發車（這就是 Sprint）。班次開出去後，乘客名單就鎖定了，臨時想上車得等下一班。好處是節奏穩定、好預測。
+- **Kanban 像「捷運手扶梯」**：沒有班次，人來就走、隨到隨上，重點是讓「流動」保持順暢、不要擠在某一段卡住。
+
+兩者都能把人載到目的地，差別只在於：你要的是**固定節奏的批次發車**，還是**持續不間斷的流動**。
+</ELI5>
+
+## 是什麼？
+
+Scrum 與 Kanban 都是「敏捷（Agile）」的落地方法，目標一致：**小步交付、快速回饋、持續改善**。但它們是兩種不同的工作管理框架：
+
+- **Scrum** 是一套有明確「角色、事件、產出物」的框架。工作以**固定長度的時間盒（Time-box）**——也就是 Sprint（通常 1～4 週）——為單位，一批一批地交付。
+- **Kanban** 不是完整框架，而是一套**改善現有流程**的方法。它不要求你改變角色或導入 Sprint，而是把工作視覺化、限制同時進行的工作量，讓任務**像水一樣持續流動**。
+
+<Callout type="info" title="兩者不互斥">
+Scrum 和 Kanban 不是「二選一的對立陣營」。很多團隊會在 Scrum 的 Sprint 裡用 Kanban 看板來追蹤任務，或乾脆混用成 Scrumban。先理解各自的核心機制，再決定怎麼組合。
+</Callout>
+
+## Scrum 快速複習
+
+你已經大致理解 Scrum，這裡用三個面向快速對焦，方便後面比較：
+
+### 三種角色（Roles）
+
+| 角色 | 職責 |
+|------|------|
+| **Product Owner（PO）** | 負責產品價值，管理與排序 Product Backlog |
+| **Scrum Master（SM）** | 服務式領導，移除障礙、維護流程、保護團隊 |
+| **Developers（開發團隊）** | 跨職能、自我管理，負責把 Backlog 變成可交付增量 |
+
+### 五個事件（Events）
+
+- **Sprint**：所有活動的容器，固定長度的時間盒
+- **Sprint Planning**：規劃這個 Sprint 要做什麼
+- **Daily Scrum**：每日 15 分鐘同步進度與障礙
+- **Sprint Review**：向關係人展示增量、收集回饋
+- **Sprint Retrospective**：團隊回顧流程、找改善點
+
+### 三個產出物（Artifacts）
+
+- **Product Backlog**：所有待辦的清單（由 PO 排序）
+- **Sprint Backlog**：本 Sprint 要完成的工作
+- **Increment**：可交付的產品增量，需符合 Definition of Done（DoD）
+
+## Kanban 怎麼做
+
+Kanban 源自豐田生產系統（TPS），核心是**拉動式（Pull）**與**限制在製品**。落地時有四大實務：
+
+<StepDiagram data='[{"title":"視覺化工作流（Visualize）","description":"把所有工作畫在看板上，每張卡片代表一個任務，每個欄位代表一個工作階段，讓瓶頸無所遁形","icon":"1"},{"title":"限制在製品（Limit WIP）","description":"為每個欄位設定同時進行的任務上限。WIP 滿了就不能再拉新工作進來，逼團隊先把手上的做完","icon":"2"},{"title":"管理流動（Manage Flow）","description":"關注卡片在看板上的移動速度，找出卡關的欄位並排除，目標是讓工作平順、可預測地流動","icon":"3"},{"title":"持續改善（Improve）","description":"用度量數據（Lead Time、Throughput）持續檢視流程，漸進式調整，不需要等到固定的回顧會議","icon":"4"}]' />
+
+幾個關鍵概念：
+
+- **沒有固定 Sprint**：Kanban 是持續交付，任何卡片一旦完成就能釋出，不必等到迭代結束。
+- **拉動式（Pull）而非推動式（Push）**：開發者「做完一個，才從上游拉下一個」，而不是被主管硬塞一堆任務。WIP 限制是拉動式的引擎。
+- **WIP 限制是核心**：限制同時進行的工作能減少切換成本、暴露瓶頸、縮短交付時間。這是 Kanban 最反直覺也最有威力的一招。
+
+### Kanban 的度量指標
+
+| 指標 | 意義 |
+|------|------|
+| **Lead Time（前置時間）** | 從「需求被提出」到「交付完成」的總時間（客戶感受到的時間） |
+| **Cycle Time（週期時間）** | 從「實際開始動工」到「完成」的時間（團隊的處理速度） |
+| **Throughput（產出量）** | 單位時間內完成的卡片數量（如每週完成 12 張） |
+| **CFD（累積流量圖）** | 用堆疊面積圖呈現各階段卡片數量隨時間的變化，能一眼看出瓶頸與 WIP 堆積 |
+
+## Kanban 看板示意
+
+下圖呈現一張典型 Kanban 看板的流動：卡片由左向右被「拉」過各欄位，每個進行中的欄位都有 WIP 上限。
+
+<Diagram data='{"nodes":[{"id":"backlog","label":"Backlog (待辦池)","type":"muted"},{"id":"progress","label":"In Progress (WIP 上限 3)","type":"highlight"},{"id":"review","label":"Review (WIP 上限 2)","type":"highlight"},{"id":"done","label":"Done (已完成)","type":"default"}],"edges":[{"from":"backlog","to":"progress","label":"pull (有空檔才拉)"},{"from":"progress","to":"review","label":"pull"},{"from":"review","to":"done","label":"釋出交付"}]}' />
+
+重點在於：當 In Progress 已經有 3 張卡（達到 WIP 上限），就算 Backlog 還有一堆待辦，也**不能再拉新卡進來**。團隊必須先合力把進行中的卡片往右推到 Done，才能釋放名額。這就是 Kanban 用 WIP 限制驅動「持續流動」的機制。
+
+## Scrum vs Kanban 比較
+
+| 面向 | Scrum | Kanban |
+|------|-------|--------|
+| **節奏** | 固定長度 Sprint（時間盒），批次交付 | 無 Sprint，持續流動、隨時交付 |
+| **角色** | 明確規定 PO / SM / Developers | 不規定角色，沿用現有組織 |
+| **變更彈性** | Sprint 進行中盡量不變動，新需求等下個 Sprint | 隨時可調整優先序，拉下一張卡時就能換 |
+| **核心限制** | 用 Sprint 範圍承諾控管工作量 | 用 WIP 限制控管同時進行的工作量 |
+| **度量指標** | Velocity、Burndown（燃盡圖） | Lead Time、Cycle Time、Throughput、CFD |
+| **導入方式** | 需要較大的流程與角色變革 | 疊加在現有流程上，漸進改善 |
+| **適用場景** | 需求相對明確、可規劃成迭代的產品開發 | 維運、支援、需求不可預測、優先序常變的工作流 |
+
+<Callout type="info" title="Velocity vs Throughput">
+兩者很像但別搞混：Velocity 是「每個 Sprint 完成的故事點數」，以**估點**為基礎、綁定迭代；Throughput 是「單位時間完成的卡片數」，**不需要估點**、不綁迭代。Kanban 圈子有「#NoEstimates」的傾向，主張直接數卡片數比估點更省力也更準。
+</Callout>
+
+## Scrumban（兩者混合）
+
+Scrumban 顧名思義是兩者的混血，常見於「想保留 Scrum 的紀律，又想要 Kanban 流動性」的團隊：
+
+- **保留 Scrum 的儀式**：仍開 Planning、Daily、Review、Retro，維持團隊節奏與回饋迴路。
+- **加入 Kanban 的機制**：在看板上設 WIP 限制、改用拉動式補充工作，並用 Lead Time / Cycle Time 取代或補充 Velocity。
+- **典型情境**：原本跑 Scrum 的團隊發現需求變動太快、Sprint 承諾常被打斷，於是放寬 Sprint 的僵硬邊界，改用「待辦池見底就觸發補充規劃（Replenishment）」的方式，而非死守固定週期。
+
+<Callout type="tip" title="實務上的演化路徑">
+很多團隊不是「選 Scrum 或 Kanban」，而是「從 Scrum 開始，逐漸長成 Scrumban」。當你發現 Sprint 邊界帶來的痛苦大於它帶來的節奏感，就是引入 Kanban 機制的訊號。
+</Callout>
+
+## 常見誤區
+
+<Callout type="warning" title="這些觀念是錯的">
+**「Kanban 就是貼便利貼的白板。」** 視覺化只是 Kanban 四大實務之一。沒有 WIP 限制與流動管理的看板，只是個任務清單，無法帶來 Kanban 真正的價值。
+
+**「導入 Scrum 就等於敏捷。」** Scrum 是工具，不是目的。照抄儀式卻沒有真正的回饋與改善（例如 Retro 流於形式、PO 不排序 Backlog），叫做「Cargo Cult Scrum」——形似而神不似。
+
+**「WIP 限制會拖慢團隊。」** 恰好相反。限制在製品能減少多工切換、暴露瓶頸，根據 Little's Law（前置時間 ≈ 在製品數 ÷ 產出率），**降低 WIP 反而會縮短交付時間**。
+
+**「Scrum Master 是專案經理。」** SM 是服務式領導者，負責移除障礙與守護流程，沒有指派任務或考核團隊的權力。把 SM 當成傳統 PM 是常見的轉型失敗。
+</Callout>
+
+## 實戰補充
+
+**Q：新專案到底該選 Scrum 還是 Kanban？**
+
+A：看工作的「可預測性」。如果需求能被切成一批批、可以規劃進迭代（典型的產品功能開發），Scrum 的節奏感與承諾機制很有幫助。如果工作是源源不絕、優先序常常被打斷、無法預先排進固定迭代的，Kanban 的持續流動更合適。不確定時，從 Kanban 開始（導入成本低、不需大改組織），需要節奏感再加 Scrum 元素演化成 Scrumban。
+
+**Q：維運 / 支援 / SRE 團隊適合哪個？**
+
+A：幾乎都選 **Kanban**。原因是這類團隊的工作具有高度不可預測性——線上故障、客訴、緊急工單隨時湧入，根本無法在 Sprint Planning 時鎖定兩週的範圍。硬套 Scrum 只會讓 Sprint 承諾一再被打斷、Velocity 失真。Kanban 的拉動式 + WIP 限制讓團隊能即時回應插單，同時用 Lead Time 衡量回應速度（例如「P1 事件的平均處理時間」）。
+
+**Q：那「混合制」的開發團隊怎麼辦？**
+
+A：常見做法是 Scrumban——主線功能用 Sprint 節奏推進，但保留一條「快速通道（Expedite Lane）」走 Kanban 流動處理插單與 bug，並對這條通道設專屬 WIP 限制，避免插單吃掉所有開發產能。
+
+## 理解測驗
+
+<Quiz data='{"question":"關於 Scrum 與 Kanban 的「節奏」，下列敘述何者正確？","options":["兩者都以固定長度的 Sprint 為交付單位","Scrum 以固定 Sprint 批次交付，Kanban 無 Sprint、持續流動","Kanban 的 Sprint 比 Scrum 短，所以交付更快","兩者都禁止在迭代中途交付任何東西"],"answer":1,"explanation":"Scrum 用固定長度的時間盒（Sprint）做批次交付；Kanban 沒有 Sprint 概念，任務一完成隨時可釋出，屬於持續流動。"}' />
+
+<Quiz data='{"question":"下列哪一組度量指標是 Kanban 的核心，而非 Scrum 的？","options":["Velocity 與 Burndown 燃盡圖","Story Point 與 Sprint Goal","Lead Time、Cycle Time、Throughput 與 CFD","程式碼覆蓋率與技術債比率"],"answer":2,"explanation":"Kanban 關注流動，核心指標是 Lead Time、Cycle Time、Throughput 與累積流量圖（CFD）。Velocity 與 Burndown 燃盡圖則是 Scrum 的指標。"}' />
+
+<Quiz data='{"question":"一個線上系統的維運／支援團隊，工單隨時湧入、優先序頻繁變動，最適合採用哪種方法？","options":["Scrum，因為固定 Sprint 能鎖定兩週工作範圍","Kanban，因為拉動式與 WIP 限制能即時回應不可預測的插單","純瀑布開發，先收集一個月需求再統一處理","不需要任何方法，照感覺處理就好"],"answer":1,"explanation":"維運／支援工作高度不可預測，無法在 Sprint Planning 鎖定範圍。Kanban 的持續流動、拉動式與 WIP 限制能即時回應插單，並用 Lead Time 衡量回應速度，最為合適。"}' />
+
+## 重點整理
+
+<Callout type="tip" title="一句話記住">
+**Scrum 是「固定班次的公車」（時間盒批次交付），Kanban 是「持續流動的流水線」（WIP 限制 + 拉動式）；兩者混血就是 Scrumban。**
+</Callout>
+
+| 概念 | 說明 |
+|------|------|
+| **Scrum 核心** | 時間盒 Sprint + 固定角色（PO / SM / Dev）+ 五事件三產出物 |
+| **Kanban 四大實務** | 視覺化工作流、限制 WIP、管理流動、持續改善 |
+| **拉動式 Pull** | 做完才拉下一個，由 WIP 限制驅動，而非被推派工作 |
+| **Scrum 度量** | Velocity、Burndown 燃盡圖 |
+| **Kanban 度量** | Lead Time、Cycle Time、Throughput、CFD |
+| **變更彈性** | Scrum 變更等下個 Sprint；Kanban 隨時可調整 |
+| **適用場景** | Scrum 適合可規劃的產品開發；Kanban 適合維運／支援／不可預測工作流 |
+| **Scrumban** | Scrum 的儀式 + Kanban 的 WIP 與拉動，常見的演化終點 |

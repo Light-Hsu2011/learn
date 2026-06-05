@@ -91,6 +91,13 @@ export const topics: Topic[] = [
     icon: "🤖",
     order: 12,
   },
+  {
+    slug: "software-engineering",
+    title: "Software Engineering",
+    description: "軟體開發全流程：SDLC、需求、系統切分、Clean Architecture、技術債與 Git 策略",
+    icon: "📐",
+    order: 13,
+  },
 ];
 
 export function getTopicBySlug(slug: string): Topic | undefined {
