@@ -4,6 +4,7 @@ import { getTopicBySlug } from "@/lib/topics";
 import { parseFrontmatter } from "@/lib/mdx";
 import { MDXRemote } from "next-mdx-remote/rsc";
 import rehypePrettyCode from "rehype-pretty-code";
+import remarkGfm from "remark-gfm";
 import Link from "next/link";
 import { mdxComponents } from "@/components/mdx";
 import { LessonCompleteButton } from "@/components/lesson-complete-button";
@@ -87,6 +88,7 @@ export default async function LessonPage({ params }: Props) {
           components={mdxComponents}
           options={{
             mdxOptions: {
+              remarkPlugins: [remarkGfm],
               rehypePlugins: [
                 [rehypePrettyCode, { theme: "catppuccin-mocha", keepBackground: false }],
               ],

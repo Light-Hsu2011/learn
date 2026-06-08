@@ -1,0 +1,194 @@
+---
+title: "KISS、YAGNI 與避免過度設計"
+order: 7
+description: "如何判斷自己是否過度設計、何時該停止抽象，以及 Rule of Three 與可逆決策"
+difficulty: "medium"
+interviewImportance: 3
+related:
+  - "software-engineering/technical-debt"
+  - "software-engineering/solid-principles-csharp"
+---
+
+# KISS、YAGNI 與避免過度設計
+
+<ELI5>
+YAGNI 就像去買菜：你今天只要煮一頓晚餐，卻因為「以後可能會用到」而買了整櫃罐頭、三台鍋子和一台工業攪拌機。結果晚餐還沒煮好，廚房先被塞滿了。現在用不到的，就先別買；真的需要時再去買，通常也來得及。
+</ELI5>
+
+身為資深 C# 開發者，你大概看過（甚至寫過）那種「為了未來彈性」而長出三層 wrapper、滿是介面與泛型、卻只有一個實作的程式碼。這一課直接回答三個問題：**KISS / YAGNI 實際上怎麼做到、怎麼知道自己沒過度設計、以及什麼時候該停手**。
+
+## 是什麼？（KISS、YAGNI、DRY 三者關係與張力）
+
+- **KISS（Keep It Simple, Stupid）**：在能滿足需求的前提下，選最簡單、最好讀的做法。簡單指的是「認知成本低」，不是「程式碼最短」。
+- **YAGNI（You Aren't Gonna Need It）**：不要為「現在還不存在的需求」寫程式。只實作當下被要求、有驗收條件的功能。
+- **DRY（Don't Repeat Yourself）**：同一個「知識／決策」不應該有多份來源。注意它管的是知識重複，不是「長得像的程式碼」重複。
+
+三者的張力在於：**DRY 用力過頭會違反 KISS 與 YAGNI**。為了消除兩段「剛好長得像」的程式碼，你可能造出一個被迫服務兩種不同情境的抽象，反而更難懂、更難改。
+
+<Callout type="info" title="一句話分清楚">
+KISS 管「複雜度」、YAGNI 管「時間點（現在 vs 未來）」、DRY 管「知識的單一來源」。發生衝突時，優先順序通常是 YAGNI ＞ KISS ＞ DRY。
+</Callout>
+
+## 過度設計的徵兆清單
+
+把這份清單當紅旗（red flag）來自我檢查。出現越多項，過度設計的機率越高：
+
+- **為單一實作建介面**：`IOrderCalculator` 只有一個 `OrderCalculator`，且沒有測試替身或第二實作的明確需求。
+- **用不到的設定開關**：`appsettings.json` 裡一堆 `EnableXxx`、`UseYyy`，但實際上永遠是同一個值。
+- **過早泛型化**：`Repository<TEntity, TKey, TContext>` 但全專案只存一種實體。
+- **層層 wrapper**：Service 包 Manager、Manager 包 Helper、Helper 包 Provider，每層都只是轉呼叫。
+- **為「未來擴充」加抽象**：「之後可能會換資料庫／換金流／支援多語系」但需求文件裡根本沒這條。
+- **臆測性參數**：方法多了 `bool isAsync`、`CancellationToken`、`options` 卻沒有任何呼叫端用到。
+- **設計模式堆疊**：一個只跑一次的計算，被包成 Factory + Strategy + 泛型 Repository。
+- **抽象的命名很空泛**：`Manager`、`Processor`、`Handler`、`Base`、`Helper` 滿天飛，看名字猜不出職責。
+
+<Callout type="warning" title="最危險的一句話">
+「我們以後一定會需要」是過度設計最常見的開場白。除非「以後」已寫進需求或近期 roadmap，否則它就是猜測。
+</Callout>
+
+## 怎麼知道自己沒過度設計
+
+用三個可操作的準則自我審查：
+
+**1. 現在需要 vs 未來可能**
+問自己：「這段抽象／參數／開關，是為了通過目前的驗收條件，還是為了我想像中的未來？」只為未來服務、現在沒有任何呼叫端，就是 YAGNI 違規。
+
+**2. Rule of Three（重複三次才抽象）**
+- 第 1 次：直接寫。
+- 第 2 次：出現重複，先忍住，可以複製貼上，但記下來。
+- 第 3 次：模式穩定下來，這時才抽象。
+
+兩次重複往往還看不出「真正共通的本質」，太早抽象容易抽錯維度，造出被迫服務多情境的錯誤抽象。
+
+**3. 可逆決策（two-way door）vs 不可逆（one-way door）**
+- **two-way door**：之後改起來成本低、影響範圍小（例如一個內部方法的實作、變數命名、要不要先抽介面）。→ 快速決定、先做最簡單版，需要再改。
+- **one-way door**：之後很難回頭（例如公開 API 合約、資料庫 schema、對外事件格式、第三方整合協定）。→ 值得多花時間設計與審查。
+
+<Callout type="tip" title="判斷捷徑">
+大多數日常程式碼決策都是 two-way door。當你猶豫「要不要先設計得更彈性」，先確認這是不是 one-way door——如果不是，選簡單版，把彈性留到真的需要時再加。
+</Callout>
+
+## 停止規則（什麼叫「夠好」）
+
+過度設計的另一面，是不知道何時收手。給自己一個明確的「完成」標準，**同時滿足以下四點就停手**：
+
+1. **通過驗收條件**：滿足當前需求與測試，沒有遺漏的 case。
+2. **可讀**：同組另一位開發者不需要你解釋就能看懂。
+3. **可測**：能寫出單元測試，依賴可被隔離（這通常是「需不需要介面」的真正判準）。
+4. **能改**：未來要改時，改動範圍可控、不會牽一髮動全身。
+
+達標就停。**不要因為「再加一層會更漂亮」而繼續**——那是為審美而非需求工作。
+
+## C# 對比範例
+
+需求：**給定一張訂單金額，滿千折一百，算出應付金額。** 這個需求現在只用一次、規則固定。
+
+**過度設計版**（Factory + Strategy + 泛型 Repository，全部為「未來」服務）：
+
+```csharp
+public interface IDiscountStrategy
+{
+    decimal Apply(decimal amount);
+}
+
+public class ThousandDiscountStrategy : IDiscountStrategy
+{
+    public decimal Apply(decimal amount)
+        => amount >= 1000 ? amount - 100 : amount;
+}
+
+public interface IDiscountStrategyFactory
+{
+    IDiscountStrategy Create(string strategyName);
+}
+
+public class DiscountStrategyFactory : IDiscountStrategyFactory
+{
+    public IDiscountStrategy Create(string strategyName) => strategyName switch
+    {
+        "thousand" => new ThousandDiscountStrategy(),
+        _ => throw new NotSupportedException(strategyName)
+    };
+}
+
+public interface IRepository<TEntity, TKey>
+{
+    TEntity GetById(TKey id);
+}
+
+public class OrderService
+{
+    private readonly IDiscountStrategyFactory _factory;
+    public OrderService(IDiscountStrategyFactory factory) => _factory = factory;
+
+    public decimal CalculatePayable(decimal amount)
+        => _factory.Create("thousand").Apply(amount);
+}
+```
+
+問題：四個型別、兩個介面、一個工廠、一個用不到的泛型 Repository——只為了一條 `if`。沒有第二種折扣策略、沒有第二種實體，所有「彈性」都是猜測。
+
+**簡單直接版**（KISS + YAGNI）：
+
+```csharp
+public static class OrderPricing
+{
+    public static decimal CalculatePayable(decimal amount)
+        => amount >= 1000 ? amount - 100 : amount;
+}
+```
+
+一個純函式、好讀、好測（`OrderPricing.CalculatePayable(1200)` 直接斷言）。當哪天真的出現第三種折扣規則（Rule of Three），再回頭抽出 `IDiscountStrategy` 也完全來得及——因為這是 two-way door。
+
+## 決策流程
+
+遇到「重複出現」或「有人喊未來要擴充」時，照這個流程決定要不要抽象：
+
+<StepDiagram data='[{"title":"這是現在的需求嗎？","description":"有對應的驗收條件或 roadmap 項目嗎？若純屬猜測，套用 YAGNI，先不做。","icon":"1"},{"title":"重複到第三次了嗎？","description":"未滿三次，先忍住、允許複製貼上。滿三次且模式穩定，才考慮抽象。","icon":"2"},{"title":"是 one-way door 嗎？","description":"公開 API、DB schema、對外合約屬不可逆，值得謹慎設計；其餘多為可逆，選簡單版即可。","icon":"3"},{"title":"抽象後更好讀好測嗎？","description":"若抽象讓認知成本上升、又沒帶來可測性，就是錯誤抽象，退回簡單版。","icon":"4"},{"title":"達到停止標準就收手","description":"通過驗收、可讀、可測、能改，四項皆滿足即停止，不再為審美加層。","icon":"5"}]' />
+
+## 常見誤區
+
+<Callout type="warning" title="別把 YAGNI 當偷懶的藉口">
+YAGNI 反對的是「為臆測的未來寫程式」，不是反對工程品質。以下都不在 YAGNI 的豁免範圍：
+
+- **不寫測試**：測試是當前需求的一部分，不是未來功能。
+- **不重構**：重複到第三次該抽象卻不抽，是技術債，不是 YAGNI。
+- **不處理錯誤／不做安全防護**：這些是當前正確性的需求，現在就需要。
+- **不寫必要的日誌與可觀測性**：營運需求是現在的需求。
+
+同樣地，**DRY 過頭會造成錯誤抽象**：把兩段「碰巧相似但本質不同」的程式碼強行合併，會生出一個塞滿 `if/flag` 的方法，日後兩邊需求各自演化時，這個共用抽象就成了改不動的瓶頸。記住 Sandi Metz 的話：**重複遠比錯誤的抽象便宜**。
+</Callout>
+
+## 實戰補充：KISS 跟 SOLID 衝突嗎？
+
+**Q：既然要 KISS、要 YAGNI，那 SOLID（尤其是 DIP、OCP）不就鼓勵我先加介面、先預留擴充點嗎？兩者矛盾嗎？**
+
+A：不矛盾，但有先後。SOLID 是**當你已經需要某種彈性時，把它做對的指引**；KISS / YAGNI 則回答**你現在到底需不需要那種彈性**。
+
+- **OCP（對擴充開放）** 不是要你預先為所有可能的變化開洞，而是當變化「真的反覆發生」時（Rule of Three），用擴充點取代到處改 `if`。
+- **DIP（依賴反轉）** 的價值在於可測性與替換真實依賴（DB、HTTP、時間）。當依賴需要被隔離測試時就抽介面；若只是個純計算、沒有外部副作用，加介面只是噪音。
+
+實務順序：**先用 KISS / YAGNI 寫出最簡單可行版 → 出現真實的變化壓力或測試需求 → 用 SOLID 引導重構**。先 SOLID 後需求，往往就變成過度設計。
+
+## 理解測驗
+
+<Quiz data='{"question":"一段程式碼第二次出現相似邏輯，依 Rule of Three 你應該怎麼做？","options":["立刻抽出共用方法，消除重複","先忍住，允許複製貼上，等第三次再考慮抽象","加一個泛型基底類別預留擴充","建立介面與工廠讓未來好替換"],"answer":1,"explanation":"Rule of Three 主張第二次重複時模式尚未穩定，太早抽象容易抽錯維度。允許暫時複製，等第三次確認共通本質後再抽象。"}' />
+
+<Quiz data='{"question":"下列哪一項最適合「快速做、之後再改」的 two-way door 思維？","options":["設計對外公開的 REST API 回傳格式","定義資料庫資料表 schema","決定某個內部方法的實作方式","制定跨系統的事件訊息格式"],"answer":2,"explanation":"內部方法的實作改起來成本低、影響範圍小，屬於可逆決策，可先選最簡單版。其餘三項都是對外合約或 schema，屬不可逆的 one-way door，值得謹慎設計。"}' />
+
+<Quiz data='{"question":"有人主張「為了 YAGNI，這個功能先不寫測試」，這個說法的問題是？","options":["完全正確，測試屬於未來需求","正確，但要補在文件裡","錯誤，測試是當前需求的一部分，不在 YAGNI 豁免範圍","錯誤，因為 YAGNI 要求一律先寫測試"],"answer":2,"explanation":"YAGNI 只反對為臆測的未來功能寫程式。測試、錯誤處理、必要日誌都是當前正確性與營運需求，不能用 YAGNI 當作省略的藉口。"}' />
+
+## 重點整理
+
+<Callout type="tip" title="一句話記住">
+現在用不到就先別做（YAGNI）、能簡單就別繞（KISS）、重複三次才抽象（Rule of Three）、可逆的決策就快做、達到「夠好」就停手。
+</Callout>
+
+| 概念 | 管的是什麼 | 可操作準則 |
+| --- | --- | --- |
+| KISS | 複雜度／認知成本 | 選最好讀的做法，不是最短的 |
+| YAGNI | 時間點（現在 vs 未來） | 沒有驗收條件或 roadmap 就先不做 |
+| DRY | 知識的單一來源 | 管知識重複，不是長得像就合併 |
+| Rule of Three | 何時抽象 | 重複第三次、模式穩定才抽 |
+| 可逆決策 | 該花多少心力設計 | two-way door 快做；one-way door 謹慎 |
+| 停止規則 | 何時收手 | 通過驗收＋可讀＋可測＋能改 |

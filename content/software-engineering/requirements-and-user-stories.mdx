@@ -1,0 +1,308 @@
+---
+title: "需求工程與 User Story"
+order: 2
+description: "User Story 如何產生、需求規格如何撰寫，以及 INVEST、驗收條件與優先排序方法論"
+difficulty: "medium"
+interviewImportance: 4
+related:
+  - "software-engineering/sdlc-overview"
+  - "ddd/ubiquitous-language"
+---
+
+# 需求工程與 User Story
+
+<ELI5>
+想像你要請裝潢師傅幫你裝修廚房。如果你只丟一句「幫我弄個好用的廚房」，師傅做出來的八成不是你要的。
+
+但如果你說：「**身為一個** 每天煮三餐的人，**我想要** 一個能同時放下兩個鍋的爐台，**以便** 我能一次煮完全家的菜」，師傅立刻就懂了 —— 而且你還能驗收：「打開瓦斯，兩個鍋一起放上去不會卡到」。
+
+需求工程就是把腦中模糊的「我想要好用的東西」，翻譯成師傅（工程師）能照著做、而且做完還能驗收的明確規格。User Story 就是那句結構化的需求。
+</ELI5>
+
+## 是什麼？
+
+需求工程（Requirements Engineering）是「探索、釐清、記錄、排序、驗證」軟體需求的一整套活動。它要回答三個問題：**使用者真正的問題是什麼？** **我們要做什麼來解決它？** **做到什麼程度才算完成？**
+
+對資深 C# 開發者來說，這件事的價值在於：寫錯的程式可以重構，但「做錯的需求」會讓你重構了一個根本沒人要的功能。需求的成本最低、影響最大，越早釐清越省錢。
+
+<Callout type="info" title="需求 vs 規格 vs 設計">
+**需求（Requirement）**是「使用者要解決的問題」，**規格（Specification）**是「我們承諾交付的行為」，**設計（Design）**是「我們打算怎麼實作」。User Story 屬於需求層，驗收條件介於需求與規格之間，技術架構才是設計。三者不要混為一談。
+</Callout>
+
+## User Story 怎麼產生（需求來源 + Epic→Feature→Story 拆解）
+
+需求不是 PM 憑空想出來的，而是從多個來源「挖掘」出來的：
+
+- **使用者訪談**：直接問目標使用者，但要小心「使用者說的想要」未必是「真正需要」。
+- **觀察與現場資料**：到實際使用場景看人怎麼操作，常能發現訪談問不出來的痛點。
+- **競品分析**：看對手怎麼解，找差異化與基準功能。
+- **數據與客服回饋**：留存率、漏斗、客訴熱點，是最誠實的需求來源。
+- **利害關係人（Stakeholders）**：老闆、法務、客服、營運，各有各的約束與目標。
+
+收集到的原始需求過於龐大，需要分層拆解，由粗到細：
+
+<Diagram data='{"nodes":[{"id":"epic","label":"Epic 大型目標","type":"highlight"},{"id":"feature","label":"Feature 功能群","type":"default"},{"id":"story","label":"User Story 使用者故事","type":"default"},{"id":"task","label":"Task 開發任務","type":"muted"}],"edges":[{"from":"epic","to":"feature","label":"拆成多個"},{"from":"feature","to":"story","label":"拆成多個"},{"from":"story","to":"task","label":"拆成多個"}]}' />
+
+- **Epic**：跨越多個版本的大目標，例如「會員可在線上完成購物」。
+- **Feature**：可獨立交付的功能群，例如「購物車」「結帳付款」。
+- **User Story**：一個角色的一個具體需求，通常一個 Sprint 內可完成，例如「會員可將商品加入購物車」。
+- **Task**：開發拆解的技術任務，例如「設計 Cart 資料表」「實作 AddItem API」。
+
+<Callout type="tip" title="粒度判斷">
+如果一個 Story 一個 Sprint 做不完，它其實是 Feature，要再拆。如果一個 Story 小到無法對使用者交付價值（例如「建一張資料表」），那它是 Task，不該是 Story。
+</Callout>
+
+## 深入：數據指標與利害關係人
+
+### 用數據反推需求：留存率與漏斗
+
+最誠實的需求來源是真實使用數據，兩個最常用的指標：
+
+- **留存率（Retention Rate）**：一段時間後仍回來使用的使用者比例。例如 1 月新增 100 人，2 月有 40 人回流，次月留存即 40%。常用「世代分析（Cohort）」按註冊月份分群觀察。留存是產品「有沒有真正價值」的硬指標 —— 留不住人，做再多功能也只是漏水的桶子。
+- **漏斗（Funnel）**：使用者完成目標的多步驟轉換流程，每一步都會流失人。例如：瀏覽商品(1000) → 加入購物車(400) → 進入結帳(150) → 付款成功(100)。每一段的**流失率（drop-off）**會告訴你使用者卡在哪一步，那一步就是最該優先處理的需求。
+
+<Callout type="tip" title="數據先於直覺">
+與其在會議室爭論「使用者應該想要什麼」，不如看漏斗哪一段流失最嚴重、哪個世代留存掉最快。數據指出的痛點，比猜測更值得做。
+</Callout>
+
+### 利害關係人（Stakeholders）分析
+
+需求**不是只來自使用者**。利害關係人是任何「會影響專案、或被專案影響」的角色：出錢的主管、法務／資安、維運團隊、客服、合作廠商、最終使用者。漏掉某個利害關係人，往往等於漏掉一整類需求（例如資安要求「通過滲透測試」、法務要求「符合個資法」），這些常常在上線前才爆出來。
+
+實務上用兩個工具管理他們：
+
+- **權力／興趣矩陣（Power/Interest Grid）**：依「影響力高低 × 關心程度高低」分類，決定溝通投入。高權力高興趣者緊密管理，低權力低興趣者只需定期告知。
+- **RACI**：釐清每個需求決策中，誰負責執行（Responsible）、誰當責拍板（Accountable）、需諮詢誰（Consulted）、要告知誰（Informed），避免「以為對方會處理」的空窗。
+
+## User Story 的標準格式與 INVEST 原則
+
+User Story 的經典格式（Connextra 模板）：
+
+```
+身為一個 <角色>，
+我想要 <目標>，
+以便 <效益>。
+
+As a <role>, I want <goal>, so that <benefit>.
+```
+
+重點在「以便」這一段 —— 它說明**為什麼**要做，讓團隊能在實作時做出合理取捨，甚至發現「其實有更好的解法」。例如：
+
+> 身為一個**回購客戶**，我想要**一鍵重新下單上次的訂單**，以便**省去重複挑選商品的時間**。
+
+一個好的 User Story 應符合 **INVEST** 原則：
+
+- **I — Independent（獨立）**：盡量不依賴其他 Story，可單獨排程與交付。
+- **N — Negotiable（可協商）**：描述需求而非綁死實作，細節留給開發與 PM 討論。
+- **V — Valuable（有價值）**：對使用者或業務有明確價值，而非純技術內部工作。
+- **E — Estimable（可估算）**：團隊能估出大概工作量；估不出來代表需求還不夠清楚。
+- **S — Small（夠小）**：能在一個 Sprint 內完成，太大要再拆。
+- **T — Testable（可測試）**：有明確的驗收條件，做完能客觀判定通過與否。
+
+## 驗收條件 Acceptance Criteria（Given-When-Then / Gherkin）
+
+驗收條件（Acceptance Criteria, AC）定義「這個 Story 做到什麼程度才算完成」。它是 INVEST 中 Testable 的具體落地，也是 QA、PO、開發三方的共同合約。
+
+業界常用 **Given-When-Then** 結構（Gherkin 語法），描述「前提 → 動作 → 預期結果」：
+
+```gherkin
+Feature: 會員登入
+
+  Scenario: 使用正確帳號密碼登入成功
+    Given 使用者已註冊且帳號為 "alice@example.com"
+    When 使用者輸入正確的密碼並點擊登入
+    Then 系統導向會員首頁
+    And 顯示歡迎訊息 "歡迎回來，Alice"
+
+  Scenario: 密碼錯誤三次後鎖定帳號
+    Given 使用者連續輸入錯誤密碼 2 次
+    When 使用者第 3 次輸入錯誤密碼
+    Then 系統鎖定帳號 15 分鐘
+    And 顯示提示 "帳號已暫時鎖定"
+```
+
+<Callout type="info" title="AC 不是只寫快樂路徑">
+新手只寫「登入成功」，資深工程師會把**邊界與失敗情境**也寫進 AC：密碼錯誤、帳號鎖定、網路逾時、空值輸入。這些往往才是真正的需求與 Bug 來源。每個 Scenario 對應一條可自動化的 BDD 測試。
+</Callout>
+
+### AC 該涵蓋哪些場景（檢查表）
+
+「失敗、邊界、權限」只是最低標，不是全部。寫 AC 時拿這張表逐項問「這個 Story 在這類情境下該怎樣？」，不適用的明確標註 N/A，而不是默默略過：
+
+| 類別 | 要驗證什麼 |
+| --- | --- |
+| ✅ 快樂路徑 Happy Path | 一切正常時的成功流程 |
+| 🔀 替代路徑 Alternate | 同一目標的其他合法走法 |
+| ❌ 失敗／錯誤 Failure | 輸入錯誤、外部服務掛掉、逾時 |
+| 📏 邊界 Boundary | 最大／最小值、剛好臨界（0、上限 +1） |
+| 🔐 權限 Authorization | 未登入、角色不足、跨租戶存取他人資料 |
+| ⬜ 空／初始狀態 Empty | 沒資料、第一次使用、清單為空 |
+| 🔁 併發／重複 Concurrency | 同時操作、重複提交（冪等性 idempotency） |
+| 🧮 資料驗證 Validation | 格式、必填、長度、特殊字元 |
+| ⚡ 效能約束 | 「在 N 筆資料下 X 秒內完成」 |
+| 🌐 在地化／無障礙 | 多語系、時區、可存取性（視場景） |
+
+<Callout type="warning" title="最常被漏掉的三類">
+新手只寫快樂路徑；進階者會補失敗／邊界／權限；但**空狀態、併發重複提交、資料驗證**才是實務上最常出包卻最常被略過的 —— 尤其「重複提交」在金流系統是災難級漏洞。
+</Callout>
+
+## 需求規格怎麼寫成文件（PRD / SRS + 功能 vs 非功能需求）
+
+User Story 適合敏捷的迭代溝通，但在較正式或跨團隊的專案中，仍需要書面規格：
+
+- **PRD（Product Requirements Document）**：產品角度，講「為什麼做、給誰、要達成什麼」，PM 主筆。
+- **SRS（Software Requirements Specification）**：工程角度，講「系統應有哪些精確行為與約束」，較正式（IEEE 830）。
+
+需求分兩大類，兩者都要寫清楚：
+
+- **功能需求（Functional）**：系統「應該做什麼」，例如「使用者可以重設密碼」。
+- **非功能需求（Non-Functional, NFR）**：系統「應該多好」，常被忽略卻決定架構成敗：
+  - **效能**：登入 API 95 百分位回應時間 < 300ms。
+  - **安全**：密碼以 bcrypt 雜湊儲存，傳輸全程 TLS。
+  - **可用性（Availability）**：服務年可用率 99.9%。
+  - **可維護性 / 可擴展性 / 相容性**：支援水平擴展、向後相容舊版 API。
+
+一份精簡的 PRD/SRS 文件骨架：
+
+```markdown
+# 文件標題與版本
+1. 背景與問題（要解決什麼、為什麼現在做）
+2. 目標與成功指標（KPI / 北極星指標）
+3. 範圍（In Scope / Out of Scope）
+4. 使用者與角色（Persona）
+5. 功能需求（以 User Story + 驗收條件條列）
+6. 非功能需求（效能 / 安全 / 可用性 / 可維護性）
+7. 流程與線框圖（User Flow / Wireframe）
+8. 相依與限制（外部系統、法規、技術約束）
+9. 風險與未決問題（Open Questions）
+10. 里程碑與發布計畫
+```
+
+### SRS 完整章節（IEEE 830 / ISO 29148）
+
+一份正式 SRS 的標準骨架如下。敏捷團隊常以「Backlog + User Story + AC」取代，但受規範產業（醫療、金融、政府）仍需完整 SRS：
+
+```text
+1. 介紹 Introduction
+   1.1 目的 Purpose
+   1.2 範圍 Scope（做什麼、不做什麼）
+   1.3 名詞定義與縮寫 Glossary
+   1.4 參考文件 References
+2. 整體描述 Overall Description
+   2.1 產品背景／願景 Product Perspective
+   2.2 產品功能摘要 Product Functions
+   2.3 使用者類別與特性 User Classes
+   2.4 運行環境 Operating Environment
+   2.5 設計與實作限制 Constraints（法規、技術棧、相容性）
+   2.6 假設與相依 Assumptions and Dependencies
+3. 具體需求 Specific Requirements
+   3.1 功能需求 Functional（逐條可追溯編號 FR-001…）
+   3.2 外部介面需求 External Interfaces（UI / API / 硬體 / 其他系統）
+   3.3 非功能需求 Non-Functional（見下）
+   3.4 資料需求 Data Requirements
+4. 驗收條件 Acceptance Criteria
+5. 附錄 Appendix（線框圖、流程圖）
+```
+
+每條需求的三個鐵則：**可追溯（有唯一編號）、可驗證、無歧義**。
+
+### 非功能需求：業界標準 ISO/IEC 25010 八大特性
+
+前面列的「效能／安全／可用性／可維護性」只是常見的四個。業界品質標準 **ISO/IEC 25010** 定義了八大特性，寫 NFR 時可逐項檢視有沒有遺漏：
+
+| # | 特性 | 白話 |
+| --- | --- | --- |
+| 1 | 功能適切性 Functional Suitability | 功能對不對、完不完整 |
+| 2 | 效能效率 Performance Efficiency | 回應時間、吞吐量、資源使用 |
+| 3 | 相容性 Compatibility | 能否與其他系統共存／互通 |
+| 4 | 易用性 Usability | 好不好學、好不好用、無障礙 |
+| 5 | 可靠性 Reliability | 可用率、容錯、復原能力 |
+| 6 | 資安 Security | 機密性、完整性、認證、不可否認 |
+| 7 | 可維護性 Maintainability | 好不好改、模組化、可測試性 |
+| 8 | 可移植性 Portability | 能否搬到別的環境／平台 |
+
+另外常見但不在這八項內的還有**可擴展性（Scalability）、可觀測性（Observability）、法規遵循（Compliance）**。
+
+<Callout type="warning" title="NFR 一定要可量化">
+不要寫「系統要快」，要寫「95% 的請求在 200ms 內回應」。不可量化的 NFR 等於沒寫 —— 無法驗收，也無法當架構依據。
+</Callout>
+
+### KPI 與北極星指標
+
+- **KPI（關鍵績效指標）**：衡量單一功能是否成功的可量化數字，例如「結帳轉換率提升 10%」。
+- **北極星指標（North Star Metric）**：整個產品最核心的單一價值指標，例如 Spotify 的「總收聽時數」、Airbnb 的「訂房晚數」。
+
+**在需求文件中的用途**：把每個 Epic／Feature 連到它要影響的指標，回答「我們為什麼做這個？做了怎麼算成功？」。沒有成功指標的需求，是無法驗證價值、也無法排序的需求。
+
+### User Flow 與 Wireframe
+
+把文字需求變成可討論的具體畫面，減少「想的跟做的不一樣」：
+
+- **User Flow（使用者流程圖）**：使用者為完成某目標會經過哪些步驟、畫面與決策點。例如：登入 → 首頁 → 搜尋 → 商品頁 → 加入購物車 → 結帳。重點是「路徑與分支」，不管畫面長相。
+- **Wireframe（線框圖）**：單一畫面的低擬真版面草圖，只有方塊、線條、佔位文字，標出「按鈕在哪、有哪些欄位、資訊層級」，**刻意不做顏色與美術**，先對齊結構與內容，避免太早糾結視覺。
+
+## 優先排序方法論（MoSCoW、User Story Mapping、Job Stories 簡介）
+
+需求永遠多於資源，排序是核心能力：
+
+- **MoSCoW**：把需求分成四類 ——
+  - **Must**：沒有它產品就不能上線（核心）。
+  - **Should**：很重要但短期可暫緩。
+  - **Could**：有的話更好（Nice to have）。
+  - **Won't（this time）**：這次明確不做（一樣重要，避免範疇蔓延）。
+- **User Story Mapping**：把 Story 依「使用者旅程」橫向排成骨幹（backbone），再縱向依優先度堆疊，一眼看出「哪些湊成一個可上線的最小切片（MVP）」。
+- **Job Stories**：強調情境而非角色，格式為「**When**... **I want to**... **so I can**...」（當我處於某情境，我想做某事，以便達成某目的），適合不確定使用者輪廓、但情境明確的場景。
+
+<Callout type="tip" title="和 DDD 統一語言對齊">
+撰寫 User Story 與 AC 時，角色、動作、名詞都應使用團隊的 **Ubiquitous Language（統一語言）**。如果需求文件叫「會員」，程式碼卻叫 `User`、`Customer`、`Account` 三種，需求與實作就會慢慢失準。好的需求語言就是好的程式碼命名來源。
+</Callout>
+
+## 常見誤區
+
+<Callout type="warning" title="需求工程的常見地雷">
+**誤區一：把解法當需求。** 「我要一個下拉選單」是解法，「我要快速從 200 個國家中選出我的國家」才是需求。寫死解法會扼殺更好的設計。
+
+**誤區二：只寫快樂路徑。** 沒有失敗、邊界、權限情境的 AC，等於把 Bug 留到上線後才發現。
+
+**誤區三：忽略非功能需求。** 功能都對，但回應要 8 秒、無法擴展、密碼明碼存 —— 架構往往因此整個重做。NFR 要在需求階段就講清楚。
+
+**誤區四：Story 過大估不出來。** 估不出工時通常代表需求沒釐清，硬估只會讓 Sprint 失準。先拆小、先問清楚。
+
+**誤區五：需求一寫完就凍結。** 需求是活的，應隨回饋持續修訂；但每次變更都要更新 AC 與相關文件，否則文件與系統脫節。
+</Callout>
+
+## 實戰補充（Q&A）
+
+**Q：敏捷不是強調「可運作的軟體勝過詳盡的文件」嗎？那還需要寫 PRD/SRS 嗎？**
+A：敏捷反對的是「為文件而文件」，不是反對溝通。小團隊、快速迭代用 User Story + AC 即可；但跨團隊、受法規約束（金融、醫療）、或外包驗收的專案，仍需要正式 SRS 作為合約依據。原則是「文件量要剛好足以讓團隊正確前進」。
+
+**Q：User Story 和驗收條件分別由誰寫？**
+A：Story 通常由 PO/PM 主筆，但 AC 最好由 PO、開發、QA「三方共同確認（Three Amigos）」。開發者最懂技術邊界，QA 最懂異常情境，三方一起寫的 AC 漏洞最少。
+
+**Q：身為資深開發者，我在需求階段能貢獻什麼？**
+A：三件事 —— 一是挑戰需求的「以便」段，問清楚真正目的，常能找到更省成本的解法；二是補上技術可行性與非功能需求（效能、安全、相容性）；三是把過大的 Story 協助拆成 Independent、Estimable 的小塊。
+
+## 理解測驗
+
+<Quiz data='{"question":"下列哪一個最符合一個「好的 User Story」格式？","options":["實作一個 RESTful 的登入 API 端點","身為一個回購客戶，我想要一鍵重新下單，以便省去重複挑選商品的時間","系統必須支援每秒 1000 筆登入請求","新增一張 cart 資料表並建立索引"],"answer":1,"explanation":"User Story 應以「身為一個<角色>，我想要<目標>，以便<效益>」描述使用者價值。選項 A、D 是技術 Task，選項 C 是非功能需求，都不是 User Story。"}' />
+
+<Quiz data='{"question":"INVEST 原則中的「N」代表什麼，意義為何？","options":["Necessary：每個 Story 都必須是核心功能","Negotiable：Story 描述需求而非綁死實作，細節可協商","Numbered：每個 Story 都要有編號","Non-functional：Story 必須包含非功能需求"],"answer":1,"explanation":"N 是 Negotiable（可協商）：User Story 表達的是「要解決的需求」，實作細節保留給開發與 PM 在後續討論，避免過早綁死解法。"}' />
+
+<Quiz data='{"question":"關於驗收條件（Acceptance Criteria）的描述，何者正確？","options":["只需要描述功能成功的快樂路徑","應使用 Given-When-Then 結構，且涵蓋失敗與邊界情境","由開發者獨自撰寫，不需 QA 參與","與非功能需求互斥，不能同時存在"],"answer":1,"explanation":"AC 常用 Given-When-Then（Gherkin）描述前提、動作與預期結果，且必須涵蓋失敗、邊界、權限等異常情境，最好由 PO、開發、QA 三方共同確認。"}' />
+
+## 重點整理
+
+<Callout type="tip" title="一句話記住">
+User Story 講「誰、要什麼、為什麼」，驗收條件講「做到什麼程度算完成」，而 INVEST 與優先排序確保你做的是「正確、可交付、值得先做」的事。
+</Callout>
+
+| 概念 | 核心問題 | 關鍵重點 |
+| --- | --- | --- |
+| 需求來源 | 需求從哪來 | 訪談、觀察、競品、數據、利害關係人 |
+| 拆解層級 | 粒度多大 | Epic → Feature → Story → Task |
+| User Story | 要做什麼 | 身為〈角色〉，我想要〈目標〉，以便〈效益〉 |
+| INVEST | Story 夠不夠好 | 獨立、可協商、有價值、可估算、夠小、可測試 |
+| 驗收條件 | 何時算完成 | Given-When-Then，涵蓋失敗與邊界 |
+| 需求文件 | 怎麼記錄 | PRD/SRS；功能需求 + 非功能需求 |
+| 優先排序 | 先做哪個 | MoSCoW、Story Mapping、Job Stories |
+| 統一語言 | 用什麼術語 | 與 DDD Ubiquitous Language 對齊 |

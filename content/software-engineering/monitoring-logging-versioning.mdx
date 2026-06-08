@@ -1,0 +1,212 @@
+---
+title: "監控、日誌與版本管理"
+order: 12
+description: "監控與告警怎麼做、結構化日誌實務，以及語意化版本與各種版本更新的意義"
+difficulty: "medium"
+interviewImportance: 4
+related:
+  - "observability/observability-fundamentals"
+  - "observability/structured-logging"
+  - "api-design/api-versioning"
+---
+
+# 監控、日誌與版本管理
+
+<ELI5>
+把線上系統想成加護病房裡的病人。牆上那台「生命徵象監測儀」即時跳動著心率、血壓、血氧——這就是**監控（Metrics）**，數字一超標就嗶嗶叫護理師（**告警**）。而那本厚厚的**病歷**，一筆一筆記下「幾點幾分、誰、做了什麼、發生什麼事」，事後出問題要追責、要回溯病程，就翻它——這就是**日誌（Logging）**。監測儀告訴你「現在不對勁」，病歷告訴你「到底發生了什麼」。至於**版本管理**，就像病歷上的版次標記：療程改了第幾版、用藥升級到哪一代，讓任何人接手都知道現在是哪個狀態、跟上次差在哪。
+</ELI5>
+
+## 是什麼？
+
+這三件事常被混為一談，但解決的是不同問題：
+
+- **監控（Monitoring）**：持續量測系統的「健康指標」，回答「現在正不正常？」。它是**主動偵測**——在使用者打電話客訴之前，先讓你知道出事了。
+- **日誌（Logging）**：記錄系統執行過程中發生的「事件」，回答「到底發生了什麼？」。它是**事後鑑識**——當監控告警響起，你靠日誌追出根因。
+- **版本管理（Versioning）**：標記軟體、API、資料結構、相依套件「現在是哪一代」，回答「我們跑的是什麼？跟上次差在哪？」。它讓部署可追溯、相容性可協商、回滾有依據。
+
+<Callout type="info" title="一句話定位">
+監控是「儀表板上的紅燈」，日誌是「黑盒子飛行記錄器」，版本是「貨物上的批號」。三者搭配，才有辦法在凌晨三點被叫起來時，快速判斷「壞了沒、為什麼壞、是哪一版壞的」。
+</Callout>
+
+## 監控怎麼做
+
+### Metrics（指標）
+
+指標是隨時間變化的數值量測，通常分三類：
+
+- **Counter（計數器）**：只增不減，如「累計請求數」「錯誤總數」。
+- **Gauge（量表）**：可上可下的瞬時值，如「目前記憶體用量」「佇列長度」。
+- **Histogram（直方圖）**：量測分佈，最典型的是**回應時間的 p50 / p95 / p99 百分位數**。資深開發者要養成看 p99 而非平均值的習慣——平均值會把長尾延遲藏起來。
+
+### Health Check（健康檢查）
+
+提供一個端點（如 `/health`）讓負載平衡器、Kubernetes、監控系統定期探測。通常分兩種：
+
+- **Liveness**：服務還活著嗎？掛了就重啟。
+- **Readiness**：服務準備好接流量了嗎？（DB 連得上、相依服務正常）沒準備好就先別導流量進來。
+
+### 四大黃金訊號（Four Golden Signals）
+
+Google SRE 提出的監控起手式，不知道要監控什麼就先盯這四個：
+
+1. **延遲（Latency）**：請求花多久。要區分「成功請求的延遲」與「失敗請求的延遲」。
+2. **流量（Traffic）**：系統承受多少需求，如 RPS（每秒請求數）。
+3. **錯誤（Errors）**：失敗請求的比率（HTTP 5xx、逾時）。
+4. **飽和度（Saturation）**：系統有多滿（CPU、記憶體、磁碟、連線池）。
+
+### SLI / SLO / SLA
+
+- **SLI（Service Level Indicator）**：實際量到的指標，如「過去 30 天成功率 99.95%」。
+- **SLO（Service Level Objective）**：你給自己訂的目標，如「成功率 ≥ 99.9%」。
+- **SLA（Service Level Agreement）**：寫進合約、違約要賠錢的承諾，通常比 SLO 寬鬆。
+
+SLO 與實際的差距就是**錯誤預算（Error Budget）**——預算還夠就大膽發版，燒光了就先穩定再說。
+
+### APM 與告警（Alerting）
+
+**APM（Application Performance Monitoring）**工具（Application Insights、Datadog、New Relic）能做分散式追蹤，把一個請求穿過多個微服務的路徑串起來，找出是哪一段慢。**告警**則是設定門檻，超標就通知（Slack、PagerDuty、Email）。原則是**對症狀告警，而非對原因告警**——使用者在意的是「網頁打不開」，不是「某台機器 CPU 80%」。
+
+## 日誌怎麼做
+
+### 結構化日誌 vs 純文字
+
+純文字日誌 `"User 123 failed login at 10:30"` 人看得懂，但機器難以查詢。**結構化日誌**把它寫成帶欄位的事件（JSON）：
+
+```json
+{ "Level": "Warning", "Event": "LoginFailed", "UserId": 123, "Timestamp": "2026-06-05T10:30:00Z" }
+```
+
+之後就能在集中平台用 `UserId == 123 AND Event == "LoginFailed"` 直接查詢、聚合、畫圖。對資深開發者來說，這是現代日誌的及格線。
+
+### Log Level（日誌等級）
+
+由低到高：`Trace` → `Debug` → `Information` → `Warning` → `Error` → `Critical`。生產環境通常開到 `Information`，問題排查時才臨時調低。重點是**選對等級**：可預期的使用者錯誤（如表單驗證失敗）是 `Information` 或 `Warning`，不該用 `Error` 把告警淹掉。
+
+### Correlation ID（關聯追蹤）
+
+一個請求可能跨好幾個服務與非同步流程。給每個請求一個 **Correlation ID**（如 `X-Correlation-ID` 標頭），讓它貫穿所有相關日誌，事後就能用一個 ID 把整條鏈路的日誌全撈出來。在 .NET 中常搭配 `ILogger.BeginScope` 或 `Activity.Current.TraceId`（W3C Trace Context）。
+
+<Callout type="warning" title="絕對不要記進日誌的東西">
+密碼、API 金鑰、JWT、信用卡號、身分證字號等 PII（個人可識別資訊）。日誌往往保存數月、被多人存取、還可能外送到第三方平台——記了敏感資料等於資料外洩。台灣《個資法》與 GDPR 都會找上門。記得脫敏（masking）或乾脆不記。
+</Callout>
+
+## .NET 程式碼範例
+
+### ILogger 結構化記錄
+
+關鍵：用**訊息範本（message template）的具名參數**，而不是字串插值。前者保留了結構化欄位，後者只剩一坨字串。
+
+```csharp
+// 正確：OrderId、Amount 會成為可查詢的結構化欄位
+logger.LogInformation("訂單建立成功 {OrderId}，金額 {Amount}", order.Id, order.Total);
+
+// 錯誤：插值會破壞結構化，欄位全黏成一個字串
+logger.LogInformation($"訂單建立成功 {order.Id}，金額 {order.Total}");
+```
+
+### Serilog 設定（寫入 Console 與 Seq）
+
+```csharp
+builder.Host.UseSerilog((ctx, cfg) => cfg
+    .MinimumLevel.Information()
+    .Enrich.FromLogContext()                 // 讓 scope/correlation 自動帶進每筆 log
+    .WriteTo.Console(new JsonFormatter())    // 結構化輸出
+    .WriteTo.Seq("http://localhost:5341"));  // 集中式平台
+```
+
+### Health Checks 註冊
+
+```csharp
+builder.Services.AddHealthChecks()
+    .AddDbContextCheck<AppDbContext>(name: "database")
+    .AddUrlGroup(new Uri("https://payment-api/health"), name: "payment");
+
+var app = builder.Build();
+app.MapHealthChecks("/health");
+```
+
+### Correlation ID Middleware
+
+```csharp
+app.Use(async (context, next) =>
+{
+    var correlationId = context.Request.Headers["X-Correlation-ID"].FirstOrDefault()
+                        ?? Activity.Current?.TraceId.ToString()
+                        ?? Guid.NewGuid().ToString();
+
+    // 之後此 scope 內的每一筆 log 都會自動帶上 CorrelationId
+    using (LogContext.PushProperty("CorrelationId", correlationId))
+    {
+        context.Response.Headers["X-Correlation-ID"] = correlationId;
+        await next();
+    }
+});
+```
+
+## 監控/日誌資料流
+
+應用程式把「日誌事件」與「指標」往外送，匯集到集中平台，再分流到儀表板與告警通道。集中化的價值在於：跨多個服務實例的資料能被統一查詢與關聯。
+
+<Diagram data='{"nodes":[{"id":"app","label":"應用程式 (ILogger / Serilog / Metrics)","type":"highlight"},{"id":"logs","label":"結構化日誌 (JSON)","type":"default"},{"id":"metrics","label":"指標 (Counter / Gauge / Histogram)","type":"default"},{"id":"platform","label":"集中平台 (Seq / ELK / App Insights)","type":"highlight"},{"id":"dashboard","label":"儀表板 (Grafana / Kibana)","type":"muted"},{"id":"alert","label":"告警 (PagerDuty / Slack)","type":"muted"}],"edges":[{"from":"app","to":"logs","label":"寫出事件"},{"from":"app","to":"metrics","label":"輸出量測"},{"from":"logs","to":"platform","label":"匯入"},{"from":"metrics","to":"platform","label":"匯入"},{"from":"platform","to":"dashboard","label":"視覺化"},{"from":"platform","to":"alert","label":"超標通知"}]}' />
+
+## 版本更新指的是什麼
+
+「版本更新」這個詞被濫用，但對工程師而言它其實涵蓋好幾種**不同層次的版本**，各有各的規則。
+
+### 語意化版本 SemVer：MAJOR.MINOR.PATCH
+
+業界共識的版本號規則，格式為 `主版本.次版本.修訂號`，例如 `2.4.1`：
+
+<StepDiagram data='[{"title":"MAJOR 主版本","description":"破壞性變更（breaking change），舊使用者升級後會壞掉。例：移除 API、改方法簽章。2.x.x → 3.0.0","icon":"1"},{"title":"MINOR 次版本","description":"向後相容的新功能。舊程式不改照樣能跑。例：新增一個可選參數、新增端點。2.4.x → 2.5.0","icon":"2"},{"title":"PATCH 修訂號","description":"向後相容的錯誤修正。沒有新功能、沒有破壞性。例：修 bug、補安全漏洞。2.4.1 → 2.4.2","icon":"3"}]' />
+
+規則重點：升級 MAJOR 時，MINOR 與 PATCH 歸零（`2.4.1 → 3.0.0`）；升 MINOR 時 PATCH 歸零。`0.x.y` 屬於開發初期，此時可視為不保證相容。預先發行版用 `1.0.0-rc.1`、`2.0.0-beta` 等後綴標示。
+
+### 四種要分清楚的「版本」
+
+- **應用程式版本**：整個產品/服務的對外版號，走 SemVer。常嵌進 assembly（`AssemblyInformationalVersion`）或顯示在 `/version` 端點，方便對照線上跑的是哪個 build。
+- **API 版本**：對外契約的版本，獨立於應用程式版本演進。常見做法是 URL（`/api/v2/orders`）或標頭（`Api-Version: 2`）。破壞性變更要升 API 大版本，並讓舊版**並存一段過渡期**，不能說斷就斷。
+- **資料庫 Schema / Migration 版本**：資料結構的演進，用 EF Core Migrations 或 Flyway/Liquibase 管理。每個 migration 是一個有序、不可變的步驟，要能**向前套用、也能回滾**。部署時程式版本與 schema 版本必須相容（常用「擴張再收縮」expand-and-contract 策略支援零停機）。
+- **相依套件版本**：你引用的 NuGet 套件。更新策略要平衡「安全修補要快」與「破壞性升級要謹慎」。實務上鎖定版本範圍、用 Dependabot/Renovate 自動開 PR、CI 跑測試把關，PATCH 可自動合、MAJOR 要人工審。
+
+<Callout type="info" title="它們各自獨立演進">
+應用程式從 5.2.0 升到 5.3.0（新功能），底下 API 可能還停在 v2，資料庫剛跑完第 87 號 migration，而 EF Core 套件從 8.0.3 升到 8.0.4。四個版本號互不相干、各管各的相容性——把它們混在一起談，正是溝通混亂的根源。
+</Callout>
+
+## 常見誤區
+
+<Callout type="warning" title="這些坑很多老手也會踩">
+- **Log 太多沒人看**：什麼都記 `Information`，真正的 `Error` 被淹沒在雜訊裡。日誌要有取捨，不是愈多愈好。
+- **記了敏感資料**：把整個 request body（含密碼、token）原封不動塞進日誌，變成資安與法遵風險。
+- **只監控機器不監控業務**：盯著 CPU、記憶體很滿足，卻沒人發現「過去一小時結帳成功率掉到 0」。要監控**業務指標**（訂單量、付款成功率），那才是使用者真正在意的。
+- **版本號亂跳**：明明是破壞性變更卻只升 PATCH，害下游升級後炸掉；或是版號跟著心情跳，失去 SemVer 的溝通價值。
+</Callout>
+
+## 實戰補充
+
+**Q：監控（Monitoring）和可觀測性（Observability）差在哪？**
+A：監控是「監看你**事先知道**會出問題的已知指標」——你預先定義好儀表板與告警。可觀測性則更廣，是「系統對外輸出的資料，足以讓你**事後探查從未預期過的問題**」。它建立在三大支柱：Metrics（指標）、Logs（日誌）、Traces（追蹤）。簡言之：監控回答「已知的問題現在如何」，可觀測性讓你回答「連我都還不知道的問題到底怎麼回事」。監控是可觀測性的子集。
+
+**Q：到底該設哪些告警？**
+A：少而精。優先對**症狀**且**可付諸行動**的事件告警：對應 SLO 的指標（成功率、p99 延遲），以及四大黃金訊號中對使用者有感的部分。避免對「單一機器 CPU 高」這類原因告警——那容易誤報、半夜吵醒人卻沒事可做。一個好原則：**每個告警響起時，接手的人都該明確知道要做什麼**；如果不知道，這個告警就該刪掉或改寫。
+
+## 理解測驗
+
+<Quiz data='{"question":"一個原本沒有 ProductId 參數的查詢方法，新增了一個「可選」的 ProductId 參數，舊呼叫端完全不用改。依照 SemVer，版本號該怎麼變？","options":["升 MAJOR（如 2.4.1 → 3.0.0）","升 MINOR（如 2.4.1 → 2.5.0）","升 PATCH（如 2.4.1 → 2.4.2）","不需要改版本號"],"answer":1,"explanation":"新增向後相容的功能（舊呼叫端不用改照樣能跑）屬於 MINOR 更新，且 PATCH 歸零。若是破壞性變更才升 MAJOR；單純修 bug 才升 PATCH。"}' />
+
+<Quiz data='{"question":"關於結構化日誌，下列哪個 ILogger 寫法是「正確」的做法？","options":["logger.LogInformation($\"訂單 {order.Id} 完成\")","logger.LogInformation(\"訂單 \" + order.Id + \" 完成\")","logger.LogInformation(\"訂單 {OrderId} 完成\", order.Id)","logger.LogError(\"訂單 {OrderId} 完成\", order.Id)"],"answer":2,"explanation":"要用訊息範本的具名參數，讓 OrderId 成為可查詢的結構化欄位。字串插值與字串相加都會破壞結構、只剩純文字。而訂單成功是正常事件，不該用 LogError。"}' />
+
+<Quiz data='{"question":"監控（Monitoring）與可觀測性（Observability）的關係，下列敘述何者最貼切？","options":["兩者完全相同，只是新舊說法不同","可觀測性只是把日誌集中起來","監控針對已知指標，可觀測性讓你探查未預期的問題，監控是其子集","可觀測性不需要 Metrics，只靠 Traces"],"answer":2,"explanation":"監控監看事先定義好的已知指標；可觀測性建立在 Metrics、Logs、Traces 三大支柱上，讓你能調查連自己都沒預期過的問題。監控是可觀測性的子集。"}' />
+
+## 重點整理
+
+<Callout type="tip" title="一句話記住">
+**監控告訴你「壞了」，日誌告訴你「為什麼壞」，版本告訴你「是哪一版壞的」——三者到位，凌晨三點才睡得著。**
+</Callout>
+
+| 主題 | 核心問題 | .NET 工具 | 關鍵實務 |
+| --- | --- | --- | --- |
+| 監控 Metrics | 現在正常嗎？ | App Insights / Prometheus | 看 p95/p99、四大黃金訊號 |
+| 健康檢查 | 服務活著且就緒？ | `AddHealthChecks` | 分 Liveness / Readiness |
+| 告警 SLI/SLO | 是否違反目標？ | Grafana / PagerDuty | 對症狀告警、可付諸行動 |
+| 日誌 | 發生了什麼？ | `ILogger` / Serilog | 結構化、Correlation ID、不記 PII |
+| 版本 SemVer | 是哪一版？相容嗎？ | NuGet / EF Migrations | MAJOR.MINOR.PATCH、四種版本分開管 |

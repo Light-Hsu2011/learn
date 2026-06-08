@@ -1,0 +1,172 @@
+---
+title: "一個完整專案從 0 到上線"
+order: 14
+description: "用一個請假系統為例，串起需求、架構、開發、Code Review、CI/CD、上線到監控的完整流程"
+difficulty: "medium"
+interviewImportance: 4
+related:
+  - "software-engineering/sdlc-overview"
+  - "ci-cd/ci-cd-fundamentals"
+  - "software-engineering/clean-architecture-in-csharp"
+---
+
+# 一個完整專案從 0 到上線
+
+<ELI5>
+把做專案想成開一家餐廳。你不會一開門就想做出米其林三星：先決定要賣什麼（需求），畫好廚房動線（架構），招呼廚師分工不要互相撞到（分層與 SOLID），試菜確認味道穩定（測試），開門前最後檢查瓦斯、食材、收銀機（上線檢查清單），然後正式營業（部署）。開了之後還要看 Google 評論、看哪道菜被退、看翻桌率（監控），再決定下週菜單怎麼改（迭代）。這堂課就是帶你從「想開餐廳」一路走到「天天有客人還愈做愈好」。
+</ELI5>
+
+## 是什麼？（這課把前面所有觀念串成一條真實的路）
+
+前面每一課——SDLC、需求與 User Story、架構切分、Clean Architecture、SOLID、測試、Git 策略、CI/CD、監控——你都單獨學過了。但真實工作裡，它們不是各自獨立的知識點，而是**同一條河流上的不同河段**。這堂課不教新觀念，而是用一個你看得到、摸得著的具體專案，把這些觀念按照真實發生的順序串起來，讓你看見一個專案從「一句話的想法」走到「在 Production 穩定運行並持續改進」的全貌。
+
+<Callout type="info" title="這是一堂總整理課">
+看到任何一個階段，請回想「這對應到前面哪一課」。當你能在腦中把這條路完整走一遍，代表你已經具備帶領一個專案落地的整體視野，而不只是會寫某一段程式。
+</Callout>
+
+## 專案設定
+
+我們要做一個**員工請假系統（Leave Request System）的 Web API**。情境如下：
+
+- 員工可以提出請假申請（請假類型、起訖日期、事由）。
+- 系統依照剩餘特休天數與請假規則做驗證。
+- 主管可以核准或駁回，員工會收到通知。
+- HR 可以查詢全公司的請假紀錄與統計。
+- 技術棧：ASP.NET Core Web API、EF Core + SQL Server、部署到雲端容器服務。
+
+這個題目剛好夠複雜（有規則、有狀態、有角色），又夠單純（不會讓你陷在細節裡），很適合當作總整理的載體。
+
+## 全流程里程碑
+
+<StepDiagram data='[{"title":"構想","description":"一句話的商業需求：讓請假流程數位化","icon":"1"},{"title":"需求與 User Story","description":"把模糊的想法拆成可驗收的故事與驗收條件","icon":"2"},{"title":"技術選型","description":"選定 .NET、EF Core、雲端容器與資料庫","icon":"3"},{"title":"架構設計","description":"用 Clean Architecture 切四層，畫出邊界","icon":"4"},{"title":"建 repo 與分支策略","description":"初始化版本控制，採 Trunk-Based 短命分支","icon":"5"},{"title":"開發","description":"分層實作，搭配 TDD 與測試金字塔","icon":"6"},{"title":"PR 與 Code Review","description":"小顆 PR、自動檢查、同儕審查","icon":"7"},{"title":"CI/CD","description":"自動建置、測試、掃描、打包","icon":"8"},{"title":"部署到測試環境","description":"先進 Staging 做整合與 UAT","icon":"9"},{"title":"上 Production","description":"走檢查清單，採漸進式發布","icon":"10"},{"title":"監控與迭代","description":"結構化日誌、告警、回饋驅動下一輪","icon":"11"}]' />
+
+## 各階段實際做什麼
+
+**構想與需求/User Story。** 一切從一句話開始：「我們要讓請假不用再寫紙本」。但這句話無法開發。如同〈需求與 User Story〉那一課，我們要把它拆成可驗收的故事，例如「身為員工，我想線上提出請假，以便不用跑到 HR 櫃台」，並補上**驗收條件（Acceptance Criteria）**：特休不足時要擋下、跨年度請假要分段計算。**這一步偷懶，後面所有努力都會做錯方向。**
+
+**技術選型與架構設計。** 確認用 ASP.NET Core 後，依照〈Clean Architecture〉那一課把系統切成四層：Domain（`LeaveRequest` 實體，內含「已核准不可重複申請」這類核心規則）、Application（`SubmitLeaveRequestUseCase`、定義 `ILeaveRepository` 介面）、Infrastructure（EF Core 實作 Repository、寄通知）、Presentation（Controller）。依賴一律指向內，並用 SOLID 的 DIP 讓內層只依賴介面。
+
+**建 repo 與分支策略。** 初始化 Git，採〈Git 策略〉提到的 **Trunk-Based Development + 短命分支**：每個 User Story 開一條活不過兩三天的 feature 分支，盡快合回主幹，避免長壽分支累積巨大的合併衝突。
+
+**開發（Clean Architecture + TDD）。** 從 Domain 規則開始，先寫測試再寫實作。遵循〈測試〉那一課的**測試金字塔**：大量快速的單元測試（驗證請假天數計算、狀態轉換）、適量整合測試（驗證 Repository 真的存得進資料庫）、少量端對端測試（驗證 API 從請求到回應的完整路徑）。同時謹記 YAGNI——第一版不做「多公司多租戶」這種還沒人要的功能。
+
+**PR 與 Code Review。** 每條分支以**小顆 PR** 提交，CI 先自動跑測試與靜態分析，再由同儕審查可讀性、邊界情況與安全性。小 PR 才審得動、審得快。
+
+**CI/CD 到部署。** 推上去後，CI 自動建置、跑測試、做安全掃描、產出容器映像（對應〈CI/CD 基礎〉）。通過後 CD 自動部署到 **Staging 測試環境**做整合與 UAT，確認無誤才用漸進式發布（藍綠或金絲雀）推上 **Production**。
+
+**監控與迭代。** 上線不是終點。導入**結構化日誌與告警**（對應〈監控〉），追蹤錯誤率、延遲、請假核准耗時等指標。從真實使用數據與使用者回饋，決定下一個迭代要做什麼——回到需求那一步，形成循環。
+
+## 關鍵設定範例
+
+一個 User Story 的範例寫法：
+
+```text
+標題：員工提出請假申請
+身為 一名正職員工
+我想 在系統上選擇請假類型與日期並送出
+以便 不用填紙本表單跑 HR 櫃台
+
+驗收條件：
+- 特休餘額不足時，送出被擋下並顯示剩餘天數
+- 起始日不可早於今天
+- 送出成功後，直屬主管收到待審通知
+```
+
+對應的 .NET 解決方案結構（Clean Architecture 四層）：
+
+```text
+LeaveSystem.sln
+├─ src/
+│  ├─ LeaveSystem.Domain/          # 實體與核心規則，零外部相依
+│  ├─ LeaveSystem.Application/     # Use Case 與介面（ILeaveRepository）
+│  ├─ LeaveSystem.Infrastructure/  # EF Core、Repository 實作、通知
+│  └─ LeaveSystem.WebApi/          # Controller / Minimal API、DI 組裝
+└─ tests/
+   ├─ LeaveSystem.UnitTests/        # 大量單元測試（測試金字塔底層）
+   ├─ LeaveSystem.IntegrationTests/ # 整合測試
+   └─ LeaveSystem.EndToEndTests/    # 少量 E2E
+```
+
+一段精簡的 CI 設定片段：
+
+```yaml
+name: ci
+on:
+  pull_request:
+    branches: [ main ]
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+      - run: dotnet restore
+      - run: dotnet build --no-restore --configuration Release
+      - run: dotnet test --no-build --configuration Release --collect:"XPlat Code Coverage"
+```
+
+## 整體流程圖
+
+<Diagram data='{"nodes":[{"id":"dev","label":"開發者","type":"default"},{"id":"pr","label":"PR + Code Review","type":"default"},{"id":"ci","label":"CI 建置/測試/掃描","type":"highlight"},{"id":"staging","label":"Staging 測試環境","type":"default"},{"id":"prod","label":"Production","type":"highlight"},{"id":"monitor","label":"監控與告警","type":"default"}],"edges":[{"from":"dev","to":"pr","label":"提交小顆 PR"},{"from":"pr","to":"ci","label":"觸發"},{"from":"ci","to":"staging","label":"通過後部署"},{"from":"staging","to":"prod","label":"UAT 通過、漸進發布"},{"from":"prod","to":"monitor","label":"產生指標與日誌"},{"from":"monitor","to":"dev","label":"回饋驅動下一輪迭代"}]}' />
+
+注意最後那條從監控指回開發者的箭頭——這就是讓專案持續變好的**回饋迴圈**，而不是上線即結束的單行道。
+
+## 上線檢查清單
+
+正式推 Production 前，逐項確認：
+
+- [ ] **測試全數通過**：單元、整合、E2E 在 CI 上綠燈。
+- [ ] **覆蓋率達標**：關鍵商業邏輯（請假計算、狀態轉換）覆蓋率符合團隊門檻。
+- [ ] **安全掃描通過**：相依套件弱點掃描、靜態分析無高風險項目。
+- [ ] **設定與密鑰管理**：連線字串、API 金鑰放在密鑰庫（如 Key Vault），不寫死在程式或 repo。
+- [ ] **回滾計畫**：知道出事時如何在數分鐘內退回上一版，且已實際演練過。
+- [ ] **監控與告警就緒**：日誌、指標、錯誤率告警都已接好並驗證會發出通知。
+- [ ] **文件更新**：API 文件、部署手冊、變更紀錄與 README 已同步。
+
+## 常見誤區
+
+<Callout type="warning" title="跳過需求直接動手寫">
+「需求我懂，先寫再說」是最貴的錯誤。需求沒講清楚就開工，常常做出技術上完美、卻不是使用者要的東西，重做的成本遠高於前期多花的幾小時。
+</Callout>
+
+<Callout type="warning" title="沒有回滾計畫就上線">
+上線一定會有出錯的一天。如果你沒有事先準備好、且演練過的回滾方案，出事當下只能慌亂手動救火，故障時間被無限拉長。回滾能力本身就是上線的前置條件。
+</Callout>
+
+<Callout type="warning" title="上線後才想到監控">
+「先讓它跑起來，監控之後再補」的結果，通常是使用者比你還早發現系統壞了。監控與告警必須在上線前就位，否則你等於是閉著眼睛開車。
+</Callout>
+
+## 實戰補充
+
+**Q：MVP（最小可行產品）該包含什麼？**
+A：只包含「能驗證核心價值」的最小功能集。以請假系統來說，MVP 就是「員工能送出申請、主管能核准/駁回」這條主線。報表、多語系、行事曆整合都可以晚點再做。判斷標準：拿掉它，這個產品還能不能驗證「數位化請假是否真的省事」？能，就先不做。
+
+**Q：第一版要不要做到完美？**
+A：不要。追求第一版完美會掉進過度設計（呼應 YAGNI），把時間花在還沒被驗證的需求上。正確做法是先做出夠用的版本上線，從真實使用中拿到回饋，再用一輪輪迭代逼近「對的」產品。能上線並持續改進，遠勝過完美卻遲遲不上線。
+
+## 理解測驗
+
+<Quiz data='{"question":"在這個請假系統專案中，最不該被省略、一旦做錯會讓後續所有努力白費的階段是哪一個？","options":["把程式碼格式排整齊","釐清需求與寫好 User Story 的驗收條件","選用最新版的 .NET","把變數命名得很漂亮"],"answer":1,"explanation":"需求是整個專案的方向盤。需求釐清錯了，後面架構再乾淨、測試再完整，做出來的也是錯的東西，重做成本最高。"}' />
+
+<Quiz data='{"question":"關於 MVP 與第一版的策略，下列何者最符合本課（與 YAGNI）的精神？","options":["第一版就把所有想得到的功能做到完美再上線","先做出能驗證核心價值的最小功能上線，再依回饋迭代","盡量多做功能，反正以後可能會用到","等需求百分之百確定後才開始開發"],"answer":1,"explanation":"MVP 思維強調用最小功能驗證核心價值，先上線拿回饋再迭代，避免在未被驗證的需求上過度投資（YAGNI）。"}' />
+
+<Quiz data='{"question":"整體流程圖中，從『監控與告警』指回『開發者』的那條箭頭代表什麼？","options":["部署失敗時的錯誤訊息","程式碼編譯的警告","由真實使用數據與回饋驅動的迭代迴圈","資料庫的備份流程"],"answer":2,"explanation":"那條回饋箭頭代表上線不是終點：監控收集到的指標與使用者回饋會回流到開發端，驅動下一輪需求與改進，形成持續變好的迴圈。"}' />
+
+## 重點整理
+
+<Callout type="tip" title="一句話記住">
+做專案不是「寫完程式」，而是「從一句想法，沿著需求→架構→開發→審查→CI/CD→上線→監控的迴圈，做出能持續變好的產品」。
+</Callout>
+
+| 階段 | 核心產出 | 呼應的前面課程 |
+| --- | --- | --- |
+| 需求 / User Story | 可驗收的故事與驗收條件 | 需求與 User Story |
+| 架構設計 | Clean Architecture 四層邊界 | Clean Architecture、SOLID |
+| 分支策略 | Trunk-Based + 短命分支 | Git 策略 |
+| 開發 | 測試金字塔下的可測程式碼 | 測試、TDD、YAGNI |
+| CI/CD | 自動建置、測試、掃描、部署 | CI/CD 基礎 |
+| 上線 | 走完檢查清單 + 回滾計畫 | SDLC、部署策略 |
+| 監控與迭代 | 結構化日誌、告警、回饋迴圈 | 監控與可觀測性 |

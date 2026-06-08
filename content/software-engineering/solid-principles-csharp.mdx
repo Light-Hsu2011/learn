@@ -1,0 +1,379 @@
+---
+title: "SOLID 五原則配 C# 範例"
+order: 6
+description: "SRP、OCP、LSP、ISP、DIP 五大物件導向原則，每個都有 C# 壞例子與好例子對照"
+difficulty: "medium"
+interviewImportance: 5
+related:
+  - "design-patterns/strategy"
+  - "software-engineering/clean-architecture-in-csharp"
+---
+
+# SOLID 五原則配 C# 範例
+
+<ELI5>
+想像一把**瑞士刀**：開瓶器、剪刀、銼刀全擠在一起。聽起來很方便，但只要其中一個零件壞了，你得拆整把刀；想換更好的剪刀也辦不到。
+
+反過來，工具箱裡**一支螺絲起子只做轉螺絲這件事**，壞了就換那一支、想升級就買更好的那一支，其他工具完全不受影響。
+
+SOLID 講的就是這個道理：讓每個類別「只做一件事」、彼此「靠約定（介面）而不是靠實體連在一起」，程式才好維護、好替換、好測試。
+</ELI5>
+
+## 是什麼？
+
+SOLID 是 Robert C. Martin（Uncle Bob）整理出來的五個物件導向設計原則的首字母縮寫，目的是讓程式碼**容易維護、容易擴充、容易測試**：
+
+| 字母 | 原則 | 一句話 |
+| --- | --- | --- |
+| **S** | Single Responsibility | 一個類別只負責一件事，只有一個改變的理由 |
+| **O** | Open/Closed | 對擴充開放，對修改封閉 |
+| **L** | Liskov Substitution | 子類別要能無痛替換父類別 |
+| **I** | Interface Segregation | 寧可多個小介面，不要一個胖介面 |
+| **D** | Dependency Inversion | 高層與低層都依賴抽象，不互相依賴實作 |
+
+<Callout type="info" title="為什麼資深開發者更該在意 SOLID">
+寫得出能跑的程式不難，難的是三個月後加需求時不用改五個地方、不會踩到別人的雷。SOLID 不是學術理論，而是把「未來的改動成本」前置思考的工程紀律。
+</Callout>
+
+## S — 單一職責原則（SRP）
+
+> 一個類別應該只有一個改變的理由（A class should have only one reason to change）。
+
+注意重點是「改變的理由」，也就是**對誰負責**，而不是字面上「只做一件事」。下面這個 `Report` 同時負責產生內容、格式化、寫檔，三個職責綁在一起。
+
+**壞例子（違反 SRP）**
+
+```csharp
+public class Report
+{
+    public string Title { get; set; } = "";
+
+    // 職責 1：產生報表內容
+    public string GenerateContent() => $"報表：{Title}";
+
+    // 職責 2：格式化成 HTML（呈現邏輯變動會改這裡）
+    public string FormatAsHtml() => $"<h1>{GenerateContent()}</h1>";
+
+    // 職責 3：存檔（持久化方式變動也會改這裡）
+    public void SaveToFile(string path) => File.WriteAllText(path, FormatAsHtml());
+}
+```
+
+**好例子（遵守 SRP）**
+
+```csharp
+// 只負責資料與內容
+public class Report
+{
+    public string Title { get; set; } = "";
+    public string GenerateContent() => $"報表：{Title}";
+}
+
+// 只負責呈現
+public class HtmlReportFormatter
+{
+    public string Format(Report report) => $"<h1>{report.GenerateContent()}</h1>";
+}
+
+// 只負責持久化
+public class ReportFileSaver
+{
+    public void Save(string path, string content) => File.WriteAllText(path, content);
+}
+```
+
+<Callout type="tip" title="一句話">
+拆類別的依據是「改變的理由」：呈現需求變、儲存方式變，是兩個不同團隊、不同時間的事，就該是兩個類別。
+</Callout>
+
+## O — 開放封閉原則（OCP）
+
+> 軟體實體應該對擴充開放、對修改封閉（Open for extension, closed for modification）。
+
+每多一種折扣就改 `switch`，等於每次都動到已測試過、上線中的程式碼，風險極高。
+
+**壞例子（違反 OCP）**
+
+```csharp
+public class DiscountCalculator
+{
+    public decimal Calculate(string customerType, decimal amount) =>
+        customerType switch
+        {
+            "Regular" => amount,
+            "Vip"     => amount * 0.9m,
+            "Staff"   => amount * 0.8m,
+            // 每加一種客戶就得回來改這個 switch
+            _ => amount
+        };
+}
+```
+
+**好例子（遵守 OCP）**
+
+```csharp
+public interface IDiscountPolicy
+{
+    decimal Apply(decimal amount);
+}
+
+public class RegularDiscount : IDiscountPolicy
+{
+    public decimal Apply(decimal amount) => amount;
+}
+
+public class VipDiscount : IDiscountPolicy
+{
+    public decimal Apply(decimal amount) => amount * 0.9m;
+}
+
+// 新需求：新增「黑五折扣」只要「加一個新類別」，完全不動既有程式
+public class BlackFridayDiscount : IDiscountPolicy
+{
+    public decimal Apply(decimal amount) => amount * 0.5m;
+}
+
+public class DiscountCalculator
+{
+    public decimal Calculate(IDiscountPolicy policy, decimal amount) => policy.Apply(amount);
+}
+```
+
+<Callout type="tip" title="一句話">
+看到「每加一種類型就得回去改 switch / if-else」的味道，就用抽象（介面或抽象類別）把變動點隔離出去。這正是 <a href="/design-patterns/strategy">Strategy 模式</a>的精神。
+</Callout>
+
+## L — 里氏替換原則（LSP）
+
+> 子型別必須能替換掉它的基底型別，而不破壞程式正確性（Barbara Liskov, 1987）。
+
+經典反例：正方形「是一種」長方形嗎？數學上是，但在程式行為上，正方形改寬度會連帶改高度，破壞了長方形「寬高可獨立設定」的契約。
+
+**壞例子（違反 LSP）**
+
+```csharp
+public class Rectangle
+{
+    public virtual int Width { get; set; }
+    public virtual int Height { get; set; }
+    public int Area => Width * Height;
+}
+
+public class Square : Rectangle
+{
+    // 為了維持正方形，覆寫後連動改另一邊 —— 破壞了父類別的行為契約
+    public override int Width  { set { base.Width = base.Height = value; } }
+    public override int Height { set { base.Width = base.Height = value; } }
+}
+
+public class Test
+{
+    // 對任何 Rectangle 都成立的假設，碰到 Square 就壞了
+    public void AssertArea(Rectangle r)
+    {
+        r.Width = 5;
+        r.Height = 4;
+        Debug.Assert(r.Area == 20); // 傳入 Square 時得到 16，斷言失敗！
+    }
+}
+```
+
+**好例子（遵守 LSP）**
+
+```csharp
+// 不要硬套「is-a」繼承，改用共同抽象描述「能算面積」這個能力
+public interface IShape
+{
+    int Area { get; }
+}
+
+public class Rectangle : IShape
+{
+    public int Width { get; set; }
+    public int Height { get; set; }
+    public int Area => Width * Height;
+}
+
+public class Square : IShape
+{
+    public int Side { get; set; }
+    public int Area => Side * Side;
+}
+```
+
+<Callout type="tip" title="一句話">
+繼承代表的是「行為可替換」，不是「概念上很像」。子類別若會丟出父類別不會丟的例外、收緊輸入或放寬輸出契約，就違反 LSP，改用組合或共同介面。
+</Callout>
+
+## I — 介面隔離原則（ISP）
+
+> 不應該強迫客戶端依賴它用不到的方法（Clients should not be forced to depend on methods they do not use）。
+
+一個胖介面 `IWorker` 把所有事塞在一起，機器人不用吃飯卻被迫實作 `Eat()`，只能丟例外。
+
+**壞例子（違反 ISP）**
+
+```csharp
+public interface IWorker
+{
+    void Work();
+    void Eat();
+    void Sleep();
+}
+
+public class HumanWorker : IWorker
+{
+    public void Work()  { /* ... */ }
+    public void Eat()   { /* ... */ }
+    public void Sleep() { /* ... */ }
+}
+
+public class RobotWorker : IWorker
+{
+    public void Work()  { /* ... */ }
+    // 機器人不吃不睡，卻被迫實作，只能擺爛丟例外
+    public void Eat()   => throw new NotSupportedException();
+    public void Sleep() => throw new NotSupportedException();
+}
+```
+
+**好例子（遵守 ISP）**
+
+```csharp
+public interface IWorkable { void Work(); }
+public interface IFeedable { void Eat(); }
+public interface ISleepable { void Sleep(); }
+
+// 人類需要的能力都實作
+public class HumanWorker : IWorkable, IFeedable, ISleepable
+{
+    public void Work()  { /* ... */ }
+    public void Eat()   { /* ... */ }
+    public void Sleep() { /* ... */ }
+}
+
+// 機器人只實作它真的會做的事，不再被迫丟例外
+public class RobotWorker : IWorkable
+{
+    public void Work() { /* ... */ }
+}
+```
+
+<Callout type="tip" title="一句話">
+介面要小而專一。當你發現實作裡出現一堆 `NotSupportedException` 或空方法，就是介面太胖、該拆的訊號。
+</Callout>
+
+## D — 依賴反轉原則（DIP）
+
+> 高層模組不應依賴低層模組，兩者都應依賴抽象；抽象不應依賴細節，細節應依賴抽象。
+
+「反轉」指的是依賴方向：原本高層直接 `new` 一個低層實作（依賴箭頭指向細節），改成兩者都指向中間的抽象介面。
+
+<Diagram data='{"nodes":[{"id":"high","label":"高層：NotificationService","type":"highlight"},{"id":"abs","label":"抽象：IMessageSender","type":"default"},{"id":"low","label":"低層：EmailSender / SmsSender","type":"muted"}],"edges":[{"from":"high","to":"abs","label":"依賴"},{"from":"low","to":"abs","label":"實作"}]}' />
+
+**壞例子（違反 DIP）**
+
+```csharp
+// 低層細節
+public class EmailSender
+{
+    public void Send(string msg) { /* 寄 email */ }
+}
+
+// 高層直接 new 出低層，緊緊綁死：想換成簡訊就得改這個類別，也無法做單元測試
+public class NotificationService
+{
+    private readonly EmailSender _sender = new EmailSender();
+    public void Notify(string msg) => _sender.Send(msg);
+}
+```
+
+**好例子（遵守 DIP）**
+
+```csharp
+// 抽象（高層自己定義它需要什麼）
+public interface IMessageSender
+{
+    void Send(string msg);
+}
+
+// 低層去實作抽象（依賴箭頭被反轉了）
+public class EmailSender : IMessageSender
+{
+    public void Send(string msg) { /* 寄 email */ }
+}
+
+public class SmsSender : IMessageSender
+{
+    public void Send(string msg) { /* 發簡訊 */ }
+}
+
+// 高層只認得抽象，靠建構式注入（DI）拿到實作
+public class NotificationService
+{
+    private readonly IMessageSender _sender;
+    public NotificationService(IMessageSender sender) => _sender = sender;
+    public void Notify(string msg) => _sender.Send(msg);
+}
+
+// 組裝（Composition Root）—— 通常交給 ASP.NET Core 的 DI 容器
+// services.AddScoped<IMessageSender, EmailSender>();
+// services.AddScoped<NotificationService>();
+```
+
+<Callout type="info" title="這就是 Clean Architecture 的核心">
+DIP 是 <a href="/software-engineering/clean-architecture-in-csharp">Clean Architecture</a> 能成立的關鍵：內層（領域、應用層）定義介面，外層（DB、Email、Web）去實作，依賴方向永遠由外指向內。所以換資料庫、換框架都不會動到核心商業邏輯。
+</Callout>
+
+<Callout type="tip" title="一句話">
+別在高層 `new` 出低層；讓高層定義介面、低層實作，再用 DI 容器把實作組裝進來。
+</Callout>
+
+## 常見誤區
+
+<Callout type="warning" title="SOLID 是指引，不是教條">
+- **過度拆分（over-engineering）**：把 SRP 誤解成「一個類別只能有一個方法」，結果產出一堆只有一行的類別、介面滿天飛，閱讀與導航成本暴增。SRP 的單位是「改變的理由」，不是「方法數量」。
+- **預先抽象（speculative generality）**：為了「以後可能會擴充」而對只有一種實作的東西先抽介面，違反 YAGNI。等到真的出現第二種實作再抽，重構成本其實很低。
+- **介面爆炸**：ISP 拆過頭，每個方法一個介面，反而讓型別宣告又臭又長。
+- 記住 <a href="/software-engineering/kiss-yagni">KISS / YAGNI</a> 的精神：先寫清楚的程式，等變動的味道（同一處反覆被改、switch 一直長大）真的出現時，再用對應的 SOLID 原則重構。
+</Callout>
+
+## 實戰補充
+
+**Q：SOLID 和過度設計（over-engineering）的界線在哪？**
+
+A：界線是「變動是否已經發生或高度可預期」。SOLID 的價值在於降低**未來改動**的成本，但抽象本身也有成本（多一層間接、更難一眼看懂）。判斷準則：
+
+- **三振出局法則（Rule of Three）**：第一次寫死、第二次出現類似需求先忍住、第三次再抽象。
+- **看味道再動手**：當你發現「每次加功能都改同一個 switch」「一個類別三個團隊都在改」時，這些就是該套 OCP / SRP 的訊號。
+- **先求清楚，再求彈性**：能用一個清楚的類別解決，就別為了「展示我懂 DIP」硬塞三個介面。
+
+**Q：DIP 一定要搭配 DI 容器嗎？**
+
+A：不一定。DIP 是設計原則（依賴抽象），DI 是實現手法（靠建構式注入），DI 容器只是自動化組裝的工具。小程式手動 `new NotificationService(new EmailSender())` 一樣完全符合 DIP。
+
+## 理解測驗
+
+<Quiz data='{"question":"一個 OrderService 同時負責計算訂單金額、寄出確認信、寫入資料庫。它最明顯違反了哪個原則？","options":["開放封閉原則 OCP","單一職責原則 SRP","里氏替換原則 LSP","介面隔離原則 ISP"],"answer":1,"explanation":"計算金額、寄信、寫資料庫是三個不同的改變理由（商業規則、通知方式、持久化方式），綁在同一個類別就違反 SRP，應拆成各自負責的類別。"}' />
+
+<Quiz data='{"question":"關於依賴反轉原則 DIP，下列何者正確？","options":["高層模組應該直接 new 出低層實作以提高效能","抽象應該依賴細節，這樣才有彈性","高層與低層都應該依賴抽象，由低層去實作抽象","DIP 一定要使用 DI 容器才算數"],"answer":2,"explanation":"DIP 的核心是高層與低層都依賴抽象（介面），由低層實作抽象，使依賴方向被反轉。DI 容器只是組裝工具，手動注入一樣符合 DIP。"}' />
+
+<Quiz data='{"question":"下列哪個情況最可能是「為了 SOLID 而過度設計」？","options":["發現一個 switch 隨著客戶類型不斷增長，於是用介面套 OCP 重構","系統只有一種付款方式，也沒有第二種的需求，卻先抽出 IPaymentStrategy 介面並做了工廠","把同時負責呈現與儲存的類別拆成兩個職責清楚的類別","為只有人類會用的 Worker 介面拆掉機器人用不到的 Eat 方法"],"answer":1,"explanation":"只有一種實作、也沒有可預期的第二種需求，卻先抽介面與工廠，違反 YAGNI，是典型的過度設計。其餘三項都是針對已出現的變動味道做合理重構。"}' />
+
+## 重點整理
+
+<Callout type="tip" title="一句話記住 SOLID">
+**讓每個類別只有一個改變的理由（S），用抽象隔離變動（O），確保子類別能無痛替換父類別（L），把胖介面拆成小介面（I），讓高層與低層都依賴抽象（D）。** 全部都是為了同一個目標：把「改動的影響範圍」縮到最小。
+</Callout>
+
+| 原則 | 一句話總結 |
+| --- | --- |
+| **S** SRP | 一個類別只有一個改變的理由 |
+| **O** OCP | 加功能用「新增類別」而非「改既有程式」 |
+| **L** LSP | 子類別替換父類別後行為不能壞掉 |
+| **I** ISP | 小而專一的介面，別逼人實作用不到的方法 |
+| **D** DIP | 依賴抽象（介面），用 DI 注入實作 |
+
+<Callout type="warning" title="最後提醒">
+SOLID 是降低長期維護成本的「指引」，不是逐字遵守的「教條」。先讓程式清楚可讀，等變動的味道真的出現時，再用對應原則重構，才不會落入過度設計的陷阱。
+</Callout>

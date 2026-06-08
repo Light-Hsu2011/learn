@@ -1,0 +1,241 @@
+---
+title: "Clean Architecture 在 C# 落地"
+order: 5
+description: "同心圓四層、依賴反轉，以及在 .NET 解決方案中的專案結構與新增 Model 的完整步驟"
+difficulty: "hard"
+interviewImportance: 5
+related:
+  - "ddd/repository"
+  - "design-patterns/factory-method"
+  - "software-engineering/solid-principles-csharp"
+---
+
+# Clean Architecture 在 C# 落地
+
+<ELI5>
+把系統想成一顆洋蔥，或是一個政府機關的層級。最中心是「核心政策」（商業規則），愈往外是愈容易換掉的細節（資料庫、Web 框架、第三方 API）。規則只有一條：外圈可以認識內圈，內圈絕對不准認識外圈。就像基層公務員要遵守中央法規，但中央立法時根本不知道哪個櫃台正在辦事。資料庫換成 PostgreSQL、Web 換成 gRPC，核心政策都不用動，因為它從頭到尾不知道外面長什麼樣。
+</ELI5>
+
+## 是什麼？
+
+Clean Architecture（由 Robert C. Martin 提出）的精髓只有一句話：**依賴規則（The Dependency Rule）——原始碼的依賴方向，只能由外指向內。** 內層完全不知道外層的存在。
+
+對資深 C# 開發者來說，這跟你熟悉的「三層式架構（UI / BLL / DAL）」最大的差別在於**依賴方向被反轉了**。傳統三層是 `BLL` 直接 `using` `DAL`，商業邏輯依賴資料存取實作；Clean Architecture 則讓商業邏輯只依賴**介面**，實作被推到最外層，靠 DI 在啟動時注入。
+
+<Callout type="info" title="為什麼要這樣做？">
+核心商業規則是系統最有價值、最該被保護、也最不該為了「換個 ORM」或「換個 Web 框架」而改動的部分。把它放在依賴圖的最內層、不依賴任何外部技術，就能讓它穩定、可測試、可長存。
+</Callout>
+
+## 四層詳解
+
+由內而外四層，各自的職責與「能不能依賴別人」如下：
+
+- **Domain / Entities（最內層）**：企業級的核心商業規則與實體。純 C# class，**不依賴任何外部套件**（沒有 EF Core、沒有 ASP.NET）。例如 `Order` 知道「金額不能為負」「已出貨的訂單不能取消」。
+- **Application / Use Cases**：應用程式特定的商業流程（建立訂單、結帳）。定義**輸入輸出的介面**（如 `IOrderRepository`、`IEmailSender`），協調 Domain 物件完成一個使用案例。它依賴 Domain，但不知道資料庫或 Web。
+- **Infrastructure**：所有「細節」的實作。EF Core 的 `DbContext`、Repository 實作、寄信、呼叫外部 API。它**實作** Application 定義的介面。
+- **Presentation / Web（最外層）**：ASP.NET Core Controller / Minimal API、SignalR、CLI。負責把外部請求轉成 Application 的呼叫。
+
+## 依賴方向圖
+
+注意：所有依賴箭頭**一律指向內**。Infrastructure 雖然在外層，卻透過「實作 Application 定義的介面」把控制權交還給內層——這就是依賴反轉（DIP）。
+
+<Diagram data='{"nodes":[{"id":"web","label":"Presentation / Web","type":"muted"},{"id":"infra","label":"Infrastructure","type":"muted"},{"id":"app","label":"Application / Use Cases","type":"highlight"},{"id":"domain","label":"Domain / Entities","type":"default"},{"id":"iface","label":"IOrderRepository (介面)","type":"highlight"},{"id":"repo","label":"OrderRepository (EF 實作)","type":"muted"}],"edges":[{"from":"web","to":"app","label":"依賴指向內"},{"from":"infra","to":"app","label":"依賴指向內"},{"from":"app","to":"domain","label":"依賴指向內"},{"from":"iface","to":"domain","label":"定義在內層"},{"from":"repo","to":"iface","label":"DIP：外層實作內層介面"}]}' />
+
+關鍵觀察：`IOrderRepository` 這個介面**定義在 Application（內層）**，但它的實作 `OrderRepository` **住在 Infrastructure（外層）**。編譯期的依賴方向因此是「外層 → 內層」，但執行期的呼叫卻是「內層 → 外層的實作」。介面就是這道反轉的支點。
+
+## .NET 解決方案專案結構
+
+實務上一個 Clean Architecture 解決方案會切成四個專案，參考關係嚴格遵守依賴規則：
+
+```text
+MyApp.sln
+├── src/
+│   ├── MyApp.Domain          (無任何專案參考；不裝 EF / ASP.NET)
+│   ├── MyApp.Application      (參考 Domain)
+│   ├── MyApp.Infrastructure   (參考 Application、Domain；裝 EF Core)
+│   └── MyApp.Web              (參考 Application；組合根，啟動時 new 出 Infrastructure)
+└── tests/
+    └── MyApp.Application.Tests
+```
+
+誰參考誰（這就是依賴規則的具體落地）：
+
+| 專案 | 參考 | 不可參考 |
+|------|------|----------|
+| Domain | （無） | 任何專案、EF Core |
+| Application | Domain | Infrastructure、Web |
+| Infrastructure | Application、Domain | Web |
+| Web | Application（必要時 Infrastructure 僅供 DI 註冊） | — |
+
+<Callout type="tip" title="一個常被問的細節">
+Web 專案為了在 `Program.cs` 註冊 DI，技術上會參考 Infrastructure。更乾淨的做法是讓 Infrastructure 自己提供一個 `AddInfrastructure(this IServiceCollection)` 擴充方法，Web 只呼叫它，不直接 new 任何具體類別——把「組合根」的污染降到最低。
+</Callout>
+
+## 程式碼骨架
+
+**Domain（純 C#，無外部依賴）：**
+
+```csharp
+namespace MyApp.Domain.Entities;
+
+public class Order
+{
+    public Guid Id { get; private set; } = Guid.NewGuid();
+    public string CustomerName { get; private set; }
+    public decimal Amount { get; private set; }
+    public bool IsShipped { get; private set; }
+
+    public Order(string customerName, decimal amount)
+    {
+        if (amount < 0)
+            throw new ArgumentException("金額不可為負");
+        CustomerName = customerName;
+        Amount = amount;
+    }
+
+    // 商業規則住在 Entity 本身，不是 Service 也不是 Controller
+    public void Ship()
+    {
+        if (IsShipped)
+            throw new InvalidOperationException("訂單已出貨");
+        IsShipped = true;
+    }
+}
+```
+
+**Application（定義介面 + Use Case，依賴 Domain）：**
+
+```csharp
+namespace MyApp.Application.Orders;
+
+// 介面定義在內層 —— 這是依賴反轉的核心
+public interface IOrderRepository
+{
+    Task<Order?> GetByIdAsync(Guid id, CancellationToken ct);
+    Task AddAsync(Order order, CancellationToken ct);
+    Task SaveChangesAsync(CancellationToken ct);
+}
+
+public record CreateOrderCommand(string CustomerName, decimal Amount);
+
+public class CreateOrderHandler
+{
+    private readonly IOrderRepository _repo;
+
+    public CreateOrderHandler(IOrderRepository repo) => _repo = repo;
+
+    public async Task<Guid> HandleAsync(CreateOrderCommand cmd, CancellationToken ct)
+    {
+        var order = new Order(cmd.CustomerName, cmd.Amount); // 商業規則在建構子內把關
+        await _repo.AddAsync(order, ct);
+        await _repo.SaveChangesAsync(ct);
+        return order.Id;
+    }
+}
+```
+
+**Infrastructure（實作介面，依賴 Application + Domain）：**
+
+```csharp
+namespace MyApp.Infrastructure.Persistence;
+
+public class AppDbContext : DbContext
+{
+    public DbSet<Order> Orders => Set<Order>();
+    public AppDbContext(DbContextOptions<AppDbContext> opt) : base(opt) { }
+}
+
+public class OrderRepository : IOrderRepository
+{
+    private readonly AppDbContext _db;
+    public OrderRepository(AppDbContext db) => _db = db;
+
+    public Task<Order?> GetByIdAsync(Guid id, CancellationToken ct)
+        => _db.Orders.FirstOrDefaultAsync(o => o.Id == id, ct);
+
+    public async Task AddAsync(Order order, CancellationToken ct)
+        => await _db.Orders.AddAsync(order, ct);
+
+    public Task SaveChangesAsync(CancellationToken ct)
+        => _db.SaveChangesAsync(ct);
+}
+
+// 把 Infrastructure 的 DI 註冊收斂在自己這層
+public static class DependencyInjection
+{
+    public static IServiceCollection AddInfrastructure(
+        this IServiceCollection services, string connectionString)
+    {
+        services.AddDbContext<AppDbContext>(o => o.UseSqlServer(connectionString));
+        services.AddScoped<IOrderRepository, OrderRepository>();
+        return services;
+    }
+}
+```
+
+**Web（組合根：Program.cs 把介面綁到實作）：**
+
+```csharp
+var builder = WebApplication.CreateBuilder(args);
+
+// 內層介面 ↔ 外層實作的綁定，只發生在這個「組合根」
+builder.Services.AddInfrastructure(builder.Configuration.GetConnectionString("Default")!);
+builder.Services.AddScoped<CreateOrderHandler>();
+
+var app = builder.Build();
+
+app.MapPost("/orders", async (CreateOrderCommand cmd, CreateOrderHandler handler, CancellationToken ct) =>
+{
+    var id = await handler.HandleAsync(cmd, ct); // Controller 只轉發，不寫商業邏輯
+    return Results.Created($"/orders/{id}", new { id });
+});
+
+app.Run();
+```
+
+## 新增一個 Model 要怎麼調整
+
+假設要新增 `Product`。重點不是「改哪些檔案」，而是**動哪些層、按什麼順序**——永遠由內而外。
+
+<StepDiagram data='[{"title":"Domain：建立 Entity","description":"在 MyApp.Domain 新增 Product.cs，把商業規則（如價格不可為負、停售規則）寫進 Entity 自身。此時不碰任何資料庫概念。","icon":"1"},{"title":"Application：定義介面與 Use Case","description":"新增 IProductRepository 介面與 CreateProductHandler。介面仍然定義在內層，Handler 只依賴介面。","icon":"2"},{"title":"Infrastructure：EF 設定與實作","description":"在 AppDbContext 加 DbSet<Product>，撰寫 ProductRepository 實作 IProductRepository，必要時加 Migration。","icon":"3"},{"title":"Presentation：Controller / Endpoint","description":"新增 POST /products 端點，呼叫 CreateProductHandler，只負責請求轉發與回應。","icon":"4"},{"title":"組合根：DI 註冊","description":"在 Infrastructure 的 AddInfrastructure 註冊 IProductRepository→ProductRepository，在 Program.cs 註冊 CreateProductHandler。","icon":"5"}]' />
+
+順序的意義：先把最穩定、最有價值的核心規則確定下來（Domain），再一層層往外補上能換掉的細節。如果你發現自己得「先改資料庫才能改規則」，通常代表依賴方向反了。
+
+## 常見誤區
+
+<Callout type="warning" title="三個會把 Clean Architecture 做爛的反模式">
+1. **Domain 直接依賴 EF Core / 外部套件**：在 Entity 上掛 `[Table]`、`[Column]` 等 EF 屬性，或讓 Domain 專案 `using` EF。一旦這麼做，內層就被外層細節綁死，換 ORM 等於改核心。請改用 EF 的 Fluent API（`IEntityTypeConfiguration<T>`）把映射放在 Infrastructure。
+2. **貧血模型（Anemic Domain Model）**：Entity 只有 public get/set 屬性、沒有任何行為，所有商業規則散落在各個 Service。這讓 Entity 退化成 DTO，規則無法被保護，等同沒有 Domain 層。規則應該住在 Entity 內（如上面的 `Order.Ship()`）。
+3. **把商業邏輯寫在 Controller**：Controller 直接做計算、驗證、呼叫 DbContext。這樣邏輯綁死在 Web 框架上、無法重用也難測試。Controller 應該薄到只剩「接收請求 → 呼叫 Use Case → 回傳結果」。
+</Callout>
+
+## 實戰補充
+
+**Q：一定要分成四個專案嗎？** 不一定。分專案的真正價值是「用編譯器強制依賴規則」——Domain 專案沒參考 EF，你就**寫不出**違規的程式碼。如果用單一專案搭配資料夾分層，依賴規則只能靠 Code Review 把關，容易腐化。團隊紀律不足時，分專案是值得的保險。
+
+**Q：小專案值得嗎？** CRUD 為主、生命週期短的小工具，套全套四層往往是過度設計，徒增樣板（boilerplate）。判準是「商業規則的複雜度」與「預期壽命」：規則簡單就用簡單架構，等複雜度上來再重構。架構是為了管理複雜度，不是為了好看。
+
+**Q：和 DDD 是什麼關係？** Clean Architecture 是「依賴方向」的架構約束；DDD 是「如何建模商業領域」的方法論（Entity、Value Object、Aggregate、Repository）。兩者互補：Clean Architecture 告訴你 Repository **介面**該放哪層（Application），DDD 告訴你 Repository **該怎麼設計**。很多專案是「Clean Architecture 的外殼 + DDD 的 Domain 層內容」。
+
+## 理解測驗
+
+<Quiz data='{"question":"在 Clean Architecture 中，IOrderRepository 介面應該定義在哪一層？","options":["Infrastructure，因為它跟資料庫有關","Application（內層），由 Infrastructure 提供實作","Presentation，因為 Controller 會用到它","Domain，因為它是核心規則"],"answer":1,"explanation":"介面定義在內層（Application），實作放在外層（Infrastructure），由 DI 在組合根注入。這正是依賴反轉，讓編譯期依賴方向維持外指向內。"}' />
+
+<Quiz data='{"question":"下列哪一個做法違反了依賴規則？","options":["Web 專案參考 Application","Infrastructure 參考 Domain","Domain 專案參考 EF Core 並在 Entity 掛 [Table] 屬性","Application 參考 Domain"],"answer":2,"explanation":"Domain 是最內層，不能依賴任何外部技術細節。掛 EF 屬性會讓核心規則被 ORM 綁死，違反依賴規則。映射應放在 Infrastructure 的 Fluent API。"}' />
+
+<Quiz data='{"question":"新增一個 Product Model 時，正確的調整順序是？","options":["先寫 Controller，再補 Domain","先建資料庫 Migration，再寫規則","Domain Entity → Application 介面/UseCase → Infrastructure 實作 → Presentation → DI 註冊","Infrastructure 先行，因為要先有資料表"],"answer":2,"explanation":"永遠由內而外：先確定最穩定、最有價值的核心規則（Domain），再一層層往外補上可替換的細節。若需先改資料庫才能改規則，代表依賴方向反了。"}' />
+
+## 重點整理
+
+<Callout type="tip" title="一句話記住">
+依賴只能往內指；介面定義在內層、實作放在外層、由組合根的 DI 把兩者綁起來——這就是 Clean Architecture 的全部精神。
+</Callout>
+
+| 層 | 職責 | 可依賴 | 不可依賴 |
+|----|------|--------|----------|
+| Domain | Entity、核心商業規則 | （無） | 任何外部套件 |
+| Application | Use Case、定義介面 | Domain | Infrastructure、Web |
+| Infrastructure | EF、Repository 實作、外部整合 | Application、Domain | Web |
+| Presentation | Controller / API、請求轉發 | Application | — |
+
+新增 Model 的順序口訣：**內 → 外**（Domain → Application → Infrastructure → Presentation → DI）。把規則寫進 Entity，把介面留在 Application，把細節推到 Infrastructure，把綁定集中到組合根。

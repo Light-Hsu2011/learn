@@ -1,0 +1,162 @@
+---
+title: "Git 分支與合併策略"
+order: 9
+description: "Git Flow/GitHub Flow/Trunk-Based 分支策略，以及 merge、rebase、squash、semi-linear 合併方式的優缺點比較"
+difficulty: "medium"
+interviewImportance: 4
+related:
+  - "ci-cd/ci-cd-fundamentals"
+---
+
+# Git 分支與合併策略
+
+<ELI5>
+想像你在寫一本書。你不會直接在「已經印刷的定稿」上塗改，而是另外開一份草稿（分支），在草稿上盡情試寫、刪改。等這段內容滿意了，再決定怎麼把它「併」回定稿：是直接整段貼上並留一張便利貼說「這段是某次草稿來的」（merge commit），還是把草稿的每一句重新抄寫到定稿後面、讓整本書讀起來像一氣呵成（rebase），又或者把整份草稿濃縮成一句話再貼上（squash）。「分支策略」決定你習慣開幾份草稿、開多久；「合併策略」決定你怎麼把草稿縫回定稿。這是兩個不同層次的決定。
+</ELI5>
+
+## 是什麼？（分支策略 vs 合併策略是兩個不同層次的決定）
+
+很多人把「我們用 Git Flow」跟「我都用 rebase」混為一談，但這其實是兩個正交（orthogonal）的決定：
+
+- **分支策略（Branching Strategy）**：團隊「怎麼組織分支」的總體約定。例如有沒有長命的 `develop`、`release` 分支？功能分支活多久？什麼時候開、什麼時候關？這是團隊層級的流程選擇。
+- **合併策略（Merge Strategy）**：當一個分支要回到主線時，「用什麼方式把 commit 縫進去」。是保留一個 merge commit、把歷史壓平成線性、還是改寫 commit？這是每次合併時的技術選擇。
+
+身為已經用過 merge / rebase / squash 的資深開發者，你其實已經在操作「合併策略」了。這一課的目標是把這兩個層次講清楚，並補齊你提到的 **Azure DevOps Semi-linear merge**，以及 cherry-pick、ours/theirs、`--no-ff` 等其他方式，每種都附優缺點。
+
+<Callout type="info" title="一句話區分">
+分支策略回答「我們的分支長什麼樣、活多久」；合併策略回答「合併那一刻，commit 要怎麼進主線」。同一種分支策略（例如 Trunk-Based）可以搭配不同的合併方式（例如 squash 或 semi-linear）。
+</Callout>
+
+## 分支策略比較（Git Flow、GitHub Flow、GitLab Flow、Trunk-Based Development）
+
+下表逐項列出四種主流分支策略的優缺點與適用場景：
+
+| 策略 | 核心特徵 | 優點 | 缺點 | 適用場景 |
+| --- | --- | --- | --- | --- |
+| **Git Flow** | 多條長命分支：`main`／`develop`／`feature`／`release`／`hotfix` | 角色分明、適合有明確版本號的發佈節奏；hotfix 流程清楚 | 流程重、分支多、`develop` 與 `main` 易分歧；不利持續部署 | 需要維護多版本、定期發版的桌面／套裝軟體、嵌入式 |
+| **GitHub Flow** | 只有一條長命 `main`，其餘都是短命 feature 分支，靠 PR 合併後即部署 | 簡單、易懂、適合持續部署；分支生命短 | 沒有專門的 release／環境分支，多環境晉級需另外設計 | SaaS、Web 服務、持續部署團隊 |
+| **GitLab Flow** | 在 GitHub Flow 上加「環境分支」（如 `staging`／`production`）或 release 分支 | 兼顧簡單與多環境晉級／回溯需求 | 比 GitHub Flow 稍複雜，需要約定晉級規則 | 有明確環境晉級流程、需追蹤哪版上了哪環境的團隊 |
+| **Trunk-Based Development** | 全部直接往單一主幹（trunk）整合，分支極短命（常 < 1 天），搭配 Feature Flag | 整合頻繁、衝突小、最利 CI/CD 與大型團隊 | 需要強紀律：完整自動測試、Feature Flag、嚴格 Code Review | 高頻部署、成熟 CI/CD、講求快速回饋的團隊 |
+
+<Diagram data='{"nodes":[{"id":"main","label":"main 主線","type":"highlight"},{"id":"f1","label":"feature/login 短命分支","type":"default"},{"id":"f2","label":"feature/cart 短命分支","type":"default"},{"id":"flag","label":"未完成功能藏在 Feature Flag 後","type":"muted"}],"edges":[{"from":"main","to":"f1","label":"開分支"},{"from":"main","to":"f2","label":"開分支"},{"from":"f1","to":"main","label":"當天合回"},{"from":"f2","to":"main","label":"當天合回"},{"from":"main","to":"flag","label":"持續部署"}]}' />
+
+<Callout type="tip" title="趨勢提示">
+業界（尤其 DORA 報告）長期觀察到：分支愈短命、整合愈頻繁，部署效能愈好。Git Flow 雖然經典，但作者本人後來也提醒它不適合持續交付的 Web 團隊。新專案若要上 CI/CD，預設往 GitHub Flow 或 Trunk-Based 想。
+</Callout>
+
+## 合併方式詳解與比較（Merge commit、Fast-forward、Squash merge、Rebase、Rebase and merge、Semi-linear merge）
+
+這些是你把 feature 分支縫回主線時的選項。先逐一說明，再用一張表總比較。
+
+- **Merge commit（一般合併，`git merge`）**：產生一個新的 merge commit，有兩個父節點，完整保留兩條分支的歷史。歷史是「真實的」，但會出現分叉與菱形，圖形較雜。
+- **Fast-forward（快轉）**：當主線自開分支後沒有任何新 commit 時，Git 直接把主線指標移到 feature 分支頂端，不產生 merge commit。歷史完全線性，但「曾經有過分支」這件事消失了。
+- **Squash merge（壓縮合併）**：把 feature 分支上的多個 commit 壓成「一個」commit 再放上主線。主線乾淨、一個功能一個 commit，但分支內的中間歷史全部丟失。
+- **Rebase（變基）**：把 feature 分支的 commit「逐一重放」到主線最新 commit 之後，改寫這些 commit 的 SHA。結果是線性、無 merge commit，但改寫了歷史。
+- **Rebase and merge**：先 rebase 讓分支線性，再做一次（通常 fast-forward）合併。GitHub 的「Rebase and merge」按鈕屬此類，會把每個 commit 都帶上主線但不留 merge commit。
+- **Semi-linear merge（半線性合併，Azure DevOps）**：你提到的「semilar-merge」就是它。它是「rebase + merge commit」的混合：合併前先把 feature 分支的 commit **rebase 成接在主線後的線性序列**，然後**仍然產生一個 merge commit** 把它們收進主線。好處是：第一父節點（first-parent）這條線是乾淨線性的（`git log --first-parent` 很漂亮），同時又用一個 merge commit 清楚標示「這是一個 PR／功能單位」，保留了 PR 的邊界。它取兩者之長——既比純 merge 乾淨，又比純 rebase 更能看出功能邊界。
+
+<Callout type="info" title="Semi-linear 的記憶法">
+Semi-linear = 「線性的 commit + 一顆 merge commit 收尾」。沿主線看 first-parent 是一條直線，但每個 PR 仍有一個明確的 merge node 當作「這次合進來的東西」的標記。Azure DevOps 與 GitLab 都支援這種模式。它要求 feature 分支能乾淨 rebase 到主線頂端，否則會要你先解衝突。
+</Callout>
+
+| 方式 | 保留分支歷史 | 主線是否線性 | 是否改寫 commit | 衝突處理 | 適用情境 | 主要風險 |
+| --- | --- | --- | --- | --- | --- | --- |
+| **Merge commit** | 完整保留 | 否（有分叉） | 否 | 一次性在 merge 時解 | 想忠實保留協作歷史、看得到分支結構 | 歷史圖雜亂、`git log` 難讀 |
+| **Fast-forward** | 不保留分支痕跡 | 是 | 否 | 無（無分歧才可 ff） | 個人分支、瑣碎更新 | 看不出「曾有過分支／功能邊界」 |
+| **Squash merge** | 丟失中間 commit | 是 | 是（壓成一顆） | 在合併時一次解 | 想要「一功能一 commit」的乾淨主線 | 失去有用的中間歷史、難精準 bisect/revert 局部 |
+| **Rebase** | 保留每個 commit 但改寫 | 是 | 是（換 SHA） | 可能要逐 commit 解 | 想要乾淨線性歷史、整理本地 commit | 對已 push 的公共分支極危險 |
+| **Rebase and merge** | 保留每個 commit | 是 | 是（換 SHA） | 逐 commit 解 | 想線性又保留每顆 commit | 失去 PR 邊界、衝突解起來較煩 |
+| **Semi-linear merge** | 保留每個 commit + PR 邊界 | first-parent 線性 | 是（先 rebase） | 先 rebase 解，再 merge | 兼顧線性與功能邊界（Azure DevOps 推薦） | 設定較不直覺、需可乾淨 rebase |
+
+## 還有哪些方式
+
+除了上面的「整個分支合回」之外，還有幾種針對性的操作，各有專門用途：
+
+- **Cherry-pick（`git cherry-pick`）**：只挑「某幾個特定 commit」套用到目前分支，而不是整個分支。最典型用途是把一個 hotfix 從 `main` 挑回正在維護的舊 release 分支。
+  - 優點：精準、只搬你要的那顆。缺點：會產生「內容相同但 SHA 不同」的重複 commit，日後若整支再合併容易混淆。
+- **ours / theirs 合併策略**：解衝突或合併時的取捨方向。`-X ours` 在衝突處保留「我方」內容、`-X theirs` 保留「對方」內容；另有 `-s ours` 策略會「假裝合併了但完全不採用對方變更」（常用於標記某分支已被取代）。
+  - 優點：批次處理大量已知方向的衝突很快。缺點：會「靜默丟棄」另一邊的變更，用錯方向等於默默吃掉別人的修改，風險高。
+- **`--no-ff`（強制非快轉）**：即使可以 fast-forward，也強制產生一個 merge commit。
+  - 優點：在歷史上永久留下「這裡合併了一個功能分支」的邊界，方便日後 revert 整個功能、閱讀 PR 單位。缺點：歷史多了一層 merge node，純粹瑣碎更新時顯得多餘。
+- **`--ff-only`（只允許快轉）**：若無法 fast-forward 就直接拒絕合併，逼你先 rebase。常設為團隊預設以強制線性歷史。
+  - 優點：保證主線永遠線性、不會意外冒出 merge commit。缺點：每次都得先手動 rebase 才能合，較費工。
+
+## 指令範例
+
+```bash
+# 1) Rebase：把 feature 分支重放到最新 main 之後（線性歷史）
+git switch feature/login
+git fetch origin
+git rebase origin/main
+# 解完衝突後
+git add .
+git rebase --continue
+# 推回（已 push 過的個人分支才需要，且務必用 --force-with-lease）
+git push --force-with-lease
+
+# 2) Squash：把整支 feature 壓成一顆 commit 合進 main
+git switch main
+git merge --squash feature/login
+git commit -m "feat: 完成登入功能"   # squash 後需自己 commit
+
+# 也可用互動式 rebase 在本地先整理／壓縮自己的 commit
+git rebase -i origin/main   # 把要壓的行從 pick 改成 squash 或 fixup
+
+# 3) Cherry-pick：把某個 hotfix commit 挑到目前分支
+git switch release/1.4
+git cherry-pick a1b2c3d            # 單一 commit
+git cherry-pick a1b2c3d^..f4e5d6   # 一段範圍
+
+# 4) --no-ff：強制留下功能合併的 merge commit 邊界
+git switch main
+git merge --no-ff feature/cart
+```
+
+## 常見誤區
+
+<Callout type="warning" title="對已經 push 的公共分支做 rebase">
+rebase 會改寫 commit 的 SHA。如果分支已經推到遠端、別人也基於它工作，rebase 後強推會讓所有人的歷史對不上、被迫硬重設，引發災難。鐵律：rebase 只用於「還沒分享出去」的本地 commit；公共分支要整合，請用 merge。真的要強推私有分支時也務必用 <code>--force-with-lease</code> 而非 <code>--force</code>，以免覆蓋別人剛推上來的東西。
+</Callout>
+
+<Callout type="warning" title="無腦 squash 掉有用的中間歷史">
+squash 很爽，但會把分支內所有中間 commit 壓成一顆。若這條分支跨越好幾天、含多個邏輯上獨立的修改，壓成一顆會讓 <code>git bisect</code> 失去定位精度、也無法只 revert 其中一小段。原則：把無意義的「typo / wip / fix」雜訊壓掉，但保留邏輯上獨立、未來可能要單獨追溯或回退的 commit。
+</Callout>
+
+<Callout type="warning" title="長命分支造成 merge hell">
+讓 feature 分支活上好幾週，是衝突地獄的根源：主線一直前進，你的分支愈漂愈遠，最後合併時要解的衝突呈指數成長，還容易夾帶語意衝突（程式碼能合但邏輯壞了）。解法是「縮短分支壽命、頻繁整合」——這正是 Trunk-Based Development 搭配 Feature Flag 的核心動機。
+</Callout>
+
+## 實戰補充（Q&A）
+
+**Q：團隊到底該選哪種分支策略？**
+A：先看「部署頻率」與「需不需要同時維護多版本」。需要維護多個發行版本（如套裝軟體、有客戶停在舊版）→ Git Flow 或 GitLab Flow 的 release 分支有價值。只維護一條線、追求快速上線的 SaaS／Web → GitHub Flow；若 CI/CD 成熟、團隊大、想極致頻繁整合 → Trunk-Based。新專案沒包袱時，預設從 GitHub Flow 起步，再視成熟度往 Trunk-Based 演進。
+
+**Q：CI/CD 比較適合哪種分支策略？**
+A：**Trunk-Based Development + 短命分支 + Feature Flag** 是與 CI/CD 最契合的組合。原因：CI 的價值來自「頻繁整合、快速回饋」，分支愈短命整合愈頻繁，衝突與整合風險就愈小；未完成的功能藏在 Feature Flag 後面，就能讓「程式碼隨時可上線」與「功能尚未對外開放」並存，達成持續部署。長命分支與 CI/CD 在哲學上是衝突的。
+
+**Q：rebase 跟 merge 到底怎麼選？**
+A：用一句話判斷——「分支分享出去了沒？」。**還沒 push、純本地整理自己的 commit** → 放心 rebase，讓歷史乾淨。**已是公共／共享分支的整合** → 用 merge，別改寫共享歷史。想兼顧「線性」與「保留功能邊界」→ 用 Azure DevOps 的 semi-linear merge 或 `--no-ff`。團隊層級則建議直接在平台設定統一的合併規則（例如一律 squash 或一律 semi-linear），別讓每個人各憑喜好。
+
+## 理解測驗
+
+<Quiz data='{"question":"關於 Azure DevOps 的 Semi-linear merge（半線性合併），下列敘述何者最正確？","options":["它完全不產生 merge commit，歷史與純 rebase 一模一樣","它先把分支 commit rebase 成線性，再產生一個 merge commit 收尾，兼顧線性與保留 PR 邊界","它會把整支分支壓成單一 commit","它只能用於沒有任何衝突的快轉情境"],"answer":1,"explanation":"Semi-linear merge 是 rebase 與 merge commit 的混合：先把 feature 分支的 commit rebase 成接在主線後的線性序列，再產生一個 merge commit。如此 first-parent 線是乾淨線性的，同時保留一個 merge node 標示 PR／功能邊界。"}' />
+
+<Quiz data='{"question":"哪一組合最適合搭配成熟的 CI/CD 與持續部署？","options":["Git Flow + 長命 develop 分支","Trunk-Based Development + 短命分支 + Feature Flag","為每個功能開一條活數週的長命分支","完全不開分支，所有人直接在本機累積大量未整合變更"],"answer":1,"explanation":"CI/CD 的價值在於頻繁整合與快速回饋。Trunk-Based 的短命分支讓整合頻繁、衝突小，Feature Flag 則讓未完成功能可藏起來而程式碼仍隨時可部署，是與持續部署最契合的組合。"}' />
+
+<Quiz data='{"question":"下列哪個情境最不該使用 rebase？","options":["整理自己尚未 push 的本地 commit","在合併前把本地 feature 分支同步到最新 main","對一條已經 push、且其他同事正基於它開發的公共分支做 rebase 後強推","用互動式 rebase 把 wip 與 typo 的雜訊 commit 壓掉"],"answer":2,"explanation":"rebase 會改寫 commit 的 SHA。對已分享的公共分支 rebase 後強推，會讓所有基於它工作的人歷史對不上、被迫硬重設，造成災難。rebase 應僅限於尚未分享出去的本地 commit。"}' />
+
+## 重點整理
+
+<Callout type="tip" title="一句話記住">
+分支策略決定「分支怎麼長、活多久」，合併策略決定「commit 怎麼進主線」；rebase 只動沒分享過的本地 commit、公共分支整合用 merge，而想要「乾淨線性又保留功能邊界」就選 Semi-linear merge——CI/CD 時代的最佳預設是 Trunk-Based + 短命分支 + Feature Flag。
+</Callout>
+
+| 重點 | 一句話總結 |
+| --- | --- |
+| 兩個層次 | 分支策略 ≠ 合併策略，是正交的兩個決定 |
+| 分支策略選擇 | 多版本維護選 Git/GitLab Flow；持續部署選 GitHub Flow／Trunk-Based |
+| CI/CD 最佳拍檔 | Trunk-Based + 短命分支 + Feature Flag |
+| rebase vs merge | 沒分享過 → rebase；公共分支整合 → merge |
+| Semi-linear merge | rebase 成線性 + 一顆 merge commit，兼顧線性與 PR 邊界 |
+| 其他工具 | cherry-pick 挑單顆、ours/theirs 選邊、`--no-ff` 留邊界、`--ff-only` 強制線性 |
+| 三大誤區 | 公共分支 rebase、squash 掉有用歷史、長命分支造成 merge hell |
