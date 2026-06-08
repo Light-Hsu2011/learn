@@ -1,0 +1,273 @@
+---
+title: "SRE 入門：從後端 RD 到網站可靠性工程"
+order: 13
+description: "SLI/SLO/SLA、錯誤預算、四大黃金訊號、事故管理與 Postmortem，以及後端工程師的 SRE 學習路線"
+difficulty: "medium"
+interviewImportance: 4
+related:
+  - "observability/observability-fundamentals"
+  - "observability/incident-response"
+  - "software-engineering/monitoring-logging-versioning"
+  - "ci-cd/deployment-strategies"
+---
+
+# SRE 入門：從後端 RD 到網站可靠性工程
+
+<ELI5>
+想像一間醫院的加護病房（ICU）。護理師不會盯著每一台機器的每一個零件，而是盯著少數幾個「生命徵象」：心跳、血壓、血氧、體溫。只要這幾個數字在安全範圍內，病人就是穩定的。
+
+SRE 就像 ICU 的監測團隊：他們替線上系統挑出少數最關鍵的健康指標，設定「可接受範圍」，並且事先講好「允許多少風險」——不是要病人永遠零波動（那不可能也太貴），而是把波動控制在預算之內。一旦快超標，就停下手邊的新療程，先把病人穩住。
+</ELI5>
+
+## 是什麼？
+
+SRE（Site Reliability Engineering，網站可靠性工程）是 Google 在 2003 年左右提出的維運方法論，一句話總結：**用寫軟體的方式來做維運**。
+
+傳統 Ops（維運）的工作是手動敲指令、值班救火、寫 runbook；而 SRE 把「維運問題當成軟體問題來解」——能用程式自動化的，就不要用人力重複做。SRE 工程師大多是會寫程式的後端工程師，只是把精力放在「讓系統穩定地跑」而不是「做新功能」。
+
+那跟 DevOps 差在哪？可以這樣理解：
+
+<Diagram data='{"nodes":[{"id":"dev","label":"DevOps（一套文化與原則）","type":"muted"},{"id":"sre","label":"SRE（Google 的具體實作）","type":"highlight"},{"id":"ops","label":"傳統 Ops（手動維運）","type":"default"}],"edges":[{"from":"ops","to":"dev","label":"演進"},{"from":"dev","to":"sre","label":"具體落地"}]}' />
+
+DevOps 是一種「打破開發與維運高牆」的文化與理念（CI/CD、自動化、共同負責）；SRE 則是 Google 對這套理念的「具體實作版本」，帶來可量化的指標（SLO）、錯誤預算等明確制度。常聽到的一句話是：「class SRE implements DevOps」——SRE 是 DevOps 的一種介面實作。
+
+<Callout type="info" title="SRE 的核心信條">
+可靠度（Reliability）是一種「可以被預算管理的產品特性」，而不是越高越好。100% 的可靠度既不可能達到，成本也高到不合理，使用者也感受不出差別。SRE 的工作是找出「剛剛好」的可靠度，把剩下的力氣留給做功能。
+</Callout>
+
+## 核心：可靠度的量化（SLI / SLO / SLA）
+
+這三個是 SRE 最重要的詞彙，務必分清楚。它們是「指標 → 目標 → 合約」的遞進關係。
+
+| 名詞 | 全名 | 是什麼 | 範例 |
+|------|------|--------|------|
+| SLI | Service Level Indicator | 實際量測到的「指標數字」 | 過去 30 天成功請求佔比 = 99.95% |
+| SLO | Service Level Objective | 你「內部訂的目標」 | 成功率 ≥ 99.9% |
+| SLA | Service Level Agreement | 對「外部客戶的合約承諾」，違約要賠 | 月可用率低於 99.5% 退費 10% |
+
+關鍵直覺：
+
+- **SLI 是現實**：從監控系統量出來的事實，例如「P99 延遲 240ms」、「錯誤率 0.03%」。
+- **SLO 是你的內部目標**：通常比 SLA 嚴格，留一點安全邊際。
+- **SLA 是法律合約**：違反要付出金錢或信譽代價，所以 SLA 一定比 SLO 鬆，當作最後防線。
+
+SLO 數字背後的「可容忍停機時間」非常重要，這是談判可靠度成本的依據：
+
+| SLO（可用率） | 每月可容忍停機 | 每年可容忍停機 |
+|---------------|----------------|----------------|
+| 99%（兩個 9） | 約 7.2 小時 | 約 3.65 天 |
+| 99.9%（三個 9） | 約 43 分鐘 | 約 8.76 小時 |
+| 99.95% | 約 21.6 分鐘 | 約 4.38 小時 |
+| 99.99%（四個 9） | 約 4.3 分鐘 | 約 52.6 分鐘 |
+| 99.999%（五個 9） | 約 26 秒 | 約 5.26 分鐘 |
+
+<Callout type="tip" title="後端 RD 的實務提醒">
+不要一開始就追求五個 9。每多一個 9，所需的冗餘、多區域部署、自動化投資都呈倍數成長。先量出目前的 SLI，再訂一個「比現況略高、但做得到」的 SLO，跑一兩季後再調。
+</Callout>
+
+## 錯誤預算 Error Budget
+
+如果 SLO 是 99.9%，那剩下的 **0.1% 就是你的「錯誤預算」**——允許出錯的額度。以每月為例：
+
+```text
+錯誤預算 = 1 - SLO = 1 - 0.999 = 0.001（0.1%）
+換算停機時間 ≈ 30 天 × 24 小時 × 60 分 × 0.001 ≈ 43 分鐘 / 月
+```
+
+錯誤預算的精神在於**把「衝功能」和「保穩定」之間的拉扯變成一個數字遊戲，而不是吵架**：
+
+- 預算還很多 → 代表系統很穩，可以放心發版、做實驗、上新功能（甚至「故意」承擔一點風險）。
+- 預算快燒完 → 暫停新功能發布，全力修穩定性問題，直到預算回補。
+- 預算燒光 → **凍結發版（feature freeze）**，只允許修 bug 與穩定性改善的變更。
+
+<Diagram data='{"nodes":[{"id":"budget","label":"本月錯誤預算 43 分鐘","type":"highlight"},{"id":"ok","label":"預算充足：放心發新功能","type":"default"},{"id":"warn","label":"預算告急：放慢發布、加強測試","type":"default"},{"id":"freeze","label":"預算燒光：凍結發版只修穩定性","type":"muted"}],"edges":[{"from":"budget","to":"ok","label":"剩很多"},{"from":"budget","to":"warn","label":"剩不多"},{"from":"budget","to":"freeze","label":"歸零"}]}' />
+
+這套機制讓開發團隊與 SRE 團隊的目標一致：與其爭論「能不能上線」，不如看錯誤預算的餘額來決定。它把「可靠度」變成一個雙方都認可、可被預算管理的特性。
+
+## 四大黃金訊號（Four Golden Signals）
+
+來自 Google SRE 一書，是替任何線上服務做監控時「至少要先量」的四個面向。對後端 RD 來說，這四個訊號幾乎涵蓋了一個 API 服務的健康狀況。
+
+<StepDiagram data='[{"title":"延遲 Latency","description":"處理一個請求要花多久。要區分成功請求與失敗請求的延遲，通常看 P50/P95/P99 分位數而非平均值。","icon":"1"},{"title":"流量 Traffic","description":"系統承受的需求量，例如每秒請求數（RPS）、每秒交易數。用來判斷負載高低與容量規劃。","icon":"2"},{"title":"錯誤 Errors","description":"失敗請求的比率，例如 HTTP 5xx 佔比、超時、回傳內容錯誤。直接對應 SLI 的成功率。","icon":"3"},{"title":"飽和度 Saturation","description":"系統資源有多滿，例如 CPU、記憶體、連線池、佇列長度。逼近上限就是即將出事的前兆。","icon":"4"}]' />
+
+<Callout type="tip" title="為什麼看分位數不看平均？">
+平均延遲會被大量快速請求「稀釋」，掩蓋掉少數使用者體驗極差的情況。P99 = 100ms 的意思是「最慢的 1% 使用者也在 100ms 內被服務」，這才貼近真實的使用者體驗。
+</Callout>
+
+## 可觀測性三支柱（Logs / Metrics / Traces）
+
+要量出上面那些訊號，靠的是「可觀測性（Observability）」的三大資料來源。詳細內容請見 observability 主題，這裡先一句話定位各自角色：
+
+- **Metrics（指標）**：可彙總的數字時間序列（QPS、錯誤率、延遲分位數），便宜、適合告警與儀表板。回答「系統現在健不健康？」
+- **Logs（日誌）**：離散的事件紀錄，資訊量大，適合事後追查細節。回答「這個請求到底發生什麼事？」
+- **Traces（追蹤）**：一個請求跨多個服務的完整路徑與耗時，適合定位分散式系統瓶頸。回答「慢在哪一段？」
+
+<Callout type="info" title="延伸閱讀">
+可觀測性是 SRE 的眼睛，建議搭配 observability/observability-fundamentals 一起看。沒有可觀測性，SLO 與黃金訊號都無從量起。
+</Callout>
+
+## 事故管理與 Postmortem
+
+當錯誤預算正在被快速消耗、服務真的出事了，就進入「事故管理（Incident Management）」流程。
+
+### 嚴重度分級（Severity）
+
+事先定義好等級，才能讓「該叫醒誰、該多快回應」有共識：
+
+| 等級 | 影響 | 範例 | 回應期待 |
+|------|------|------|----------|
+| SEV-1 | 全站不可用 / 資料遺失風險 | 主要 API 全掛、付款失敗 | 立刻、全員待命 |
+| SEV-2 | 主要功能受損 | 登入緩慢、部分區域中斷 | 數分鐘內進場 |
+| SEV-3 | 次要功能受損 | 非關鍵報表延遲 | 上班時間處理 |
+
+### 值班 On-call
+
+由團隊輪流擔任「第一線接告警」的人。健康的 On-call 制度應該：告警必須「可行動」（不該半夜被無意義的告警吵醒）、有清楚的 runbook、輪班負擔合理、補休或補償到位。
+
+### 無究責事後檢討（Blameless Postmortem）
+
+事故結束後寫的檢討文件。核心精神是 **對事不對人**：假設每個人在當下都已盡力做出合理決定，問題出在「系統與流程」讓錯誤得以發生，而不是某個人「不小心」。一份典型骨架：
+
+<StepDiagram data='[{"title":"摘要與影響","description":"一句話講清楚發生什麼事、影響多少使用者、持續多久、燒掉多少錯誤預算。","icon":"1"},{"title":"時間線 Timeline","description":"客觀記錄從異常發生、被偵測、診斷、緩解到復原的每個時間點。","icon":"2"},{"title":"根因分析","description":"用 5 Whys 等方法追到系統性根因，而非停在表面或歸咎個人。","icon":"3"},{"title":"行動項 Action Items","description":"具體、有負責人、有期限的改善事項，並追蹤到完成。","icon":"4"}]' />
+
+<Callout type="tip" title="Blameless 的關鍵">
+如果檢討會變成抓戰犯，下次大家就會隱瞞、不敢通報，反而更危險。無究責文化是為了讓真相浮現、讓系統變強。詳見 observability/incident-response。
+</Callout>
+
+## 消除 Toil（重複勞動）
+
+Toil 指的是那種「手動、可重複、無長期價值、會隨服務成長而線性增加」的維運工作——例如每次發版都要手動跑十個步驟、每天手動清 log、每次擴容都要人工改設定。
+
+Toil 的特徵：手動、重複、可自動化、戰術性（救火而非建設）、沒有持久價值、隨規模等比成長。
+
+為什麼要消滅它？因為 toil 會吃光工程師的時間，讓人沒空做真正能提升可靠度的工程改善，最後陷入「越忙越救火、越救火越忙」的惡性循環。
+
+<Callout type="info" title="SRE 的時間分配原則">
+Google 的經驗法則是：SRE 花在 toil 的時間應該控制在 **50% 以下**，另外一半投入在自動化、工具開發、可靠度改善等「能讓未來更輕鬆」的工程工作。超過上限就是一個該動手自動化的訊號。
+</Callout>
+
+## 部署與發佈可靠度
+
+很多事故來自「發新版」，所以「怎麼安全地發版」是 SRE 的核心戰場。重點是讓變更可以**漸進、可觀測、可快速回滾**：
+
+- **藍綠部署（Blue-Green）**：同時準備新舊兩套環境，流量一次性切換，出問題就切回去，回滾極快但成本是雙倍資源。
+- **金絲雀部署（Canary）**：先把新版本放給一小部分流量（例如 5%），盯著黃金訊號與錯誤預算，沒問題才逐步放大。
+- **快速回滾（Rollback）**：任何發布都必須有「一鍵退回上一個穩定版本」的能力，這比「修好再上」更快止血。
+
+<Callout type="info" title="延伸閱讀">
+這三種策略的細節、流量切換做法與資料庫相容性問題，請見 ci-cd/deployment-strategies。
+</Callout>
+
+## 後端 RD 的 SRE 學習路線
+
+這是本課最實用的一段，直接回答「從後端 RD 想做 SRE，要照什麼順序學」。重點是**先學會量化與看懂系統，再學自動化與底層**，依優先序排列：
+
+<StepDiagram data='[{"title":"SLI / SLO / 錯誤預算","description":"先建立可靠度的思維框架。學會替自己的服務定義成功率、延遲 SLI，並訂出合理 SLO。這是 SRE 的世界觀，最該先學。","icon":"1"},{"title":"可觀測性 Metrics / Logs / Traces","description":"學會讓服務吐出指標、結構化日誌與分散式追蹤。看不到系統就無法管理可靠度。","icon":"2"},{"title":"監控與告警","description":"Prometheus + Grafana、儀表板設計、以 SLO 為基礎的告警（燃燒率 burn rate）。讓告警可行動、不擾人。","icon":"3"},{"title":"事故管理與 Postmortem","description":"學會分級、值班、止血流程與寫無究責檢討。把每次事故變成系統變強的養分。","icon":"4"},{"title":"CI/CD 與部署策略","description":"自動化發布管線、金絲雀與藍綠、快速回滾。讓變更安全且頻繁。","icon":"5"},{"title":"容器與 Kubernetes","description":"Docker、K8s 的 Pod/Deployment/Service、HPA 自動擴縮、健康探針。現代服務的執行環境。","icon":"6"},{"title":"基礎設施即程式碼 IaC","description":"Terraform、Helm。把環境寫成程式碼，可版本控管、可重現、可審查。","icon":"7"},{"title":"Linux 與網路基礎","description":"行程、檔案描述符、TCP/IP、DNS、負載平衡、TLS。出事時往下挖的根基。","icon":"8"},{"title":"自動化與腳本","description":"用程式消滅 toil：自動擴容、自動修復、批次維運腳本（Python / Go / Bash）。SRE 的最終目標。","icon":"9"}]' />
+
+<Callout type="tip" title="後端 RD 的優勢">
+你已經會寫程式、懂 API 與資料庫——這正是 SRE 最缺的能力。轉 SRE 不是從零開始，而是把既有的軟體工程能力，轉去解決「讓系統穩定運行」這類問題。前四步（量化思維 + 可觀測性 + 告警 + 事故管理）是門檻最低、效益最高的起點。
+</Callout>
+
+## C# / .NET 實務銜接
+
+把上面的觀念落到 .NET 服務上，最快讓服務「變得可觀測」的四件事：
+
+健康檢查（Health Checks），讓編排器（K8s）與負載平衡器能探活：
+
+```csharp
+builder.Services.AddHealthChecks()
+    .AddCheck("self", () => HealthCheckResult.Healthy())
+    .AddNpgSql(connectionString, name: "database")
+    .AddRedis(redisConnectionString, name: "redis");
+
+var app = builder.Build();
+// liveness：行程還活著嗎；readiness：可以接流量了嗎
+app.MapHealthChecks("/health/live");
+app.MapHealthChecks("/health/ready");
+```
+
+指標（Metrics），用 .NET 內建的 System.Diagnostics.Metrics 暴露黃金訊號：
+
+```csharp
+var meter = new Meter("MyApp.Api");
+var requestCounter = meter.CreateCounter<long>("http_requests_total");
+var latencyHistogram = meter.CreateHistogram<double>("http_request_duration_ms");
+
+// 在中介軟體裡記錄每個請求
+requestCounter.Add(1, new KeyValuePair<string, object?>("status", statusCode));
+latencyHistogram.Record(elapsedMs);
+```
+
+結構化日誌（Structured Logging），讓日誌可被查詢、可關聯：
+
+```csharp
+// 用具名參數而非字串拼接，後端日誌系統才能依欄位搜尋
+logger.LogInformation(
+    "Order {OrderId} processed for {CustomerId} in {ElapsedMs}ms",
+    order.Id, order.CustomerId, elapsedMs);
+```
+
+OpenTelemetry（OTel），一次到位地把 Metrics / Traces / Logs 匯出到後端（Prometheus、Jaeger、Grafana 等）：
+
+```csharp
+builder.Services.AddOpenTelemetry()
+    .WithMetrics(m => m
+        .AddAspNetCoreInstrumentation()
+        .AddMeter("MyApp.Api")
+        .AddOtlpExporter())
+    .WithTracing(t => t
+        .AddAspNetCoreInstrumentation()
+        .AddHttpClientInstrumentation()
+        .AddOtlpExporter());
+```
+
+<Callout type="info" title="一句話總結 .NET 銜接">
+ASP.NET Core 內建的 Health Checks、`System.Diagnostics.Metrics` 與 `ILogger`，再加上 OpenTelemetry，幾乎不用第三方框架就能把一個 .NET 服務變得「可被 SRE 管理」。
+</Callout>
+
+## 常見誤區
+
+<Callout type="warning" title="SRE 路上最容易踩的坑">
+- **追求 100% 可用率**：不可能達到、成本暴增，而且使用者根本感受不到差別。應該訂「剛剛好」的 SLO，把資源留給做功能。
+- **只看機器指標、不看使用者體驗**：CPU、記憶體都正常不代表使用者沒事。SLI 應該以「使用者實際感受到的成功率與延遲」為準，而非單純的主機指標。
+- **究責文化扼殺 Postmortem**：把事故檢討變成抓戰犯，會讓人隱瞞問題、不敢通報。沒有無究責文化，事後檢討就失去揭露真相、強化系統的意義。
+- **告警太吵（Alert Fatigue）**：到處設門檻式告警，導致 On-call 麻木而忽略真正重要的告警。告警應以 SLO 燃燒率為基礎，且每一條都「可行動」。
+</Callout>
+
+## 實戰補充（Q&A）
+
+**Q：SLO 到底該訂多少？**
+A：不要憑感覺。先用監控量出「目前實際的 SLI」（例如過去 90 天成功率是 99.92%），把 SLO 訂在「略低於現況、且使用者能接受」的位置，例如 99.9%。訂太高會永遠在違約救火，訂太低則失去約束力。跑一兩季後依錯誤預算的消耗狀況再調整。
+
+**Q：SRE 和 DevOps 差在哪？**
+A：DevOps 是一種打破開發與維運壁壘的「文化與原則」，比較抽象；SRE 是 Google 對這套原則的「具體實作」，帶來明確的制度，例如 SLO、錯誤預算、toil 上限、無究責檢討。可以說 SRE 是一種「有明確規則手冊的 DevOps」。
+
+**Q：小團隊也需要 SRE 嗎？**
+A：需要的是「SRE 的思維」，不一定是「專職 SRE 團隊」。小團隊通常由後端 RD 兼任，重點先做三件事：(1) 替關鍵服務訂一個 SLO；(2) 把黃金訊號做成儀表板與告警；(3) 出事後寫一份簡短的無究責檢討。等規模成長、toil 變多，再考慮設立專職角色。
+
+## 理解測驗
+
+<Quiz data='{"question":"SLI、SLO、SLA 三者的正確關係是？","options":["SLA 通常比 SLO 嚴格，因為要對客戶負責","SLI 是實際量測值、SLO 是內部目標、SLA 是對外合約，且 SLO 一般比 SLA 嚴格","三者是同義詞，只是不同團隊的叫法","SLO 是量測出來的數字，SLI 是訂出來的目標"],"answer":1,"explanation":"SLI 是量測到的事實，SLO 是內部目標，SLA 是對外有罰則的合約。SLO 通常訂得比 SLA 嚴格，預留安全邊際，避免一波動就違反合約。"}' />
+
+<Quiz data='{"question":"某服務 SLO 為 99.9%，這個月已經用掉大部分錯誤預算。依 SRE 的精神，團隊最該怎麼做？","options":["趕快把剩下的功能全部上線，反正預算還沒歸零","放慢或凍結新功能發布，集中修穩定性問題直到預算回補","直接把 SLO 調高到 99.99% 讓預算看起來變多","關掉告警以免一直被打擾"],"answer":1,"explanation":"錯誤預算的用途就是平衡衝功能與保穩定。預算告急代表系統不穩，應放慢或凍結發版、優先修穩定性，而不是繼續冒險或用調高 SLO 來自欺。"}' />
+
+<Quiz data='{"question":"關於四大黃金訊號中的「延遲（Latency）」，下列何者最正確？","options":["只要看平均延遲就夠了","應該看 P95/P99 等分位數，並區分成功與失敗請求的延遲","延遲就是每秒請求數（RPS）","延遲只跟資料庫有關，與應用程式無關"],"answer":1,"explanation":"平均值會被大量快速請求稀釋而掩蓋少數極差體驗，應看 P95/P99 分位數；同時要區分成功與失敗請求，因為失敗請求可能很快回傳卻代表壞掉了。RPS 是流量（Traffic）而非延遲。"}' />
+
+## 重點整理
+
+<Callout type="tip" title="一句話記住">
+SRE 就是「用寫軟體的方式做維運」，而可靠度是一種可以被錯誤預算管理的產品特性——不是越高越好，而是剛剛好。
+</Callout>
+
+| 主題 | 一句話重點 |
+|------|------------|
+| SRE 定位 | 用軟體工程解決維運問題，是 DevOps 的具體實作 |
+| SLI / SLO / SLA | 量測值 / 內部目標 / 對外合約，嚴格度 SLO ≥ SLA |
+| 錯誤預算 | 1 − SLO 的額度，平衡衝功能與保穩定，燒光就凍結發版 |
+| 四大黃金訊號 | 延遲、流量、錯誤、飽和度 |
+| 可觀測性 | Metrics 看健康、Logs 查細節、Traces 找瓶頸 |
+| 事故管理 | 嚴重度分級 + On-call + 無究責 Postmortem |
+| 消除 Toil | 自動化重複勞動，toil 控制在 50% 以下 |
+| 部署可靠度 | 藍綠 / 金絲雀 / 快速回滾，讓變更漸進可回退 |
+| 學習路線 | SLO → 可觀測性 → 告警 → 事故 → CI/CD → K8s → IaC → Linux/網路 → 自動化 |
+| .NET 銜接 | Health Checks + Metrics + 結構化日誌 + OpenTelemetry |
